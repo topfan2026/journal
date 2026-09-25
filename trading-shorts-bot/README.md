@@ -102,6 +102,9 @@ clips is never picked up.
 
 ## 3. Platform setup
 
+**Easiest:** run `python setup_wizard.py`. It opens each page, tells you what to click, and saves
+what you paste into `.env`. The sections below are the same steps in detail.
+
 ### Claude (copywriter agent)
 Create an API key at https://platform.claude.com and set `ANTHROPIC_API_KEY`. Without a key, the
 bot still runs: metadata then comes from `meta.json` / `caption.txt` via a plain template.
