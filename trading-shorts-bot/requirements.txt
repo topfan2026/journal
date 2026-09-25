@@ -1,0 +1,17 @@
+# Core
+python-dotenv>=1.0
+watchdog>=4.0
+requests>=2.31
+Pillow>=10.1
+imageio-ffmpeg>=0.5        # bundled ffmpeg binary (a system ffmpeg on PATH is preferred if present)
+
+# YouTube Data API v3
+google-api-python-client>=2.100
+google-auth>=2.23
+google-auth-oauthlib>=1.1
+
+# Claude (copywriter agent: titles, descriptions, tags, captions)
+anthropic>=1.0
+
+# Tests
+pytest>=8.0
