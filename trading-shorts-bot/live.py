@@ -268,6 +268,20 @@ class OBSAgent:
         except Exception:
             return False
 
+    def recover(self, sleep=time.sleep) -> dict:
+        """Restart streaming; if OBS is frozen (running but not answering), force-close and reopen it."""
+        import obs_control
+        try:
+            return self.run(None, start_streaming=True)
+        except obs_control.OBSError as e:
+            if not obs_control.obs_running():
+                raise
+            log.warning("[watchdog] OBS is frozen (%s) - force-closing and reopening it", e)
+            obs_control.kill()
+            sleep(5)
+            # OBS keeps its stream key and scene in its own settings, so a fresh start streams the same way.
+            return self.run(None, start_streaming=True)
+
 
 # --------------------------------------------------------------------------- orchestrator
 
@@ -339,7 +353,7 @@ class LiveShow:
                     browser.run()
                 if streaming and not obs.healthy():
                     log.warning("[watchdog] OBS stopped streaming - restarting")
-                    obs.run(None, start_streaming=True)
+                    obs.recover()
             except Exception as e:  # keep trying until the end time
                 log.error("[watchdog] recovery failed: %s", e)
 

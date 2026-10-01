@@ -433,3 +433,27 @@ def test_gateway_login_retries_until_ready(monkeypatch):
     monkeypatch.setattr(ibkr, "connect", live_account)
     with pytest.raises(ibkr.IBKRError, match="paper"):
         live.GatewayAgent.verify_login(sleep=lambda s: None)  # never retried
+
+
+def test_frozen_obs_is_force_restarted(monkeypatch):
+    import obs_control
+    calls = []
+    agent = live.OBSAgent()
+
+    def run(stream, start_streaming):
+        calls.append("run")
+        if calls.count("run") == 1:
+            raise obs_control.OBSError("OBS is running but its WebSocket server is off")
+        return {"streaming": True}
+    monkeypatch.setattr(agent, "run", run)
+    monkeypatch.setattr(obs_control, "obs_running", lambda: True)
+    monkeypatch.setattr(obs_control, "kill", lambda: calls.append("kill"))
+    assert agent.recover(sleep=lambda s: None) == {"streaming": True}
+    assert calls == ["run", "kill", "run"]
+
+    calls.clear()
+    monkeypatch.setattr(obs_control, "obs_running", lambda: False)  # not frozen, just gone: no kill
+    monkeypatch.setattr(agent, "run", lambda *a, **k: (_ for _ in ()).throw(obs_control.OBSError("x")))
+    with pytest.raises(obs_control.OBSError):
+        agent.recover(sleep=lambda s: None)
+    assert calls == []

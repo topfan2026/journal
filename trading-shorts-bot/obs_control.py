@@ -64,6 +64,15 @@ def obs_running() -> bool:
         return False
 
 
+def kill() -> None:
+    """Force-close a frozen OBS (its WebSocket stopped answering mid-stream)."""
+    name = Path(env("OBS_PATH") or ("obs64.exe" if os.name == "nt" else "obs")).name
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
+    else:
+        subprocess.run(["pkill", "-x", name.removesuffix(".app")], capture_output=True)
+
+
 WS_HELP = ("in OBS open Tools > WebSocket Server Settings, tick 'Enable WebSocket server', "
            "port {port}, click Apply")
 
