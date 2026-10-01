@@ -302,8 +302,7 @@ code: no AI tokens, and the same thing happens every morning.
      type Local connector secret = {SCANNER_SECRET}
      click Test Connection
      wait Connected        # waits for this text; "Not connected" / "Disconnected" don't count
-     click Scan Market     # buttons inside an open popup are tried first
-   end
+   end                     # (the scan then starts by itself; buttons in an open popup are tried first)
    wait 10                 # seconds
    click Full Screen
    ```

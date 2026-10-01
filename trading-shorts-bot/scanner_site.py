@@ -58,7 +58,6 @@ if Gateway Paper
   type Local connector secret = {SCANNER_SECRET}
   click Test Connection
   wait Connected
-  click Scan Market
 end
 wait 10
 click Full Screen
