@@ -232,6 +232,7 @@ class App:
         self.log.pack(fill="both", expand=True, padx=10, pady=10)
         self.update_status()
         root.after(200, self.pump)
+        root.after(15000, self._refresh_status)
         root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ------------------------------------------------------------------ fields
@@ -312,8 +313,18 @@ class App:
             text = f"Next stream: {nxt.strftime('%a %d %b %H:%M')}"
         except Exception as e:
             text = f"Schedule: {e}"
-        running = self.daemon is not None and self.daemon.poll() is None
-        self.status.set(text + (" • scheduler running" if running else " • scheduler stopped"))
+        mine = self.daemon is not None and self.daemon.poll() is None
+        if mine:
+            state = " • scheduler running"
+        elif live.scheduler_running():
+            state = " • scheduler running (in the background)"
+        else:
+            state = " • scheduler STOPPED - click Start scheduler"
+        self.status.set(text + state)
+
+    def _refresh_status(self):
+        self.update_status()  # picks up a scheduler started or stopped outside this window
+        self.root.after(15000, self._refresh_status)
 
     # ------------------------------------------------------------------ processes
     def spawn(self, *args: str, daemon: bool = False):
@@ -342,7 +353,8 @@ class App:
         self.lines.put(f"[exited with code {proc.wait()}]\n")
 
     def start_daemon(self):
-        if self.daemon is not None and self.daemon.poll() is None:
+        import live
+        if (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running():
             self.write("scheduler is already running\n")
             return
         self.daemon = self.spawn("live.py", "daemon", daemon=True)

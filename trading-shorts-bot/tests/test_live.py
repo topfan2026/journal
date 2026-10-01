@@ -590,3 +590,13 @@ def test_late_manual_start_does_not_run_until_tomorrow(monkeypatch):
     assert live.end_time(late) == late + timedelta(minutes=60)
     early = datetime(2026, 10, 1, 6, 0, tzinfo=UTC)
     assert live.end_time(early) == early.replace(hour=10)
+
+
+def test_scheduler_running_detects_the_lock(monkeypatch):
+    monkeypatch.setenv("LIVE_LOCK_PORT", "47698")
+    assert not live.scheduler_running()
+    lock = live.single_instance()
+    try:
+        assert live.scheduler_running()
+    finally:
+        lock.close()

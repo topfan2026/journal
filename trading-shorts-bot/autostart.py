@@ -75,7 +75,8 @@ def install() -> str:
         bat = BOT_DIR / "live_daemon.bat"
         bat.write_text(windows_bat(), encoding="utf-8")
         _run(["schtasks", "/Create", "/F", "/TN", TASK, "/SC", "ONLOGON", "/RL", "LIMITED", "/TR", f'"{bat}"'])
-        return f"Task Scheduler task '{TASK}' created - it starts when you log on"
+        _run(["schtasks", "/Run", "/TN", TASK])  # start it now too, not only at the next log on
+        return f"Task Scheduler task '{TASK}' created and started - it also starts whenever you log on"
     if sys.platform == "darwin":
         plist = Path(f"~/Library/LaunchAgents/{LABEL}.plist").expanduser()
         plist.parent.mkdir(parents=True, exist_ok=True)

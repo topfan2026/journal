@@ -477,6 +477,19 @@ def single_instance():
     return sock
 
 
+def scheduler_running() -> bool:
+    """Is a scheduler (from the app, autostart or a terminal) already holding the lock?"""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", int(env_float("LIVE_LOCK_PORT", 47621))))
+        return False
+    except OSError:
+        return True
+    finally:
+        sock.close()
+
+
 def daemon(settings: Settings) -> int:
     lock = single_instance()  # noqa: F841  (released when the process exits)
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
