@@ -390,3 +390,15 @@ def test_type_values_hidden_in_logs():
 def test_gui_browser_jobs_are_exclusive():
     assert live_gui.uses_browser(("live.py", "site-test")) and live_gui.uses_browser(("live.py", "daemon"))
     assert not live_gui.uses_browser(("live.py", "stop")) and not live_gui.uses_browser(("auth_setup.py", "youtube"))
+
+
+def test_if_end_blocks():
+    import scanner_site
+    steps = scanner_site.parse_steps(scanner_site.DEFAULT_STEPS)
+    i = steps.index(("if", "Gateway Paper"))
+    end = scanner_site.skip_block(steps, i)
+    assert steps[end] == ("end", "") and steps[end + 1:] == [("wait", "10"), ("click", "Full Screen")]
+    with pytest.raises(scanner_site.SiteError, match="missing its 'end'"):
+        scanner_site.parse_steps("if A\nclick B\n")
+    with pytest.raises(scanner_site.SiteError, match="without an 'if'"):
+        scanner_site.parse_steps("click B\nend\n")

@@ -18,6 +18,9 @@ popup are tried before the rest of the page:
     wait Connected                  wait until that text shows on the page
     wait 5                          wait 5 seconds
     key F11                         press a key
+    if Gateway Paper                only when that shows up (within 10s), do the steps
+      ...                           up to the matching 'end'; otherwise skip them
+    end
     # comment                       ignored
 
 Without a steps file it opens SCANNER_URL and, if set, clicks SCANNER_START_TEXT /
@@ -39,22 +42,24 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "type", "wait", "key")
+VERBS = ("goto", "click", "select", "type", "wait", "key", "if", "end")
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
 DEFAULT_STEPS = """\
 # What the bot does on the site every morning, top to bottom.
-# Make the words after click / wait / type match the site exactly.
+# Make the words after click / wait / type / if match the site exactly.
 # Steps: goto <address>, click <text>, type <box> = <text>, wait <text or seconds>, key <F11>
-# {SCANNER_SECRET} is the connector secret saved in the Scanner site tab.
+#        if <text> ... end   = only do the lines in between when <text> shows up
 goto https://aialgopro.com
 click Scanner
 click Scan Market
-click Gateway Paper
-type Local connector secret = {SCANNER_SECRET}
-click Test Connection
-wait Connected
-click Scan Market
+if Gateway Paper
+  click Gateway Paper
+  type Local connector secret = {SCANNER_SECRET}
+  click Test Connection
+  wait Connected
+  click Scan Market
+end
 wait 10
 click Full Screen
 """
@@ -75,7 +80,7 @@ def steps_file() -> Path:
 
 
 def parse_steps(text: str) -> list[tuple[str, str]]:
-    steps = []
+    steps, depth = [], 0
     for n, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -84,12 +89,35 @@ def parse_steps(text: str) -> list[tuple[str, str]]:
         verb, arg = verb.lower(), arg.strip()
         if verb not in VERBS:
             raise SiteError(f"scanner steps line {n}: unknown step {verb!r} (use {', '.join(VERBS)})")
+        if verb == "end":
+            depth -= 1
+            if depth < 0:
+                raise SiteError(f"scanner steps line {n}: 'end' without an 'if' above it")
+            steps.append((verb, ""))
+            continue
         if not arg:
             raise SiteError(f"scanner steps line {n}: {verb!r} needs something after it")
+        if verb == "if":
+            depth += 1
         if verb == "type" and "=" not in arg:
             raise SiteError(f"scanner steps line {n}: write it as  type <box name> = <text>")
         steps.append((verb, arg))
+    if depth:
+        raise SiteError("scanner steps: an 'if' is missing its 'end'")
     return steps
+
+
+def skip_block(steps: list[tuple[str, str]], i: int) -> int:
+    """Index of the 'end' that closes the 'if' at index *i*."""
+    depth = 0
+    for j in range(i, len(steps)):
+        if steps[j][0] == "if":
+            depth += 1
+        elif steps[j][0] == "end":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(steps)
 
 
 def expand(text: str) -> str:
@@ -158,8 +186,19 @@ class ScannerSite:
     def start_scanner(self) -> dict:
         steps = load_steps()
         if steps:
-            for i, (verb, arg) in enumerate(steps, 1):
+            idx = 0
+            while idx < len(steps):
+                verb, arg = steps[idx]
+                i = idx + 1
+                idx += 1
+                if verb == "end":
+                    continue
                 log.info("browser: step %d/%d: %s", i, len(steps), shown(verb, arg))
+                if verb == "if":
+                    if not self.exists(arg):
+                        log.info("browser: %r isn't on screen - skipping to its 'end'", arg)
+                        idx = skip_block(steps, i - 1) + 1
+                    continue
                 try:
                     self.step(verb, arg)
                 except Exception as e:
@@ -238,10 +277,19 @@ class ScannerSite:
                 + [scope.get_by_role(r, name=words) for r in CLICK_ROLES]
                 + [scope.get_by_text(words)])
 
-    def find(self, text: str, field: bool = False, waiting: bool = False):
+    def exists(self, text: str) -> bool:
+        """For 'if': does *text* show up within SCANNER_IF_SECONDS (default 10)?"""
+        try:
+            self.find(text, waiting=True, timeout=env_float("SCANNER_IF_SECONDS", 10))
+            return True
+        except SiteError:
+            return False
+
+    def find(self, text: str, field: bool = False, waiting: bool = False, timeout: float | None = None):
         """The first visible match for *text*: inside an open popup first, then the whole page."""
         page = self.page
-        deadline = time.monotonic() + self.timeout
+        timeout = self.timeout if timeout is None else timeout
+        deadline = time.monotonic() + timeout
         while True:
             dialogs = page.locator(DIALOGS)
             scopes = ([dialogs.last] if dialogs.count() else []) + [page]
@@ -256,7 +304,7 @@ class ScannerSite:
                             return c.nth(k)
             if time.monotonic() > deadline:
                 what = "no box called" if field else "nothing called"
-                raise SiteError(f"{what} {text!r} appeared within {self.timeout:.0f}s")
+                raise SiteError(f"{what} {text!r} appeared within {timeout:.0f}s")
             page.wait_for_timeout(250)
 
     def _legacy_start(self) -> str | None:

@@ -297,11 +297,13 @@ code: no AI tokens, and the same thing happens every morning.
    goto https://aialgopro.com
    click Scanner
    click Scan Market
-   click Gateway Paper
-   type Local connector secret = {SCANNER_SECRET}
-   click Test Connection
-   wait Connected          # waits for this text; "Not connected" / "Disconnected" don't count
-   click Scan Market       # buttons inside an open popup are tried first
+   if Gateway Paper        # only when the connect popup shows (not when already connected)
+     click Gateway Paper
+     type Local connector secret = {SCANNER_SECRET}
+     click Test Connection
+     wait Connected        # waits for this text; "Not connected" / "Disconnected" don't count
+     click Scan Market     # buttons inside an open popup are tried first
+   end
    wait 10                 # seconds
    click Full Screen
    ```
