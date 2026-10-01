@@ -19,6 +19,7 @@ popup are tried before the rest of the page:
     wait 5                          wait 5 seconds
     key F11                         press a key
     fullscreen                      make the browser window full screen (like F11)
+    hide A row is tinted            hide text on the page that starts with these words
     if Gateway Paper                only when that shows up (within 10s), do the steps
       ...                           up to the matching 'end'; otherwise skip them
     end
@@ -45,14 +46,14 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "if", "end")
+VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "hide", "if", "end")
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
 DEFAULT_STEPS = """\
 # What the bot does on the site every morning, top to bottom.
 # Make the words after click / wait / type / if match the site exactly.
 # Steps: goto <address>, click <text>, type <box> = <text>, wait <text or seconds>,
-#        fullscreen (the whole browser window, like F11), key <F11>,
+#        fullscreen (the whole browser window, like F11), key <F11>, hide <start of a text>,
 #        if <text> ... end   = only do the lines in between when <text> shows up
 goto https://aialgopro.com
 click Scanner
@@ -65,7 +66,28 @@ if Gateway Paper
 end
 wait 10
 click Full screen
+hide A row is tinted
 """
+
+
+# Hides every text-only element whose text starts with the given words, and keeps hiding it
+# when the page redraws (the scanner re-renders every few seconds).
+HIDE_JS = """(start) => {
+  const want = start.trim().toLowerCase();
+  const sweep = () => {
+    for (const el of document.querySelectorAll('p, span, div, small, li')) {
+      if (el.childElementCount === 0 && el.style.display !== 'none'
+          && (el.textContent || '').trim().toLowerCase().startsWith(want)) {
+        el.style.setProperty('display', 'none', 'important');
+      }
+    }
+  };
+  sweep();
+  let queued = false;
+  new MutationObserver(() => {
+    if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; sweep(); }); }
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+}"""
 
 
 class SiteError(Exception):
@@ -266,6 +288,8 @@ class ScannerSite:
             page.keyboard.press(arg)
         elif verb == "fullscreen":
             self.browser_fullscreen(arg.lower() not in ("off", "no", "false"))
+        elif verb == "hide":
+            page.evaluate(HIDE_JS, arg)
 
     def browser_fullscreen(self, on: bool = True) -> None:
         """Make the Chrome window itself full screen (like F11) - no site button needed."""
