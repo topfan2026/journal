@@ -36,9 +36,36 @@ def launch() -> None:
     exe = Path(path).expanduser()
     # On Windows OBS must start from its own folder or it can't find its locale files.
     cmd = ["open", "-a", str(exe), "--args"] if exe.suffix == ".app" else [str(exe)]
-    cmd += ["--minimize-to-tray", "--disable-shutdown-check"]
+    cmd += ["--disable-shutdown-check"]
     kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen(cmd, cwd=str(exe.parent), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+
+
+def ws_port_open() -> bool:
+    import socket
+    try:
+        with socket.create_connection((env("OBS_WS_HOST", "localhost"), int(env_float("OBS_WS_PORT", 4455))), 2):
+            return True
+    except OSError:
+        return False
+
+
+def obs_running() -> bool:
+    """Is an OBS process already up (even hidden in the tray)?"""
+    name = Path(env("OBS_PATH") or ("obs64.exe" if os.name == "nt" else "obs")).name
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH"],
+                                 capture_output=True, text=True).stdout
+            return name.lower() in out.lower()
+        proc = name.removesuffix(".app") if name.endswith(".app") else name
+        return subprocess.run(["pgrep", "-x", proc], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+WS_HELP = ("in OBS open Tools > WebSocket Server Settings, tick 'Enable WebSocket server', "
+           "port {port}, click Apply")
 
 
 class OBS:
@@ -47,11 +74,16 @@ class OBS:
 
     @classmethod
     def connect(cls, start: bool = True) -> "OBS":
+        port = int(env_float("OBS_WS_PORT", 4455))
         try:
             return cls(_client())
         except Exception as first:
-            if not start:
-                raise OBSError(f"cannot reach OBS WebSocket: {first}") from first
+            if ws_port_open():  # OBS answers, so this is a password/auth problem
+                raise OBSError(f"OBS WebSocket refused the login ({first}) - check the password "
+                               "(OBS: Tools > WebSocket Server Settings > Show Connect Info)") from first
+            if not start or obs_running():
+                raise OBSError("OBS is running but its WebSocket server is off - "
+                               + WS_HELP.format(port=port)) from first
         log.info("obs: not running - launching")
         launch()
         deadline = time.monotonic() + env_float("OBS_START_TIMEOUT", 60)
@@ -62,8 +94,7 @@ class OBS:
                 return cls(_client())
             except Exception as e:
                 last = e
-        raise OBSError(f"OBS started but its WebSocket never answered ({last}); "
-                       "enable it in Tools > WebSocket Server Settings")
+        raise OBSError(f"OBS started but its WebSocket never answered ({last}) - " + WS_HELP.format(port=port))
 
     def req(self, name: str, data: dict | None = None) -> dict:
         return self.c.send(name, data, raw=True) or {}

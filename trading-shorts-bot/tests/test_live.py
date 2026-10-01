@@ -320,3 +320,22 @@ def test_gateway_failure_shows_log_tail(tmp_path, monkeypatch):
     monkeypatch.setenv("IBC_START_CMD", f'"{sys.executable}" "{script}"')
     with pytest.raises(ibkr.IBKRError, match="version 9999 not found"):
         ibkr.start_gateway(tmp_path / "c.ini", tmp_path / "g.log")
+
+
+def test_obs_not_relaunched_when_already_running(monkeypatch):
+    import obs_control
+
+    def refuse():
+        raise ConnectionRefusedError("refused")
+    launched = []
+    monkeypatch.setattr(obs_control, "_client", refuse)
+    monkeypatch.setattr(obs_control, "ws_port_open", lambda: False)
+    monkeypatch.setattr(obs_control, "obs_running", lambda: True)
+    monkeypatch.setattr(obs_control, "launch", lambda: launched.append(1))
+    with pytest.raises(OBSError, match="WebSocket server is off"):
+        OBS.connect(start=True)
+    assert launched == []
+    monkeypatch.setattr(obs_control, "ws_port_open", lambda: True)
+    with pytest.raises(OBSError, match="password"):
+        OBS.connect(start=True)
+    assert launched == []
