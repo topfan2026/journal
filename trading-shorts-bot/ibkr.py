@@ -79,7 +79,7 @@ def gateway_command(ini: Path) -> list[str]:
     if os.name == "nt":
         tws = Path(env("TWS_PATH", "C:/Jts") or "C:/Jts")
         return [str(ibc / "scripts" / "StartIBC.bat"), version, "/Gateway", f"/TwsPath:{tws}",
-                f"/IbcPath:{ibc}", f"/IbcIni:{ini}", "/Mode:paper"]
+                f"/IbcPath:{ibc}", f"/Config:{ini}", "/Mode:paper"]
     default_tws = "~/Applications" if sys.platform == "darwin" else "~/Jts"
     tws = Path(env("TWS_PATH", default_tws) or default_tws).expanduser()
     return [str(ibc / "scripts" / "ibcstart.sh"), version, "--gateway", f"--tws-path={tws}",
