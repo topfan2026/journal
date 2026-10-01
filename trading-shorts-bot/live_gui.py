@@ -208,6 +208,7 @@ class App:
             ("End today's stream", lambda: self.spawn("live.py", "stop")),
             ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
             ("Check setup", lambda: self.spawn("live.py", "check")),
+            ("Update bot", self.update_bot),
         ]
         for text, cmd in buttons:
             ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=(0, 6))
@@ -349,6 +350,20 @@ class App:
         stop_gracefully(self.daemon)
         self.write("stopping scheduler (ending any live stream first)…\n")
         self.root.after(1000, self.update_status)
+
+    def update_bot(self):
+        if os.name != "nt":
+            self.write("Update bot is for Windows; elsewhere use: git pull\n")
+            return
+        if any(p.poll() is None for _, p in self.running):
+            self.write("stop the running task first, then update\n")
+            return
+        proc = subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                 str(BOT_DIR / "update.ps1")], cwd=str(BOT_DIR), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True,
+                                encoding="utf-8", errors="replace")
+        self.write("$ update\n")
+        threading.Thread(target=self._reader, args=(proc,), daemon=True).start()
 
     def connect_youtube(self):
         if self.save():
