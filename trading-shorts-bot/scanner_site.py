@@ -18,6 +18,7 @@ popup are tried before the rest of the page:
     wait Connected                  wait until that text shows on the page
     wait 5                          wait 5 seconds
     key F11                         press a key
+    fullscreen                      make the browser window full screen (like F11)
     if Gateway Paper                only when that shows up (within 10s), do the steps
       ...                           up to the matching 'end'; otherwise skip them
     end
@@ -42,13 +43,14 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "type", "wait", "key", "if", "end")
+VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "if", "end")
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
 DEFAULT_STEPS = """\
 # What the bot does on the site every morning, top to bottom.
 # Make the words after click / wait / type / if match the site exactly.
-# Steps: goto <address>, click <text>, type <box> = <text>, wait <text or seconds>, key <F11>
+# Steps: goto <address>, click <text>, type <box> = <text>, wait <text or seconds>,
+#        fullscreen (the whole browser window, like F11), key <F11>,
 #        if <text> ... end   = only do the lines in between when <text> shows up
 goto https://aialgopro.com
 click Scanner
@@ -88,6 +90,9 @@ def parse_steps(text: str) -> list[tuple[str, str]]:
         verb, arg = verb.lower(), arg.strip()
         if verb not in VERBS:
             raise SiteError(f"scanner steps line {n}: unknown step {verb!r} (use {', '.join(VERBS)})")
+        if verb == "fullscreen":
+            steps.append((verb, arg or "on"))
+            continue
         if verb == "end":
             depth -= 1
             if depth < 0:
@@ -241,6 +246,20 @@ class ScannerSite:
                 self.find(arg, waiting=True)
         elif verb == "key":
             page.keyboard.press(arg)
+        elif verb == "fullscreen":
+            self.browser_fullscreen(arg.lower() not in ("off", "no", "false"))
+
+    def browser_fullscreen(self, on: bool = True) -> None:
+        """Make the Chrome window itself full screen (like F11) - no site button needed."""
+        cdp = self.context.new_cdp_session(self.page)
+        try:
+            window = cdp.send("Browser.getWindowForTarget")["windowId"]
+            if on:  # Chrome only goes full screen from the normal state
+                cdp.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": "normal"}})
+            cdp.send("Browser.setWindowBounds",
+                     {"windowId": window, "bounds": {"windowState": "fullscreen" if on else "maximized"}})
+        finally:
+            cdp.detach()
 
     def replace_text(self, box, value: str) -> None:
         """Replace whatever is in the box (e.g. an old secret) with *value*."""

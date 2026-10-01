@@ -402,3 +402,8 @@ def test_if_end_blocks():
         scanner_site.parse_steps("if A\nclick B\n")
     with pytest.raises(scanner_site.SiteError, match="without an 'if'"):
         scanner_site.parse_steps("click B\nend\n")
+
+
+def test_fullscreen_step_parses_without_argument():
+    import scanner_site
+    assert scanner_site.parse_steps("fullscreen\nfullscreen off\n") == [("fullscreen", "on"), ("fullscreen", "off")]
