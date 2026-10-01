@@ -185,7 +185,7 @@ class ScannerSite:
                 self.find(arg).click(timeout=self.timeout * 1000)
         elif verb == "type":
             label, _, text = arg.partition("=")
-            self.find(label.strip(), field=True).fill(expand(text.strip()), timeout=self.timeout * 1000)
+            self.replace_text(self.find(label.strip(), field=True), expand(text.strip()))
         elif verb == "wait":
             try:
                 page.wait_for_timeout(float(arg) * 1000)
@@ -193,6 +193,20 @@ class ScannerSite:
                 self.find(arg, waiting=True)
         elif verb == "key":
             page.keyboard.press(arg)
+
+    def replace_text(self, box, value: str) -> None:
+        """Replace whatever is in the box (e.g. an old secret) with *value*."""
+        box.fill(value, timeout=self.timeout * 1000)  # fill() clears the box first
+        if box.input_value() == value:
+            return
+        # Some sites ignore fill(); do it like a person: click, select all, delete, type.
+        box.click()
+        select_all = "Meta+A" if self.page.evaluate("navigator.platform").startswith("Mac") else "Control+A"
+        box.press(select_all)
+        box.press("Delete")
+        box.press_sequentially(value, delay=20)
+        if box.input_value() != value:
+            raise SiteError("the box didn't accept the text (it still holds something else)")
 
     def _candidates(self, scope, text: str, field: bool, waiting: bool = False) -> list:
         if text.startswith("css="):
