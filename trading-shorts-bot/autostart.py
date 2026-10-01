@@ -1,6 +1,7 @@
 """Start the live-stream scheduler (`live.py daemon`) automatically when you log in.
 
-    Windows  a Task Scheduler task "LiveStreamBot" (at log on) running live_daemon.bat
+    Windows  LiveStreamBot.cmd in your Startup folder (no admin rights needed), which starts
+             live_daemon.bat in a minimised window
     macOS    ~/Library/LaunchAgents/com.livestream.bot.plist (launchd, restarted if it stops)
     Linux    ~/.config/systemd/user/live-stream-bot.service (systemd --user)
 
@@ -16,7 +17,7 @@ from pathlib import Path
 
 from config import BOT_DIR
 
-TASK = "LiveStreamBot"
+TASK = "LiveStreamBot"  # the old Task Scheduler name, removed on uninstall
 LABEL = "com.livestream.bot"
 UNIT = "live-stream-bot.service"
 
@@ -70,13 +71,33 @@ def _run(cmd: list[str]) -> str:
     return proc.stdout.strip()
 
 
+def startup_file() -> Path:
+    appdata = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    return appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "LiveStreamBot.cmd"
+
+
+def windows_startup_cmd(bat: Path) -> str:
+    return f'@echo off\r\nstart "Live Stream Bot scheduler" /min "{bat}"\r\n'
+
+
+def _start_windows_now(launcher: Path) -> bool:
+    import live
+    if live.scheduler_running():
+        return False
+    subprocess.Popen(["cmd", "/c", str(launcher)], cwd=str(BOT_DIR), creationflags=0x08000000)  # no window
+    return True
+
+
 def install() -> str:
     if os.name == "nt":
         bat = BOT_DIR / "live_daemon.bat"
         bat.write_text(windows_bat(), encoding="utf-8")
-        _run(["schtasks", "/Create", "/F", "/TN", TASK, "/SC", "ONLOGON", "/RL", "LIMITED", "/TR", f'"{bat}"'])
-        _run(["schtasks", "/Run", "/TN", TASK])  # start it now too, not only at the next log on
-        return f"Task Scheduler task '{TASK}' created and started - it also starts whenever you log on"
+        launcher = startup_file()
+        launcher.parent.mkdir(parents=True, exist_ok=True)
+        launcher.write_text(windows_startup_cmd(bat), encoding="utf-8")
+        started = _start_windows_now(launcher)
+        return ("Added to your Startup folder - the scheduler starts whenever you log in"
+                + (", and it is starting now (minimised window)" if started else " (it is already running)"))
     if sys.platform == "darwin":
         plist = Path(f"~/Library/LaunchAgents/{LABEL}.plist").expanduser()
         plist.parent.mkdir(parents=True, exist_ok=True)
@@ -94,9 +115,9 @@ def install() -> str:
 
 def uninstall() -> str:
     if os.name == "nt":
-        _run(["schtasks", "/Delete", "/F", "/TN", TASK])
-        subprocess.run(["schtasks", "/End", "/TN", TASK], capture_output=True)
-        return f"Task Scheduler task '{TASK}' removed"
+        startup_file().unlink(missing_ok=True)
+        subprocess.run(["schtasks", "/Delete", "/F", "/TN", TASK], capture_output=True)  # older versions
+        return "Removed from your Startup folder (use Stop scheduler to stop one that is running)"
     if sys.platform == "darwin":
         plist = Path(f"~/Library/LaunchAgents/{LABEL}.plist").expanduser()
         subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
@@ -109,7 +130,7 @@ def uninstall() -> str:
 
 def installed() -> bool:
     if os.name == "nt":
-        return subprocess.run(["schtasks", "/Query", "/TN", TASK], capture_output=True).returncode == 0
+        return startup_file().exists()
     if sys.platform == "darwin":
         return Path(f"~/Library/LaunchAgents/{LABEL}.plist").expanduser().exists()
     return Path(f"~/.config/systemd/user/{UNIT}").expanduser().exists()

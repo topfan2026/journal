@@ -310,8 +310,9 @@ code: no AI tokens, and the same thing happens every morning.
    appears in the steps or the logs. Also: `key F11` (press a key), `click css=<selector>`.
 
 6. Click **Check setup**, then **Test (no stream)**. That runs everything except going live.
-7. Tick **Start the scheduler automatically when I log in**. This registers a Windows Task Scheduler
-   task, a macOS launchd agent or a systemd user service. Or click **Start scheduler** to run it
+7. Tick **Start the scheduler automatically when I log in**. On Windows this puts a small launcher in
+   your Startup folder (no admin rights needed) and starts the scheduler right away in a minimised
+   window; on macOS/Linux it registers a launchd agent / systemd user service. Or click **Start scheduler** to run it
    while the app is open.
 
 The PC must be on and logged in at 6:00 (a locked screen is fine; sleep is not), because OBS and the

@@ -600,3 +600,26 @@ def test_scheduler_running_detects_the_lock(monkeypatch):
         assert live.scheduler_running()
     finally:
         lock.close()
+
+
+def test_windows_startup_launcher(tmp_path, monkeypatch):
+    import autostart
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert autostart.startup_file() == tmp_path / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "LiveStreamBot.cmd"
+    cmd = autostart.windows_startup_cmd(tmp_path / "live_daemon.bat")
+    assert cmd.startswith("@echo off") and '/min "' in cmd and "live_daemon.bat" in cmd
+
+
+def test_background_scheduler_can_be_stopped(settings, monkeypatch):
+    monkeypatch.setenv("LIVE_LOCK_PORT", "47696")
+    monkeypatch.setenv("LIVE_START", "06:00")
+    monkeypatch.setenv("LIVE_DAYS", "mon-sun")
+    stop_file = live.scheduler_stop_file(settings)
+    stop_file.parent.mkdir(parents=True, exist_ok=True)
+    started = []
+    monkeypatch.setattr(live, "LiveShow", lambda *a, **k: started.append(1))
+    # the first wait sees the stop request (as if the app's Stop button was pressed meanwhile)
+    monkeypatch.setattr(live.time, "sleep", lambda s: stop_file.touch())
+    monkeypatch.setattr(live, "next_start", lambda now: now + timedelta(hours=5))
+    assert live.daemon(settings) == 0
+    assert not stop_file.exists() and started == []

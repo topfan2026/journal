@@ -490,8 +490,21 @@ def scheduler_running() -> bool:
         sock.close()
 
 
+def scheduler_stop_file(settings: Settings) -> Path:
+    return live_root(settings) / "STOP_SCHEDULER"
+
+
+def request_scheduler_stop(settings: Settings) -> None:
+    """Ask a scheduler running elsewhere (autostart, another window) to end today's show and exit."""
+    live_root(settings).mkdir(parents=True, exist_ok=True)
+    scheduler_stop_file(settings).touch()
+    stop(settings)
+
+
 def daemon(settings: Settings) -> int:
     lock = single_instance()  # noqa: F841  (released when the process exits)
+    stop_file = scheduler_stop_file(settings)
+    stop_file.unlink(missing_ok=True)
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
              env("LIVE_TZ") or "this computer's time zone")
     while True:
@@ -501,12 +514,22 @@ def daemon(settings: Settings) -> int:
         log.info("next stream %s (setup starts %s)", start.strftime("%a %Y-%m-%d %H:%M"),
                  (start - lead).strftime("%H:%M"))
         while datetime.now(tz()) < start - lead:
-            time.sleep(min(60, max(1, (start - lead - datetime.now(tz())).total_seconds())))
+            if stop_file.exists():
+                stop_file.unlink(missing_ok=True)
+                log.info("scheduler stopped")
+                return 0
+            time.sleep(min(30, max(1, (start - lead - datetime.now(tz())).total_seconds())))
         retry = env_float("LIVE_RETRY_SECONDS", 120)
         # A failed start (Gateway login, OBS, YouTube...) is retried until today's end time.
         while LiveShow(settings, start=start).run() != 0 and datetime.now(tz()) + timedelta(seconds=retry) < end_time(start):
+            if stop_file.exists():
+                break
             log.warning("retrying in %.0fs", retry)
             time.sleep(retry)
+        if stop_file.exists():
+            stop_file.unlink(missing_ok=True)
+            log.info("scheduler stopped")
+            return 0
 
 
 def stop(settings: Settings) -> int:

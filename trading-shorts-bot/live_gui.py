@@ -352,18 +352,41 @@ class App:
             self.lines.put(line)
         self.lines.put(f"[exited with code {proc.wait()}]\n")
 
+    def _start_background(self) -> None:
+        """Start the autostart launcher once the previous scheduler has released its lock."""
+        import autostart
+        import live
+        if live.scheduler_running() and self._handover_tries > 0:
+            self._handover_tries -= 1
+            self.root.after(2000, self._start_background)
+            return
+        if autostart._start_windows_now(autostart.startup_file()):
+            self.write("scheduler started in the background (minimised window)\n")
+        self.update_status()
+
     def start_daemon(self):
         import live
         if (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running():
             self.write("scheduler is already running\n")
+            return
+        if os.name == "nt" and self._autostart_installed():
+            self._handover_tries = 0
+            self._start_background()  # independent of this window, so closing the app doesn't stop it
             return
         self.daemon = self.spawn("live.py", "daemon", daemon=True)
         self.update_status()
 
     def stop_daemon(self):
         if self.daemon is None or self.daemon.poll() is not None:
-            self.write("scheduler is not running from this window "
-                       "(use 'End today's stream' or untick autostart)\n")
+            import live
+            from config import Settings
+            if live.scheduler_running():
+                live.request_scheduler_stop(Settings.load())
+                self.write("asked the background scheduler to stop (it ends any live stream first; "
+                           "it starts again at your next log in while autostart is ticked)\n")
+                self.root.after(35000, self.update_status)
+            else:
+                self.write("the scheduler is not running\n")
             return
         stop_gracefully(self.daemon)
         self.write("stopping scheduler (ending any live stream first)…\n")
@@ -402,9 +425,13 @@ class App:
                 if not self.save():
                     self.auto_var.set(False)
                     return
-                if self.daemon is not None and self.daemon.poll() is None:
-                    stop_gracefully(self.daemon)  # autostart runs its own scheduler
+                own = self.daemon is not None and self.daemon.poll() is None
                 self.write(autostart.install() + "\n")
+                if own and os.name == "nt":
+                    # Hand over to the background scheduler, which keeps running after this window closes.
+                    stop_gracefully(self.daemon)
+                    self._handover_tries = 45
+                    self.root.after(2000, self._start_background)
             else:
                 self.write(autostart.uninstall() + "\n")
         except Exception as e:
