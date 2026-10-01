@@ -1,0 +1,459 @@
+"""Daily live stream: IB Gateway -> scanner website -> OBS -> YouTube Live.
+
+    python live.py daemon        wait, and go live every LIVE_DAYS at LIVE_START (default 06:00)
+    python live.py run           go live now, stay live until LIVE_END / LIVE_DURATION_MIN, then end
+    python live.py stop          end today's stream (from another terminal)
+    python live.py check         check Gateway login, OBS, YouTube and the site's start button
+    python live.py site-login    open the bot's browser once so you can sign in to the scanner site
+    options: --dry-run  (everything except starting the stream / creating the broadcast), -v
+
+    Orchestrator
+      1. GatewayAgent   IBC logs IB Gateway into the paper account, waits for the API port
+      2. BrowserAgent   opens SCANNER_URL (aialgopro.com) and clicks the scanner's start button
+      3. YouTubeAgent   today's broadcast (title, description, thumbnail) bound to a reusable key
+      4. OBSAgent       launches OBS, switches to OBS_SCENE, sets the key, starts streaming
+      5. Watchdog       every LIVE_CHECK_SECONDS: Gateway up? scanner page open? OBS streaming?
+                        restarts whatever dropped, until LIVE_END, then ends the broadcast.
+
+Today's YouTube broadcast id is kept in Live/<date>/session.json, so a re-run after a
+crash reuses it instead of creating a second broadcast.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import ibkr
+from config import ConfigError, Settings, env, env_bool, env_float
+from job import now_iso
+
+log = logging.getLogger("live")
+
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+# --------------------------------------------------------------------------- time
+
+def tz():
+    name = env("LIVE_TZ")
+    if not name:
+        return datetime.now().astimezone().tzinfo  # this computer's clock
+    from zoneinfo import ZoneInfo
+    return ZoneInfo(name)
+
+
+def parse_hhmm(value: str) -> tuple[int, int]:
+    h, m = value.strip().split(":")
+    if not (0 <= int(h) < 24 and 0 <= int(m) < 60):
+        raise ConfigError(f"bad time {value!r} (use HH:MM)")
+    return int(h), int(m)
+
+
+def live_days() -> set[int]:
+    raw = (env("LIVE_DAYS", "mon-fri") or "mon-fri").lower().replace(" ", "")
+    out: set[int] = set()
+    for part in raw.split(","):
+        if "-" in part:
+            a, b = (DAYS.index(x[:3]) for x in part.split("-"))
+            out.update(range(a, b + 1) if a <= b else [*range(a, 7), *range(0, b + 1)])
+        elif part:
+            out.add(DAYS.index(part[:3]))
+    return out
+
+
+def next_start(now: datetime) -> datetime:
+    h, m = parse_hhmm(env("LIVE_START", "06:00") or "06:00")
+    days = live_days()
+    if not days:
+        raise ConfigError("LIVE_DAYS selects no days")
+    for add in range(8):
+        cand = (now + timedelta(days=add)).replace(hour=h, minute=m, second=0, microsecond=0)
+        if cand > now and cand.weekday() in days:
+            return cand
+    raise AssertionError("unreachable")
+
+
+def end_time(start: datetime) -> datetime:
+    end = env("LIVE_END")
+    if end:
+        h, m = parse_hhmm(end)
+        e = start.replace(hour=h, minute=m, second=0, microsecond=0)
+        return e if e > start else e + timedelta(days=1)
+    return start + timedelta(minutes=env_float("LIVE_DURATION_MIN", 240))
+
+
+# --------------------------------------------------------------------------- session state
+
+class Session:
+    """Per-day checkpoint file: Live/<date>/session.json."""
+
+    def __init__(self, folder: Path):
+        self.folder = folder
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "session.json"
+        self.state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    @property
+    def stop_file(self) -> Path:
+        return self.folder / "STOP"
+
+    def get(self, key: str) -> dict:
+        return self.state.get(key) or {}
+
+    def set(self, key: str, value: dict) -> None:
+        self.state[key] = {**value, "at": now_iso()}
+        path = self.folder / "session.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.state, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+
+
+def live_root(settings: Settings) -> Path:
+    return settings.root / "Live"
+
+
+def render(template: str, day: datetime) -> str:
+    return template.replace("{date}", day.strftime("%b %d, %Y")).replace("{weekday}", day.strftime("%A"))
+
+
+# --------------------------------------------------------------------------- agents
+
+class GatewayAgent:
+    name = "gateway"
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    def run(self) -> dict:
+        root = live_root(self.settings)
+        result = ibkr.start_gateway(root / ".ibc" / "config.ini", self.settings.logs / "ibgateway.log")
+        if env_bool("IB_VERIFY_LOGIN", True):
+            ib = ibkr.connect()  # also refuses a non-paper account
+            result["accounts"] = ib.managedAccounts()
+            ib.disconnect()
+        log.info("[gateway] ready on port %s %s", result["port"], result.get("accounts", ""))
+        return result
+
+    def healthy(self) -> bool:
+        return ibkr.port_open(ibkr.host(), ibkr.port())
+
+
+class BrowserAgent:
+    name = "browser"
+
+    def __init__(self, settings: Settings):
+        from scanner_site import ScannerSite
+        self.site = ScannerSite(live_root(settings) / "browser-profile")
+
+    def run(self) -> dict:
+        if not self.site.alive():
+            self.site.close()
+            self.site.open()
+        result = self.site.start_scanner()
+        warmup = env_float("SCANNER_WARMUP_SECONDS", 20)
+        if warmup:
+            self.site.wait(warmup)  # let the first results load before the stream starts
+        return result
+
+    def healthy(self) -> bool:
+        return self.site.alive()
+
+    def wait(self, seconds: float) -> None:
+        if self.site.alive():
+            self.site.wait(seconds)
+        else:
+            time.sleep(seconds)
+
+    def close(self) -> None:
+        self.site.close()
+
+
+class YouTubeAgent:
+    name = "youtube"
+
+    def __init__(self, settings: Settings, session: Session, start: datetime):
+        self.settings, self.session, self.start = settings, session, start
+        self.yt = None
+
+    def run(self) -> dict:
+        import youtube_live as yl
+
+        self.yt = yl.service()
+        stream = yl.ensure_stream(self.yt)
+        cached = self.session.get(self.name)
+        if cached.get("broadcast_id") and yl.lifecycle(self.yt, cached["broadcast_id"]) not in (
+                None, "complete", "revoked"):
+            log.info("[youtube] reusing today's broadcast %s", cached["broadcast_id"])
+            return {**cached, "stream": stream}
+        from metadata import _no_angle, truncate
+        title = truncate(_no_angle(render(env("LIVE_TITLE", "LIVE Stock Scanner | {weekday} {date}"), self.start)), 100)
+        description = "\n\n".join(p for p in (
+            render(env("LIVE_DESCRIPTION", "Live stock scanner, every trading morning.") or "", self.start),
+            self.settings.disclaimer) if p)
+        scheduled = max(self.start, datetime.now(tz()) + timedelta(minutes=1))
+        bid = yl.create_broadcast(self.yt, title=title, description=_no_angle(description),
+                                  start_iso=scheduled.isoformat(), privacy=env("LIVE_PRIVACY", "public") or "public")
+        yl.bind(self.yt, bid, stream["id"])
+        tags = [t.strip() for t in (env("LIVE_TAGS", "") or "").split(",") if t.strip()]
+        try:
+            yl.tag(self.yt, bid, title=title, description=_no_angle(description), tags=tags)
+        except Exception as e:
+            log.warning("[youtube] couldn't set tags/category: %s", e)
+        thumb = env("LIVE_THUMBNAIL")
+        if thumb:
+            try:
+                yl.set_thumbnail(self.yt, bid, Path(thumb).expanduser())
+            except Exception as e:
+                log.warning("[youtube] thumbnail not set: %s", e)
+        result = {"broadcast_id": bid, "url": f"https://www.youtube.com/watch?v={bid}", "title": title}
+        self.session.set(self.name, result)
+        log.info("[youtube] broadcast %s: %s", result["url"], title)
+        return {**result, "stream": stream}
+
+    def go_live(self, result: dict) -> str:
+        import youtube_live as yl
+        return yl.go_live(self.yt, result["broadcast_id"], result["stream"]["id"])
+
+    def end(self, result: dict) -> None:
+        import youtube_live as yl
+        yl.end(self.yt, result["broadcast_id"])
+
+
+class OBSAgent:
+    name = "obs"
+
+    def __init__(self):
+        self.obs = None
+
+    def run(self, stream: dict | None, start_streaming: bool) -> dict:
+        from obs_control import OBS
+
+        self.obs = OBS.connect(start=True)
+        scene = env("OBS_SCENE")
+        if scene:
+            self.obs.set_scene(scene)
+        if stream:
+            self.obs.set_stream(stream["server"], stream["key"])
+        if start_streaming:
+            self.obs.start()
+        return {"version": self.obs.version(), "scene": scene, "streaming": self.obs.streaming()}
+
+    def healthy(self) -> bool:
+        try:
+            return self.obs is not None and self.obs.streaming()
+        except Exception:
+            return False
+
+
+# --------------------------------------------------------------------------- orchestrator
+
+class LiveShow:
+    def __init__(self, settings: Settings, start: datetime | None = None):
+        self.settings = settings
+        self.start = start or datetime.now(tz())
+        self.session = Session(live_root(settings) / self.start.strftime("%Y-%m-%d"))
+        self.use_api = env_bool("YOUTUBE_LIVE_API", True)
+
+    def run(self) -> int:
+        s, session = self.settings, self.session
+        session.stop_file.unlink(missing_ok=True)
+        end = end_time(self.start)
+        log.info("=== live show %s -> %s%s", self.start.strftime("%Y-%m-%d %H:%M"), end.strftime("%H:%M"),
+                 " | DRY RUN" if s.dry_run else "")
+
+        gateway, browser, obs = GatewayAgent(s), BrowserAgent(s), OBSAgent()
+        youtube = YouTubeAgent(s, session, self.start) if self.use_api and not s.dry_run else None
+        yt_result: dict = {}
+        try:
+            session.set("gateway", gateway.run())
+            session.set("browser", browser.run())
+            if youtube:
+                yt_result = youtube.run()
+            session.set("obs", obs.run(yt_result.get("stream"), start_streaming=False))
+            if not s.dry_run:
+                wait = (self.start - datetime.now(tz())).total_seconds()
+                if wait > 0:
+                    log.info("ready - going live at %s", self.start.strftime("%H:%M"))
+                    browser.wait(wait)
+                obs.obs.start()
+            if youtube:
+                session.set("live", {"state": youtube.go_live(yt_result), "url": yt_result["url"]})
+                log.info("=== LIVE: %s", yt_result["url"])
+            elif not s.dry_run:
+                log.info("=== LIVE (stream key set in OBS)")
+            self.watch(end, gateway, browser, obs, streaming=not s.dry_run)
+            return 0
+        except KeyboardInterrupt:
+            log.info("interrupted - ending the stream")
+            raise
+        except Exception as e:
+            log.error("live show failed: %s", e)
+            log.debug("details", exc_info=True)
+            session.set("error", {"error": str(e)})
+            return 1
+        finally:
+            self.shutdown(youtube, yt_result, obs, browser)
+
+    def watch(self, end: datetime, gateway, browser, obs, streaming: bool) -> None:
+        every = env_float("LIVE_CHECK_SECONDS", 30)
+        if self.settings.dry_run:
+            log.info("dry run: everything is up; leaving it for %.0fs so you can look", every)
+            browser.wait(every)
+            return
+        while datetime.now(tz()) < end:
+            if self.session.stop_file.exists():
+                log.info("stop requested")
+                return
+            browser.wait(every)
+            try:
+                if not gateway.healthy():
+                    log.warning("[watchdog] IB Gateway is down - restarting")
+                    gateway.run()
+                    browser.run()  # the scanner has to reconnect to the new Gateway
+                elif not browser.healthy():
+                    log.warning("[watchdog] scanner window closed - reopening")
+                    browser.run()
+                if streaming and not obs.healthy():
+                    log.warning("[watchdog] OBS stopped streaming - restarting")
+                    obs.run(None, start_streaming=True)
+            except Exception as e:  # keep trying until the end time
+                log.error("[watchdog] recovery failed: %s", e)
+
+    def shutdown(self, youtube, yt_result, obs, browser) -> None:
+        if obs.obs is not None and not self.settings.dry_run:
+            try:
+                obs.obs.stop()
+                log.info("[obs] stream stopped")
+            except Exception as e:
+                log.warning("[obs] stop failed: %s", e)
+        if youtube and yt_result.get("broadcast_id"):
+            try:
+                youtube.end(yt_result)
+                log.info("[youtube] broadcast ended")
+            except Exception as e:
+                log.warning("[youtube] end failed: %s", e)
+        if env_bool("LIVE_CLOSE_BROWSER", True):
+            browser.close()
+        self.session.set("finished", {"ok": "error" not in self.session.state})
+
+
+# --------------------------------------------------------------------------- commands
+
+def single_instance():
+    """Hold a localhost port for as long as the scheduler runs; a second scheduler can't bind it."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", int(env_float("LIVE_LOCK_PORT", 47621))))
+    except OSError:
+        sock.close()
+        raise ConfigError("the live-stream scheduler is already running (GUI or autostart)")
+    return sock
+
+
+def daemon(settings: Settings) -> int:
+    lock = single_instance()  # noqa: F841  (released when the process exits)
+    log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
+             env("LIVE_TZ") or "this computer's time zone")
+    while True:
+        now = datetime.now(tz())
+        start = next_start(now)
+        lead = timedelta(minutes=env_float("LIVE_PREP_MIN", 10))  # Gateway login + browser before the hour
+        log.info("next stream %s (setup starts %s)", start.strftime("%a %Y-%m-%d %H:%M"),
+                 (start - lead).strftime("%H:%M"))
+        while datetime.now(tz()) < start - lead:
+            time.sleep(min(60, max(1, (start - lead - datetime.now(tz())).total_seconds())))
+        retry = env_float("LIVE_RETRY_SECONDS", 120)
+        # A failed start (Gateway login, OBS, YouTube...) is retried until today's end time.
+        while LiveShow(settings, start=start).run() != 0 and datetime.now(tz()) + timedelta(seconds=retry) < end_time(start):
+            log.warning("retrying in %.0fs", retry)
+            time.sleep(retry)
+
+
+def stop(settings: Settings) -> int:
+    session = Session(live_root(settings) / datetime.now(tz()).strftime("%Y-%m-%d"))
+    session.stop_file.touch()
+    log.info("asked today's stream to stop (%s)", session.stop_file)
+    return 0
+
+
+def check(settings: Settings) -> int:
+    bad = 0
+
+    def step(name, fn):
+        nonlocal bad
+        try:
+            log.info("[%s] OK: %s", name, fn())
+        except Exception as e:
+            bad += 1
+            log.error("[%s] NOT READY: %s", name, e)
+
+    step("gateway", lambda: GatewayAgent(settings).run())
+    step("obs", lambda: __import__("obs_control").OBS.connect(start=True).version())
+    if env_bool("YOUTUBE_LIVE_API", True):
+        step("youtube", lambda: __import__("youtube_live").check())
+
+    def site():
+        agent = BrowserAgent(settings)
+        try:
+            return agent.run()
+        finally:
+            agent.close()
+    step("scanner site", site)
+    return 1 if bad else 0
+
+
+def _graceful_signals() -> None:
+    """SIGTERM / Ctrl+Break (sent by the GUI's Stop button) end the stream cleanly like Ctrl+C."""
+    import signal
+
+    def interrupt(*_):
+        raise KeyboardInterrupt
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), interrupt)
+
+
+def main(argv: list[str] | None = None) -> int:
+    from watcher import setup_logging
+
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login"])
+    ap.add_argument("--dry-run", action="store_true", default=None)
+    ap.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args(argv)
+    try:
+        settings = Settings.load(dry_run=args.dry_run)
+    except ConfigError as e:
+        print(f"config error: {e}", file=sys.stderr)
+        return 2
+    setup_logging(settings, args.verbose)
+    _graceful_signals()
+    for noisy in ("ib_async", "obsws_python", "websocket"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    try:
+        if args.command == "daemon":
+            return daemon(settings)
+        if args.command == "run":
+            return LiveShow(settings).run()
+        if args.command == "stop":
+            return stop(settings)
+        if args.command == "site-login":
+            from scanner_site import site_login
+            site_login(live_root(settings) / "browser-profile")
+            return 0
+        return check(settings)
+    except (ConfigError, KeyboardInterrupt) as e:
+        if isinstance(e, ConfigError):
+            print(f"config error: {e}", file=sys.stderr)
+            return 2
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

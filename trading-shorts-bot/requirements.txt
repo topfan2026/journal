@@ -13,5 +13,10 @@ google-auth-oauthlib>=1.1
 # Claude (copywriter agent: titles, descriptions, tags, captions)
 anthropic>=1.0
 
+# Daily live stream (live.py)
+ib_async>=2.0              # checks the IB Gateway paper login
+obsws-python>=1.7          # controls OBS through its WebSocket server
+playwright>=1.45           # opens the scanner website in a real browser window
+
 # Tests
 pytest>=8.0

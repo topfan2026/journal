@@ -32,6 +32,7 @@ def youtube_connect(open_browser: bool = True, port: int = 0) -> str:
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     from upload_youtube import SCOPES, TOKEN_URI
+    from youtube_live import LIVE_SCOPES
 
     client_id, secret = require_env("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET")
     if not client_id.endswith(".apps.googleusercontent.com"):
@@ -40,7 +41,7 @@ def youtube_connect(open_browser: bool = True, port: int = 0) -> str:
         "client_id": client_id, "client_secret": secret,
         "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": TOKEN_URI,
         "redirect_uris": ["http://localhost"],
-    }}, scopes=SCOPES)
+    }}, scopes=[*SCOPES, *LIVE_SCOPES])  # uploads + live streaming
     creds = flow.run_local_server(
         port=port, access_type="offline", prompt="consent", open_browser=open_browser,
         success_message="YouTube connected - you can close this tab and go back to Shorts Bot.")

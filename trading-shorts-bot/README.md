@@ -1,6 +1,11 @@
 # trading-shorts-bot
 
-A local auto-publishing bot for 60-second vertical videos. You drop a video (or 6×10s clips) plus a
+Two tools in one folder, sharing the same `.env` and YouTube login:
+
+- **Daily live stream** (`live_gui.py` / `live.py`): every morning it logs IB Gateway into your
+  paper account, opens your scanner site (aialgopro.com), starts OBS and goes live on YouTube.
+  See [Daily live stream](#daily-live-stream) below.
+- **Shorts auto-publisher** (`watcher.py`): a local auto-publishing bot for 60-second vertical videos. You drop a video (or 6×10s clips) plus a
 subject/caption into a folder. A small team of agents edits it, writes the title, description, tags
 and captions, makes a thumbnail, and publishes to **YouTube Shorts, Instagram Reels and TikTok**
 using their official APIs.
@@ -40,6 +45,13 @@ uploading are deterministic code, so the same input always produces the same res
 | `upload_tiktok.py` | TikTok Content Posting API (inbox or direct post), chunked upload |
 | `auth_setup.py` | One-time OAuth helpers that write tokens into `.env` |
 | `job.py`, `config.py`, `common.py` | Job discovery/state, settings, shared types |
+| `live_gui.py` | **Live stream app:** settings tabs, start/stop, test, autostart |
+| `live.py` | Live stream orchestrator + scheduler + CLI |
+| `ibkr.py` | IB Gateway via IBC (paper), paper-account guard |
+| `scanner_site.py` | Opens the scanner website and starts the scanner (Playwright) |
+| `obs_control.py` | OBS via WebSocket: scene, stream key, start/stop |
+| `youtube_live.py` | YouTube Live broadcast, reusable stream key, go live / end |
+| `autostart.py` | Task Scheduler / launchd / systemd registration |
 
 ## 1. Install
 
@@ -239,3 +251,76 @@ python -m pytest -q
 The suite builds real clips with ffmpeg. It stitches 6 clips (one without audio) end to end in
 dry-run mode, and checks the platform limits, retry without double-posting, and the Claude
 request shape (mocked).
+
+## Daily live stream
+
+```
+ 06:00 every weekday (LIVE_START / LIVE_DAYS)             python live_gui.py  (or live.py daemon)
+ ┌──────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 1 GatewayAgent  IBC logs IB Gateway into your PAPER account, waits for the API port     │
+ │ 2 BrowserAgent  opens aialgopro.com in its own Chrome window, clicks the start button   │
+ │ 3 YouTubeAgent  creates today's broadcast (title/description/thumbnail), reusable key   │
+ │ 4 OBSAgent      launches OBS, switches to your scene, sets the key, starts streaming    │
+ │ 5 Watchdog      every 30s: Gateway up? scanner window open? OBS streaming? fixes drops  │
+ └──────────────────────────────────────────────────────────────────────────────────────────┘
+   setup starts LIVE_PREP_MIN early, the stream starts exactly at LIVE_START, ends at LIVE_END
+```
+
+No agent framework (Hermes etc.) is needed. The steps are the same every day, so they run as plain
+code: no AI tokens, and the same thing happens every morning.
+
+### One-time setup
+
+1. **Install:** `pip install -r requirements.txt`. On Linux you also need `sudo apt install python3-tk`
+   for the GUI.
+2. **IBC** (automates the Gateway login): download from https://github.com/IbcAlpha/IBC/releases and
+   unzip it, e.g. to `C:\IBC` or `/opt/ibc`. IB Gateway itself must be installed (stable or latest).
+3. **OBS:** Tools > WebSocket Server Settings > *Enable*, then copy the password. Make a scene
+   (e.g. `Scanner`) with a **Window Capture** of the scanner browser window (run *Test* once so the
+   window exists), plus your webcam/mic if you like.
+4. **YouTube:** enable live streaming on your channel (youtube.com/features; the first time takes up
+   to 24 h). Then click *Connect YouTube account* in the GUI (or `python auth_setup.py youtube`).
+   If you connected before for Shorts, do it again: going live needs one extra permission.
+5. Run **`python live_gui.py`** and fill in the tabs:
+
+| Tab | What to enter |
+|---|---|
+| Schedule | time (06:00), days, end time, time zone (empty = this PC's) |
+| IB Gateway | **paper** username + password, IBC folder, Gateway version (e.g. `1030`), API port your scanner uses |
+| Scanner site | URL, the **text on the button** that starts the scanner, then *Sign in to scanner site (once)* |
+| OBS | path to OBS, WebSocket password, scene name |
+| YouTube | title template (`{weekday}`, `{date}`), description, tags, privacy, thumbnail |
+
+6. Click **Check setup**, then **Test (no stream)**. That runs everything except going live.
+7. Tick **Start the scheduler automatically when I log in**. This registers a Windows Task Scheduler
+   task, a macOS launchd agent or a systemd user service. Or click **Start scheduler** to run it
+   while the app is open.
+
+The PC must be on and logged in at 6:00 (a locked screen is fine; sleep is not), because OBS and the
+browser need your desktop. On Windows, set Power Options > Sleep to *Never*, or use a wake timer.
+
+### Commands (same as the buttons)
+
+```bash
+python live.py daemon        # wait and go live on schedule (what autostart runs)
+python live.py run           # go live now
+python live.py stop          # end today's stream
+python live.py run --dry-run # everything except streaming
+python live.py check         # Gateway login, OBS, YouTube, scanner site
+python live.py site-login    # sign in to the scanner site once
+```
+
+### Notes
+
+- **Paper only:** the bot refuses to continue if the logged-in account isn't a paper (`DU…`) account
+  (`IB_REQUIRE_PAPER=true`). The password lives only in `.env` and in IBC's `config.ini` under
+  `~/TradingShorts/Live/.ibc/`, which is readable by you only.
+- **2FA:** paper logins normally don't ask for 2FA. If yours does, IBC waits for you to approve it
+  on IBKR Mobile.
+- **Duplicates:** today's broadcast id is saved in `~/TradingShorts/Live/<date>/session.json`, so
+  re-running after a crash reuses it. Only one scheduler can run at a time.
+- **Without the YouTube API:** set `YOUTUBE_LIVE_API=false` and paste your YouTube stream key into
+  OBS (Settings > Stream). The bot then just presses *Start Streaming*.
+- **Market data:** showing real-time exchange data on a public stream counts as redistribution
+  under most exchange agreements. Check what your scanner site and data subscriptions allow.
+- Logs: `~/TradingShorts/logs/bot.log` (bot) and `ibgateway.log` (IBC/Gateway).
