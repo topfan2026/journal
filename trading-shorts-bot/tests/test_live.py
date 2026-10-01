@@ -345,7 +345,7 @@ def test_scanner_steps_parse():
     import scanner_site
     steps = scanner_site.parse_steps(scanner_site.DEFAULT_STEPS)
     assert steps[0] == ("goto", "https://aialgopro.com")
-    assert ("click", "Connect") in steps and ("wait", "Connected") in steps
+    assert ("click", "Gateway Paper") in steps and ("wait", "Connected") in steps
     assert scanner_site.parse_steps("# note\n\n  CLICK  Wall Scan \n") == [("click", "Wall Scan")]
     with pytest.raises(scanner_site.SiteError, match="line 2"):
         scanner_site.parse_steps("click A\njump B\n")
