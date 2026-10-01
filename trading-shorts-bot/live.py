@@ -225,7 +225,7 @@ class YouTubeAgent:
             self.settings.disclaimer) if p)
         scheduled = max(self.start, datetime.now(tz()) + timedelta(minutes=1))
         bid = yl.create_broadcast(self.yt, title=title, description=_no_angle(description),
-                                  start_iso=scheduled.isoformat(), privacy=env("LIVE_PRIVACY", "public") or "public")
+                                  start_iso=scheduled.isoformat(), privacy=self.start_privacy)
         yl.bind(self.yt, bid, stream["id"])
         tags = [t.strip() for t in (env("LIVE_TAGS", "") or "").split(",") if t.strip()]
         try:
@@ -242,6 +242,42 @@ class YouTubeAgent:
         self.session.set(self.name, result)
         log.info("[youtube] broadcast %s: %s", result["url"], title)
         return {**result, "stream": stream}
+
+    @property
+    def final_privacy(self) -> str:
+        return env("LIVE_PRIVACY", "public") or "public"
+
+    @property
+    def start_privacy(self) -> str:
+        """Start unlisted and go public only once the stream has looked right for a few minutes."""
+        if env_float("LIVE_PUBLIC_AFTER_MIN", 3) <= 0:
+            return self.final_privacy
+        return env("LIVE_START_PRIVACY", "unlisted") or "unlisted"
+
+    def check_go_public(self, result: dict, picture_ok: bool, now: float | None = None) -> bool:
+        """Called every watchdog check; switches to the final privacy after LIVE_PUBLIC_AFTER_MIN healthy minutes."""
+        import youtube_live as yl
+        if self.session.get("public").get("done") or self.start_privacy == self.final_privacy:
+            return False
+        now = time.monotonic() if now is None else now
+        status, health = yl.stream_health(self.yt, result["stream"]["id"])
+        healthy = picture_ok and status == "active" and health not in (None, "noData")
+        if not healthy:
+            if getattr(self, "healthy_since", None) is not None:
+                log.warning("[youtube] stream not healthy (picture ok: %s, YouTube: %s/%s) - staying %s",
+                            picture_ok, status, health, self.start_privacy)
+            self.healthy_since = None
+            return False
+        if getattr(self, "healthy_since", None) is None:
+            self.healthy_since = now
+            log.info("[youtube] stream looks healthy - going %s in %.0f min if it stays that way",
+                     self.final_privacy, env_float("LIVE_PUBLIC_AFTER_MIN", 3))
+        if now - self.healthy_since < env_float("LIVE_PUBLIC_AFTER_MIN", 3) * 60:
+            return False
+        yl.set_privacy(self.yt, result["broadcast_id"], self.final_privacy)
+        self.session.set("public", {"done": True, "privacy": self.final_privacy})
+        log.info("=== now %s: %s", self.final_privacy.upper(), result["url"])
+        return True
 
     def go_live(self, result: dict) -> str:
         import youtube_live as yl
@@ -314,6 +350,7 @@ class LiveShow:
         self.start = start or datetime.now(tz())
         self.session = Session(live_root(settings) / self.start.strftime("%Y-%m-%d"))
         self.use_api = env_bool("YOUTUBE_LIVE_API", True)
+        self.youtube, self.yt_result = None, {}
 
     def run(self) -> int:
         s, session = self.settings, self.session
@@ -342,6 +379,7 @@ class LiveShow:
                 log.info("=== LIVE: %s", yt_result["url"])
             elif not s.dry_run:
                 log.info("=== LIVE (stream key set in OBS)")
+            self.youtube, self.yt_result = youtube, yt_result
             self.watch(end, gateway, browser, obs, streaming=not s.dry_run)
             return 0
         except KeyboardInterrupt:
@@ -380,6 +418,8 @@ class LiveShow:
                 if streaming:
                     browser.restore()
                     self.check_picture(browser, obs)
+                    if self.youtube is not None:
+                        self.youtube.check_go_public(self.yt_result, picture_ok=obs.healthy() and obs.black == 0)
             except Exception as e:  # keep trying until the end time
                 log.error("[watchdog] recovery failed: %s", e)
 

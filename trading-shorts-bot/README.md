@@ -338,6 +338,10 @@ python live.py site-test     # run only the scanner steps, window stays open 60s
   on IBKR Mobile.
 - **Duplicates:** today's broadcast id is saved in `~/TradingShorts/Live/<date>/session.json`, so
   re-running after a crash reuses it. Only one scheduler can run at a time.
+- **Unlisted first, public once it works** (needs the YouTube API): each broadcast starts as
+  `LIVE_START_PRIVACY` (unlisted) and switches to `LIVE_PRIVACY` (public) after
+  `LIVE_PUBLIC_AFTER_MIN` minutes (3) of OBS streaming, a non-black picture and YouTube reporting a
+  healthy stream. Any glitch restarts the clock; a broken stream never goes public.
 - **Without the YouTube API:** set `YOUTUBE_LIVE_API=false` and paste your YouTube stream key into
   OBS (Settings > Stream). The bot then just presses *Start Streaming*.
 - **Market data:** showing real-time exchange data on a public stream counts as redistribution

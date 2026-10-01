@@ -76,7 +76,12 @@ TABS: dict[str, list[Field]] = {
               default="Live AI stock scanner every trading morning. Subscribe and turn on notifications."),
         Field("LIVE_TAGS", "Tags (comma separated)",
               default="stock scanner,day trading,premarket movers,stock market live"),
-        Field("LIVE_PRIVACY", "Privacy", "choice", default="public", choices=["public", "unlisted", "private"]),
+        Field("LIVE_PRIVACY", "Privacy once it's working", "choice", default="public",
+              choices=["public", "unlisted", "private"]),
+        Field("LIVE_START_PRIVACY", "Start the stream as", "choice", default="unlisted",
+              choices=["unlisted", "private"], help="viewers only see it after it has looked right for a while"),
+        Field("LIVE_PUBLIC_AFTER_MIN", "Minutes of healthy stream before switching", default="3",
+              help="0 = start with the final privacy straight away"),
         Field("LIVE_THUMBNAIL", "Thumbnail (1280x720 jpg)", "file"),
         Field("YOUTUBE_CLIENT_ID", "Google OAuth client ID"),
         Field("YOUTUBE_CLIENT_SECRET", "Google OAuth client secret", "secret"),
@@ -124,7 +129,8 @@ def validate(values: dict[str, str]) -> list[str]:
                 problems.append(f"{key}: use HH:MM, e.g. 06:00")
     if not days_to_list(values.get("LIVE_DAYS", "")):
         problems.append("pick at least one day")
-    for key in ("LIVE_DURATION_MIN", "LIVE_PREP_MIN", "IB_PORT", "OBS_WS_PORT", "SCANNER_WARMUP_SECONDS"):
+    for key in ("LIVE_DURATION_MIN", "LIVE_PREP_MIN", "IB_PORT", "OBS_WS_PORT", "SCANNER_WARMUP_SECONDS",
+                "LIVE_PUBLIC_AFTER_MIN"):
         if values.get(key) and not values[key].strip().isdigit():
             problems.append(f"{key}: must be a whole number")
     if values.get("LIVE_TZ"):

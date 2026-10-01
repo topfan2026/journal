@@ -542,3 +542,33 @@ def test_black_picture_escalation():
     agent.black = 3
     live.LiveShow.check_picture(Browser(), agent)
     assert agent.black == 0
+
+
+def test_goes_public_only_after_healthy_minutes(tmp_path, monkeypatch):
+    calls = []
+    health = {"value": ("active", "good")}
+    monkeypatch.setattr(youtube_live, "stream_health", lambda yt, sid: health["value"])
+    monkeypatch.setattr(youtube_live, "set_privacy", lambda yt, bid, p: calls.append((bid, p)))
+    monkeypatch.setenv("LIVE_PUBLIC_AFTER_MIN", "3")
+    monkeypatch.setenv("LIVE_PRIVACY", "public")
+    session = live.Session(tmp_path / "day")
+    agent = live.YouTubeAgent(None, session, datetime.now(UTC))
+    agent.yt = object()
+    assert agent.start_privacy == "unlisted"
+    result = {"broadcast_id": "B1", "stream": {"id": "S1"}, "url": "u"}
+
+    assert not agent.check_go_public(result, True, now=0)        # healthy: clock starts
+    assert not agent.check_go_public(result, False, now=100)     # black picture: clock resets
+    assert not agent.check_go_public(result, True, now=120)
+    health["value"] = ("active", "noData")
+    assert not agent.check_go_public(result, True, now=200)      # YouTube not receiving: resets
+    health["value"] = ("active", "good")
+    assert not agent.check_go_public(result, True, now=300)
+    assert not agent.check_go_public(result, True, now=300 + 179)
+    assert agent.check_go_public(result, True, now=300 + 180)    # 3 healthy minutes
+    assert calls == [("B1", "public")]
+    assert not agent.check_go_public(result, True, now=1000)     # once only
+    assert calls == [("B1", "public")] and session.get("public")["done"]
+
+    monkeypatch.setenv("LIVE_PUBLIC_AFTER_MIN", "0")
+    assert live.YouTubeAgent(None, live.Session(tmp_path / "d2"), datetime.now(UTC)).start_privacy == "public"

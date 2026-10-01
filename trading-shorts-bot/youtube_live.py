@@ -99,6 +99,20 @@ def stream_status(yt, stream_id: str) -> str | None:
     return items[0]["status"]["streamStatus"] if items else None
 
 
+def stream_health(yt, stream_id: str) -> tuple[str | None, str | None]:
+    """(streamStatus, healthStatus.status), e.g. ("active", "good")."""
+    items = yt.liveStreams().list(part="status", id=stream_id).execute().get("items", [])
+    if not items:
+        return None, None
+    status = items[0]["status"]
+    return status.get("streamStatus"), (status.get("healthStatus") or {}).get("status")
+
+
+def set_privacy(yt, broadcast_id: str, privacy: str) -> None:
+    yt.liveBroadcasts().update(part="status", body={
+        "id": broadcast_id, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}).execute()
+
+
 def go_live(yt, broadcast_id: str, stream_id: str, sleep=time.sleep) -> str:
     """Wait for OBS's signal to arrive, then make sure the broadcast is live (auto-start usually does it)."""
     deadline = time.monotonic() + env_float("YOUTUBE_LIVE_TIMEOUT", 180)
