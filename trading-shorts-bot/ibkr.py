@@ -105,7 +105,12 @@ def start_gateway(ini: Path, log_file: Path) -> dict:
         if proc.poll() not in (None, 0):
             break
         time.sleep(2)
-    raise IBKRError(f"IB Gateway API port {p} did not open - see {log_file}")
+    try:
+        tail = "\n".join(log_file.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-15:])
+    except OSError:
+        tail = ""
+    raise IBKRError(f"IB Gateway API port {p} did not open - see {log_file}"
+                    + (f"\n--- last lines of that log ---\n{tail}" if tail else ""))
 
 
 # --------------------------------------------------------------------------- connection

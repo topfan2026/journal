@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -308,3 +309,14 @@ def test_gui_fields_cover_required_settings():
     keys = {f.key for fields in live_gui.TABS.values() for f in fields}
     assert {"LIVE_START", "LIVE_DAYS", "IB_USERNAME", "IB_PASSWORD", "SCANNER_URL", "OBS_PATH",
             "OBS_SCENE", "LIVE_TITLE"} <= keys
+
+
+def test_gateway_failure_shows_log_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr(ibkr, "port_open", lambda h, p, timeout=1.0: False)
+    monkeypatch.setenv("IB_USERNAME", "u")
+    monkeypatch.setenv("IB_PASSWORD", "p")
+    script = tmp_path / "fail.py"
+    script.write_text("import sys; print('Error: TWS version 9999 not found'); sys.exit(1)")
+    monkeypatch.setenv("IBC_START_CMD", f'"{sys.executable}" "{script}"')
+    with pytest.raises(ibkr.IBKRError, match="version 9999 not found"):
+        ibkr.start_gateway(tmp_path / "c.ini", tmp_path / "g.log")

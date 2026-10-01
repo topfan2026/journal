@@ -434,8 +434,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     setup_logging(settings, args.verbose)
     _graceful_signals()
-    for noisy in ("ib_async", "obsws_python", "websocket"):
+    for noisy in ("ib_async", "websocket"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    logging.getLogger("obsws_python").setLevel(logging.CRITICAL)  # it logs a traceback on every retry
     try:
         if args.command == "daemon":
             return daemon(settings)
