@@ -6,11 +6,14 @@ Runs a real, visible browser window through Playwright with its own profile fold
 OBS shows this window with a Window Capture source that you add once.
 
 What the agent does on the site is a list of steps in scanner_steps.txt (editable in
-the app's "Scanner site" tab), one per line, run top to bottom:
+the app's "Scanner site" tab), one per line, run top to bottom. Buttons inside an open
+popup are tried before the rest of the page:
 
     goto https://aialgopro.com      open an address (or a path like /scanner)
     click Connection                click the button / link / tab / menu item with that text
     click css=#fullscreen           ... or the element matching a CSS selector
+    type Local connector secret = {SCANNER_SECRET}
+                                    fill a text box ({NAME} = a value saved in .env)
     select IBKR Gateway             pick that option in a drop-down list
     wait Connected                  wait until that text shows on the page
     wait 5                          wait 5 seconds
@@ -36,20 +39,23 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "wait", "key")
+VERBS = ("goto", "click", "select", "type", "wait", "key")
+DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
 DEFAULT_STEPS = """\
 # What the bot does on the site every morning, top to bottom.
-# Make the words after click / wait match the site's buttons exactly.
-# Steps: goto <address>, click <text>, wait <text or seconds>, key <F11>
+# Make the words after click / wait / type match the site exactly.
+# Steps: goto <address>, click <text>, type <box> = <text>, wait <text or seconds>, key <F11>
+# {SCANNER_SECRET} is the connector secret saved in the Scanner site tab.
 goto https://aialgopro.com
-click Connection
-click IBKR Gateway
-click Connect
-wait Connected
 click Scanner
-click Wall Scan
-wait 5
+click Scan Market
+click Gateway Paper
+type Local connector secret = {SCANNER_SECRET}
+click Test Connection
+wait Connected
+click Scan Market
+wait 10
 click Full Screen
 """
 
@@ -58,8 +64,10 @@ class SiteError(Exception):
     pass
 
 
-def whole_words(text: str) -> re.Pattern:
-    return re.compile(rf"(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
+def whole_words(text: str, negatable: bool = False) -> re.Pattern:
+    """Match *text* as whole words; with negatable, not when it reads "not <text>" (e.g. Not connected)."""
+    no = r"(?<!not )(?<!no )" if negatable else ""
+    return re.compile(rf"{no}(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
 
 
 def steps_file() -> Path:
@@ -78,8 +86,20 @@ def parse_steps(text: str) -> list[tuple[str, str]]:
             raise SiteError(f"scanner steps line {n}: unknown step {verb!r} (use {', '.join(VERBS)})")
         if not arg:
             raise SiteError(f"scanner steps line {n}: {verb!r} needs something after it")
+        if verb == "type" and "=" not in arg:
+            raise SiteError(f"scanner steps line {n}: write it as  type <box name> = <text>")
         steps.append((verb, arg))
     return steps
+
+
+def expand(text: str) -> str:
+    """Replace {SCANNER_SECRET}-style names with values from .env, so secrets stay out of the steps."""
+    def value(m):
+        v = env(m.group(1))
+        if v is None:
+            raise SiteError(f"{{{m.group(1)}}} is used in the steps but not set (Scanner site tab)")
+        return v
+    return re.sub(r"\{([A-Z][A-Z0-9_]*)\}", value, text)
 
 
 def load_steps() -> list[tuple[str, str]]:
@@ -163,39 +183,52 @@ class ScannerSite:
                 box.first.select_option(label=label)
             else:
                 self.find(arg).click(timeout=self.timeout * 1000)
+        elif verb == "type":
+            label, _, text = arg.partition("=")
+            self.find(label.strip(), field=True).fill(expand(text.strip()), timeout=self.timeout * 1000)
         elif verb == "wait":
             try:
                 page.wait_for_timeout(float(arg) * 1000)
             except ValueError:
-                self.find(arg)
+                self.find(arg, waiting=True)
         elif verb == "key":
             page.keyboard.press(arg)
 
-    def find(self, text: str):
-        """The first visible clickable thing labelled *text* (button, link, tab...), then any matching text."""
-        page = self.page
+    def _candidates(self, scope, text: str, field: bool, waiting: bool = False) -> list:
         if text.startswith("css="):
-            candidates = [page.locator(text[4:])]
-        else:
-            # Exact label first; then the words anywhere, but as whole words, so "Connect"
-            # never matches "Connection" and "Connected" never matches "Disconnected".
-            words = whole_words(text)
-            candidates = [page.get_by_role(r, name=text, exact=True) for r in CLICK_ROLES]
-            candidates += [page.get_by_text(text, exact=True)]
-            candidates += [page.get_by_role(r, name=words) for r in CLICK_ROLES]
-            candidates += [page.get_by_text(words)]
+            return [scope.locator(text[4:])]
+        # Exact label first; then the words anywhere, but as whole words, so "Connect"
+        # never matches "Connection" and "Connected" never matches "Disconnected".
+        words = whole_words(text, negatable=waiting)
+        if field:  # a text box, found by its label, placeholder or accessible name
+            return [scope.get_by_label(text, exact=True), scope.get_by_placeholder(text, exact=True),
+                    scope.get_by_role("textbox", name=text, exact=True),
+                    scope.get_by_label(words), scope.get_by_placeholder(words),
+                    scope.get_by_role("textbox", name=words)]
+        return ([scope.get_by_role(r, name=text, exact=True) for r in CLICK_ROLES]
+                + [scope.get_by_text(text, exact=True)]
+                + [scope.get_by_role(r, name=words) for r in CLICK_ROLES]
+                + [scope.get_by_text(words)])
+
+    def find(self, text: str, field: bool = False, waiting: bool = False):
+        """The first visible match for *text*: inside an open popup first, then the whole page."""
+        page = self.page
         deadline = time.monotonic() + self.timeout
         while True:
-            for c in candidates:
-                try:
-                    n = c.count()
-                except Exception:
-                    continue
-                for k in range(min(n, 10)):
-                    if c.nth(k).is_visible():
-                        return c.nth(k)
+            dialogs = page.locator(DIALOGS)
+            scopes = ([dialogs.last] if dialogs.count() else []) + [page]
+            for scope in scopes:
+                for c in self._candidates(scope, text, field, waiting):
+                    try:
+                        n = c.count()
+                    except Exception:
+                        continue
+                    for k in range(min(n, 10)):
+                        if c.nth(k).is_visible():
+                            return c.nth(k)
             if time.monotonic() > deadline:
-                raise SiteError(f"nothing called {text!r} appeared within {self.timeout:.0f}s")
+                what = "no box called" if field else "nothing called"
+                raise SiteError(f"{what} {text!r} appeared within {self.timeout:.0f}s")
             page.wait_for_timeout(250)
 
     def _legacy_start(self) -> str | None:

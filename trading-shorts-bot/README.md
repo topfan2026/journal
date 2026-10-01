@@ -291,20 +291,22 @@ code: no AI tokens, and the same thing happens every morning.
 | OBS | path to OBS, WebSocket password, scene name |
 | YouTube | title template (`{weekday}`, `{date}`), description, tags, privacy, thumbnail |
 
-   **Scanner steps** are what the bot clicks on the site every morning, one per line (kept in
-   `scanner_steps.txt`, which updates never overwrite):
+   **Scanner steps** are what the bot does on the site every morning, one per line (kept in
+   `scanner_steps.txt`, which updates never overwrite). For aialgopro:
    ```
    goto https://aialgopro.com
-   click Connection
-   click IBKR Gateway      # works for a button or a drop-down option
-   click Connect
-   wait Connected          # waits until this text shows (whole word: "Disconnected" doesn't count)
    click Scanner
-   click Wall Scan
-   wait 5                  # seconds
+   click Scan Market
+   click Gateway Paper
+   type Local connector secret = {SCANNER_SECRET}
+   click Test Connection
+   wait Connected          # waits for this text; "Not connected" / "Disconnected" don't count
+   click Scan Market       # buttons inside an open popup are tried first
+   wait 10                 # seconds
    click Full Screen
    ```
-   Also `key F11` (press a key) and `click css=<selector>` for buttons without text.
+   `{SCANNER_SECRET}` is filled in from the **Local connector secret** setting, so the secret never
+   appears in the steps or the logs. Also: `key F11` (press a key), `click css=<selector>`.
 
 6. Click **Check setup**, then **Test (no stream)**. That runs everything except going live.
 7. Tick **Start the scheduler automatically when I log in**. This registers a Windows Task Scheduler

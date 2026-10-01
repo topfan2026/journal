@@ -359,3 +359,23 @@ def test_whole_word_matching():
     assert scanner_site.whole_words("Connected").search("Status: connected")
     assert not scanner_site.whole_words("Connect").search("Connection")
     assert scanner_site.whole_words("Wall Scan").search("Run Wall Scan now")
+
+
+def test_type_step_and_secret_expansion(monkeypatch):
+    import scanner_site
+    steps = scanner_site.parse_steps("type Local connector secret = {SCANNER_SECRET}\n")
+    assert steps == [("type", "Local connector secret = {SCANNER_SECRET}")]
+    with pytest.raises(scanner_site.SiteError, match="type <box name> = <text>"):
+        scanner_site.parse_steps("type just a box\n")
+    monkeypatch.setenv("SCANNER_SECRET", "abc123")
+    assert scanner_site.expand("{SCANNER_SECRET}") == "abc123"
+    monkeypatch.delenv("SCANNER_SECRET")
+    with pytest.raises(scanner_site.SiteError, match="not set"):
+        scanner_site.expand("{SCANNER_SECRET}")
+
+
+def test_wait_ignores_negated_status():
+    import scanner_site
+    p = scanner_site.whole_words("Connected", negatable=True)
+    assert not p.search("Not connected") and not p.search("Not Connected - check secret")
+    assert p.search("Connected") and p.search("Status: connected")

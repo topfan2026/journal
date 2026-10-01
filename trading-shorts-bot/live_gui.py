@@ -54,6 +54,8 @@ TABS: dict[str, list[Field]] = {
     ],
     "Scanner site": [
         Field("SCANNER_URL", "Site address", default="https://aialgopro.com"),
+        Field("SCANNER_SECRET", "Local connector secret", "secret",
+              help="used by the steps as {SCANNER_SECRET}"),
         Field("SCANNER_WARMUP_SECONDS", "Warm-up seconds", default="20"),
         Field("BROWSER_CHANNEL", "Browser", "choice", default="chrome", choices=["chrome", "msedge", "chromium"]),
         Field("BROWSER_PATH", "or browser program", "file", help="optional: path to chrome.exe / msedge.exe"),
