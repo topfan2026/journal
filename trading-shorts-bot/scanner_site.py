@@ -30,6 +30,7 @@ SCANNER_START_SELECTOR and waits for SCANNER_READY_SELECTOR.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -70,6 +71,19 @@ hide A row is tinted
 """
 
 
+# Pins the page title, whatever the site sets it to.
+TITLE_JS = """(() => {
+  const title = __TITLE__;
+  const fix = () => { if (document.title !== title) document.title = title; };
+  const watch = () => {
+    fix();
+    const head = document.querySelector('head') || document.documentElement;
+    new MutationObserver(fix).observe(head, { childList: true, subtree: true, characterData: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+})();"""
+
+
 # Hides every text-only element whose text starts with the given words, and keeps hiding it
 # when the page redraws (the scanner re-renders every few seconds).
 HIDE_JS = """(start) => {
@@ -98,6 +112,10 @@ def whole_words(text: str, negatable: bool = False) -> re.Pattern:
     """Match *text* as whole words; with negatable, not when it reads "not <text>" (e.g. Not connected)."""
     no = r"(?<!not )(?<!no )" if negatable else ""
     return re.compile(rf"{no}(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
+
+
+def window_title() -> str:
+    return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
 
 def steps_file() -> Path:
@@ -202,6 +220,11 @@ class ScannerSite:
             self.context = self._pw.chromium.launch_persistent_context(str(self.profile_dir), **kwargs)
         # Leave the site's own pop-ups ("Delete this watchlist? OK / Cancel") on screen for you to
         # answer. Without a listener, Playwright silently clicks Cancel on every one of them.
+        # Give the bot's window one fixed title ("LIVE BOT - Scanner"), so OBS's Window Capture set to
+        # "Window title must match" always finds it and never grabs your everyday browser instead.
+        title = window_title()
+        if title:
+            self.context.add_init_script(TITLE_JS.replace("__TITLE__", json.dumps(title)))
         for page in self.context.pages:
             self._keep_dialogs(page)
         self.context.on("page", self._keep_dialogs)
