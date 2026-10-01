@@ -178,8 +178,18 @@ class ScannerSite:
                 raise
             log.warning("browser: %s not available (%s) - using Playwright's Chromium", channel, e)
             self.context = self._pw.chromium.launch_persistent_context(str(self.profile_dir), **kwargs)
+        # Leave the site's own pop-ups ("Delete this watchlist? OK / Cancel") on screen for you to
+        # answer. Without a listener, Playwright silently clicks Cancel on every one of them.
+        for page in self.context.pages:
+            self._keep_dialogs(page)
+        self.context.on("page", self._keep_dialogs)
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
         return self
+
+    @staticmethod
+    def _keep_dialogs(page) -> None:
+        page.on("dialog", lambda dialog: log.info("browser: site asks %r - waiting for you to answer it",
+                                                  dialog.message[:80]))
 
     def close(self) -> None:
         for closer in (getattr(self.context, "close", None), getattr(self._pw, "stop", None)):
