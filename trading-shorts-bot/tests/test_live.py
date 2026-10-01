@@ -572,3 +572,12 @@ def test_goes_public_only_after_healthy_minutes(tmp_path, monkeypatch):
 
     monkeypatch.setenv("LIVE_PUBLIC_AFTER_MIN", "0")
     assert live.YouTubeAgent(None, live.Session(tmp_path / "d2"), datetime.now(UTC)).start_privacy == "public"
+
+
+def test_os_window_title_has_browser_suffix(monkeypatch):
+    import scanner_site
+    monkeypatch.delenv("BROWSER_PATH", raising=False)
+    monkeypatch.setenv("BROWSER_CHANNEL", "chrome")
+    assert scanner_site.os_window_title() == "LIVE BOT - Scanner - Google Chrome"
+    monkeypatch.setenv("BROWSER_CHANNEL", "msedge")
+    assert scanner_site.os_window_title() == "LIVE BOT - Scanner - Microsoft​ Edge"

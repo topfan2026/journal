@@ -312,9 +312,10 @@ class OBSAgent:
             self.obs.set_scene(scene)
         self.scene = scene or self.obs.current_scene()
         if env_bool("OBS_AUTO_CAPTURE", True) and self.scene:
-            from scanner_site import browser_exe, window_title
-            source = self.obs.ensure_window_capture(self.scene, window_title(), browser_exe())
-            log.info("[obs] %r captures the window %r", source, window_title())
+            from scanner_site import browser_exe, os_window_title
+            title = os_window_title()
+            source = self.obs.ensure_window_capture(self.scene, title, browser_exe())
+            log.info("[obs] %r captures the window %r", source, title)
         if stream:
             self.obs.set_stream(stream["server"], stream["key"])
         if start_streaming:
@@ -432,8 +433,8 @@ class LiveShow:
         obs.black += 1
         log.warning("[watchdog] the stream picture is black (%d check(s) in a row)", obs.black)
         if obs.black == 2:
-            from scanner_site import browser_exe, window_title
-            obs.obs.ensure_window_capture(obs.scene, window_title(), browser_exe())
+            from scanner_site import browser_exe, os_window_title
+            obs.obs.ensure_window_capture(obs.scene, os_window_title(), browser_exe())
             browser.restore()
         elif obs.black >= 4:
             log.warning("[watchdog] still black - reopening the scanner")

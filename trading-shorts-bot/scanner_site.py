@@ -121,6 +121,43 @@ def browser_exe() -> str:
     return "msedge.exe" if (env("BROWSER_CHANNEL", "chrome") or "").startswith("msedge") else "chrome.exe"
 
 
+TITLE_SUFFIXES = {"chrome.exe": " - Google Chrome", "msedge.exe": " - Microsoft\u200b Edge"}
+
+
+def os_window_title() -> str:
+    """The bot window's title as Windows/OBS sees it: the page title plus the browser's suffix,
+    e.g. "LIVE BOT - Scanner - Google Chrome". Read from the real window when possible."""
+    title = window_title()
+    found = _find_window_title(title) if os.name == "nt" and title else None
+    return found or title + TITLE_SUFFIXES.get(browser_exe().lower(), " - Chromium")
+
+
+def _find_window_title(prefix: str) -> str | None:
+    """Windows only: the title of the visible top-level browser window whose title starts with *prefix*."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        found: list[str] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def visit(hwnd, _):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                cls = ctypes.create_unicode_buffer(64)
+                user32.GetClassNameW(hwnd, cls, 64)
+                if buf.value.startswith(prefix) and cls.value == "Chrome_WidgetWin_1":
+                    found.append(buf.value)
+            return True
+        user32.EnumWindows(visit, 0)
+        return found[0] if found else None
+    except Exception as e:  # fall back to the known suffix
+        log.debug("window lookup failed: %s", e)
+        return None
+
+
 def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
