@@ -15,6 +15,12 @@ PLATFORMS = ("youtube", "instagram", "tiktok")
 load_dotenv(ENV_FILE, override=False)
 
 
+def reload_env() -> None:
+    """Pick up settings saved in .env after this process started (e.g. a new stream time from the app)."""
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE, override=True)
+
+
 def env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
     return value if value not in (None, "") else default

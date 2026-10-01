@@ -623,3 +623,30 @@ def test_background_scheduler_can_be_stopped(settings, monkeypatch):
     monkeypatch.setattr(live, "next_start", lambda now: now + timedelta(hours=5))
     assert live.daemon(settings) == 0
     assert not stop_file.exists() and started == []
+
+
+def test_running_scheduler_picks_up_new_time(settings, monkeypatch, tmp_path):
+    import config
+    env_file = tmp_path / ".env"
+    env_file.write_text("LIVE_START=06:00\n")
+    monkeypatch.setattr(config, "ENV_FILE", env_file)
+    monkeypatch.setenv("LIVE_LOCK_PORT", "47695")
+    monkeypatch.setenv("LIVE_START", "06:00")
+    monkeypatch.setenv("LIVE_DAYS", "mon-sun")
+    monkeypatch.setenv("LIVE_PREP_MIN", "10")
+    seen, sleeps = [], []
+    live.scheduler_stop_file(settings).parent.mkdir(parents=True, exist_ok=True)
+    fixed_now = datetime(2026, 10, 1, 22, 0, tzinfo=UTC)
+    monkeypatch.setattr(live, "tz", lambda: UTC)
+    monkeypatch.setattr(live, "datetime", type("D", (datetime,), {"now": staticmethod(lambda tz=None: fixed_now)}))
+
+    def fake_sleep(s):
+        sleeps.append(s)
+        if len(sleeps) == 1:
+            env_file.write_text("LIVE_START=06:15\n")  # changed in the app while waiting
+        else:
+            live.scheduler_stop_file(settings).touch()
+    monkeypatch.setattr(live.time, "sleep", fake_sleep)
+    monkeypatch.setattr(live.log, "info", lambda msg, *a: seen.append(msg % a if a else msg))
+    assert live.daemon(settings) == 0
+    assert any("schedule changed - next stream Fri 2026-10-02 06:15" in m for m in seen)

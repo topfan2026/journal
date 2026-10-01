@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import ibkr
-from config import ConfigError, Settings, env, env_bool, env_float
+from config import ConfigError, Settings, env, env_bool, env_float, reload_env
 from job import now_iso
 
 log = logging.getLogger("live")
@@ -507,10 +507,12 @@ def daemon(settings: Settings) -> int:
     stop_file.unlink(missing_ok=True)
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
              env("LIVE_TZ") or "this computer's time zone")
+    def plan() -> tuple[datetime, timedelta]:
+        reload_env()  # the schedule may have been changed in the app since the scheduler started
+        return next_start(datetime.now(tz())), timedelta(minutes=env_float("LIVE_PREP_MIN", 10))
+
     while True:
-        now = datetime.now(tz())
-        start = next_start(now)
-        lead = timedelta(minutes=env_float("LIVE_PREP_MIN", 10))  # Gateway login + browser before the hour
+        start, lead = plan()
         log.info("next stream %s (setup starts %s)", start.strftime("%a %Y-%m-%d %H:%M"),
                  (start - lead).strftime("%H:%M"))
         while datetime.now(tz()) < start - lead:
@@ -519,6 +521,15 @@ def daemon(settings: Settings) -> int:
                 log.info("scheduler stopped")
                 return 0
             time.sleep(min(30, max(1, (start - lead - datetime.now(tz())).total_seconds())))
+            try:
+                new_start, new_lead = plan()
+            except ConfigError as e:
+                log.warning("ignoring the new schedule: %s", e)
+                continue
+            if (new_start, new_lead) != (start, lead):
+                start, lead = new_start, new_lead
+                log.info("schedule changed - next stream %s (setup starts %s)",
+                         start.strftime("%a %Y-%m-%d %H:%M"), (start - lead).strftime("%H:%M"))
         retry = env_float("LIVE_RETRY_SECONDS", 120)
         # A failed start (Gateway login, OBS, YouTube...) is retried until today's end time.
         while LiveShow(settings, start=start).run() != 0 and datetime.now(tz()) + timedelta(seconds=retry) < end_time(start):
