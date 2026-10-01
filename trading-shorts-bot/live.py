@@ -5,6 +5,7 @@
     python live.py stop          end today's stream (from another terminal)
     python live.py check         check Gateway login, OBS, YouTube and the site's start button
     python live.py site-login    open the bot's browser once so you can sign in to the scanner site
+    python live.py site-test     run just the scanner-site steps and leave the window open 60s
     options: --dry-run  (everything except starting the stream / creating the broadcast), -v
 
     Orchestrator
@@ -423,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
     from watcher import setup_logging
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login"])
+    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login", "site-test"])
     ap.add_argument("--dry-run", action="store_true", default=None)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
@@ -444,6 +445,19 @@ def main(argv: list[str] | None = None) -> int:
             return LiveShow(settings).run()
         if args.command == "stop":
             return stop(settings)
+        if args.command == "site-test":
+            agent = BrowserAgent(settings)
+            try:
+                log.info("[scanner site] OK: %s", agent.run())
+                log.info("leaving the window open for 60s so you can check it")
+                agent.wait(60)
+            except Exception as e:
+                log.error("[scanner site] FAILED: %s", e)
+                agent.wait(30)  # leave it on screen to see where it stopped
+                return 1
+            finally:
+                agent.close()
+            return 0
         if args.command == "site-login":
             from scanner_site import site_login
             site_login(live_root(settings) / "browser-profile")

@@ -287,9 +287,24 @@ code: no AI tokens, and the same thing happens every morning.
 |---|---|
 | Schedule | time (06:00), days, end time, time zone (empty = this PC's) |
 | IB Gateway | **paper** username + password, IBC folder, Gateway version (e.g. `1030`), API port your scanner uses |
-| Scanner site | URL, the **text on the button** that starts the scanner, then *Sign in to scanner site (once)* |
+| Scanner site | *Sign in to scanner site (once)*, then the **steps** (see below) and *Test scanner steps* |
 | OBS | path to OBS, WebSocket password, scene name |
 | YouTube | title template (`{weekday}`, `{date}`), description, tags, privacy, thumbnail |
+
+   **Scanner steps** are what the bot clicks on the site every morning, one per line (kept in
+   `scanner_steps.txt`, which updates never overwrite):
+   ```
+   goto https://aialgopro.com
+   click Connection
+   click IBKR Gateway      # works for a button or a drop-down option
+   click Connect
+   wait Connected          # waits until this text shows (whole word: "Disconnected" doesn't count)
+   click Scanner
+   click Wall Scan
+   wait 5                  # seconds
+   click Full Screen
+   ```
+   Also `key F11` (press a key) and `click css=<selector>` for buttons without text.
 
 6. Click **Check setup**, then **Test (no stream)**. That runs everything except going live.
 7. Tick **Start the scheduler automatically when I log in**. This registers a Windows Task Scheduler
@@ -308,6 +323,7 @@ python live.py stop          # end today's stream
 python live.py run --dry-run # everything except streaming
 python live.py check         # Gateway login, OBS, YouTube, scanner site
 python live.py site-login    # sign in to the scanner site once
+python live.py site-test     # run only the scanner steps, window stays open 60s
 ```
 
 ### Notes

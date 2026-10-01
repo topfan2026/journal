@@ -339,3 +339,23 @@ def test_obs_not_relaunched_when_already_running(monkeypatch):
     with pytest.raises(OBSError, match="password"):
         OBS.connect(start=True)
     assert launched == []
+
+
+def test_scanner_steps_parse():
+    import scanner_site
+    steps = scanner_site.parse_steps(scanner_site.DEFAULT_STEPS)
+    assert steps[0] == ("goto", "https://aialgopro.com")
+    assert ("click", "Connect") in steps and ("wait", "Connected") in steps
+    assert scanner_site.parse_steps("# note\n\n  CLICK  Wall Scan \n") == [("click", "Wall Scan")]
+    with pytest.raises(scanner_site.SiteError, match="line 2"):
+        scanner_site.parse_steps("click A\njump B\n")
+    with pytest.raises(scanner_site.SiteError, match="needs something"):
+        scanner_site.parse_steps("click\n")
+
+
+def test_whole_word_matching():
+    import scanner_site
+    assert not scanner_site.whole_words("Connected").search("Disconnected")
+    assert scanner_site.whole_words("Connected").search("Status: connected")
+    assert not scanner_site.whole_words("Connect").search("Connection")
+    assert scanner_site.whole_words("Wall Scan").search("Run Wall Scan now")

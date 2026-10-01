@@ -53,10 +53,7 @@ TABS: dict[str, list[Field]] = {
         Field("IB_READ_ONLY", "Read-only API (blocks orders)", "bool", default="false"),
     ],
     "Scanner site": [
-        Field("SCANNER_URL", "Scanner URL", default="https://aialgopro.com"),
-        Field("SCANNER_START_TEXT", "Start button text", help="the text on the button that starts the scanner"),
-        Field("SCANNER_START_SELECTOR", "or CSS selector", help="only if the text doesn't work"),
-        Field("SCANNER_READY_SELECTOR", "Ready selector (optional)", help="appears once the scanner is running"),
+        Field("SCANNER_URL", "Site address", default="https://aialgopro.com"),
         Field("SCANNER_WARMUP_SECONDS", "Warm-up seconds", default="20"),
         Field("BROWSER_CHANNEL", "Browser", "choice", default="chrome", choices=["chrome", "msedge", "chromium"]),
         Field("BROWSER_PATH", "or browser program", "file", help="optional: path to chrome.exe / msedge.exe"),
@@ -137,6 +134,12 @@ def validate(values: dict[str, str]) -> list[str]:
     return problems
 
 
+def read_steps() -> str:
+    from scanner_site import DEFAULT_STEPS, steps_file
+    path = steps_file()
+    return path.read_text(encoding="utf-8") if path.exists() else DEFAULT_STEPS
+
+
 def bot_command(*args: str) -> list[str]:
     return [sys.executable, "-u", *args]
 
@@ -150,7 +153,7 @@ class App:
 
         self.tk, self.ttk, self.root = tk, ttk, root
         root.title("Live Stream Bot")
-        root.geometry("900x720")
+        root.geometry("900x800")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
         self.day_vars: dict[str, object] = {}
@@ -169,9 +172,17 @@ class App:
                 self._field(frame, row, f, values.get(f.key, ""))
             extra = len(fields)
             if tab == "Scanner site":
-                ttk.Button(frame, text="Sign in to scanner site (once)…",
-                           command=lambda: self.spawn("live.py", "site-login")).grid(
-                    row=extra, column=1, sticky="w", pady=(10, 0))
+                ttk.Label(frame, text="Steps on the site\n(top to bottom)").grid(
+                    row=extra, column=0, sticky="nw", padx=(0, 10), pady=(10, 0))
+                self.steps = tk.Text(frame, height=11, wrap="none", font=("Consolas", 10), undo=True)
+                self.steps.grid(row=extra, column=1, sticky="ew", pady=(10, 0))
+                self.steps.insert("1.0", read_steps())
+                row_btns = ttk.Frame(frame)
+                row_btns.grid(row=extra + 1, column=1, sticky="w", pady=(8, 0))
+                ttk.Button(row_btns, text="Sign in to scanner site (once)…",
+                           command=lambda: self.spawn("live.py", "site-login")).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Test scanner steps",
+                           command=lambda: self.spawn("live.py", "site-test")).pack(side="left")
             if tab == "YouTube":
                 ttk.Button(frame, text="Connect YouTube account…",
                            command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -259,6 +270,14 @@ class App:
         problems = validate(values)
         if problems:
             messagebox.showerror("Check these settings", "\n".join(problems))
+            return False
+        try:
+            from scanner_site import parse_steps, steps_file
+            text = self.steps.get("1.0", "end").rstrip() + "\n"
+            parse_steps(text)
+            steps_file().write_text(text, encoding="utf-8")
+        except Exception as e:
+            messagebox.showerror("Scanner steps", str(e))
             return False
         stored = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
         for key, value in values.items():
