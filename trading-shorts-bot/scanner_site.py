@@ -102,6 +102,13 @@ def expand(text: str) -> str:
     return re.sub(r"\{([A-Z][A-Z0-9_]*)\}", value, text)
 
 
+def shown(verb: str, arg: str) -> str:
+    """A step as it may appear in logs: what a 'type' step enters is hidden."""
+    if verb == "type":
+        return f"type {arg.partition('=')[0].strip()} = ******"
+    return f"{verb} {arg}"
+
+
 def load_steps() -> list[tuple[str, str]]:
     path = steps_file()
     return parse_steps(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -152,11 +159,14 @@ class ScannerSite:
         steps = load_steps()
         if steps:
             for i, (verb, arg) in enumerate(steps, 1):
-                log.info("browser: step %d/%d: %s %s", i, len(steps), verb, arg)
+                log.info("browser: step %d/%d: %s", i, len(steps), shown(verb, arg))
                 try:
                     self.step(verb, arg)
                 except Exception as e:
-                    raise SiteError(f"scanner step {i} '{verb} {arg}' failed on {self.page.url}: "
+                    if "has been closed" in str(e):
+                        raise SiteError(f"scanner step {i} stopped: the browser window was closed "
+                                        "(by hand, or by another test started at the same time)") from e
+                    raise SiteError(f"scanner step {i} '{shown(verb, arg)}' failed on {self.page.url}: "
                                     f"{str(e).splitlines()[0]}. Check the wording in the Scanner site tab; "
                                     "if the site wants you to sign in, use 'Sign in to scanner site'.") from e
             clicked = f"{len(steps)} steps"

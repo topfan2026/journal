@@ -142,6 +142,14 @@ def read_steps() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else DEFAULT_STEPS
 
 
+BROWSER_COMMANDS = {"run", "daemon", "check", "site-test", "site-login"}
+
+
+def uses_browser(args) -> bool:
+    """These open the bot's Chrome profile, which only one process can use at a time."""
+    return len(args) > 1 and args[0] == "live.py" and args[1] in BROWSER_COMMANDS
+
+
 def bot_command(*args: str) -> list[str]:
     return [sys.executable, "-u", *args]
 
@@ -161,6 +169,7 @@ class App:
         self.day_vars: dict[str, object] = {}
         self.daemon: subprocess.Popen | None = None
         self.jobs: list[subprocess.Popen] = []
+        self.running: list[tuple[tuple[str, ...], subprocess.Popen]] = []
         self.lines: queue.Queue[str] = queue.Queue()
 
         values = current_values()
@@ -301,6 +310,12 @@ class App:
 
     # ------------------------------------------------------------------ processes
     def spawn(self, *args: str, daemon: bool = False):
+        if uses_browser(args):
+            busy = [a for a, p in self.running if p.poll() is None and uses_browser(a)]
+            if busy:
+                self.write(f"'{' '.join(busy[0][1:])}' is still running - wait for it to finish "
+                           "(it uses the same browser), or use Stop / End today's stream.\n")
+                return None
         if not self.save():
             return None
         kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
@@ -311,6 +326,7 @@ class App:
         threading.Thread(target=self._reader, args=(proc,), daemon=True).start()
         if not daemon:
             self.jobs.append(proc)
+        self.running.append((args, proc))
         return proc
 
     def _reader(self, proc):

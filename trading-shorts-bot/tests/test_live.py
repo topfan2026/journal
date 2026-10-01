@@ -379,3 +379,14 @@ def test_wait_ignores_negated_status():
     p = scanner_site.whole_words("Connected", negatable=True)
     assert not p.search("Not connected") and not p.search("Not Connected - check secret")
     assert p.search("Connected") and p.search("Status: connected")
+
+
+def test_type_values_hidden_in_logs():
+    import scanner_site
+    assert scanner_site.shown("type", "Local connector secret = abc+123") == "type Local connector secret = ******"
+    assert scanner_site.shown("click", "Scan Market") == "click Scan Market"
+
+
+def test_gui_browser_jobs_are_exclusive():
+    assert live_gui.uses_browser(("live.py", "site-test")) and live_gui.uses_browser(("live.py", "daemon"))
+    assert not live_gui.uses_browser(("live.py", "stop")) and not live_gui.uses_browser(("auth_setup.py", "youtube"))
