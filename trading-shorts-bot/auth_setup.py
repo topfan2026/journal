@@ -123,7 +123,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("platform", choices=["youtube", "tiktok", "instagram"])
     ap.add_argument("--no-browser", action="store_true", help="print the URL instead of opening a browser")
-    ap.add_argument("--port", type=int, default=8080, help="youtube: local redirect port")
+    ap.add_argument("--port", type=int, default=0, help="youtube: local redirect port (0 = any free port)")
     ap.add_argument("--token", help="instagram: short-lived user token")
     args = ap.parse_args()
     try:
