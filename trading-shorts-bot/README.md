@@ -304,7 +304,7 @@ code: no AI tokens, and the same thing happens every morning.
      wait Connected        # waits for this text; "Not connected" / "Disconnected" don't count
    end                     # (the scan then starts by itself; buttons in an open popup are tried first)
    wait 10                 # seconds
-   click Full Screen
+   click Full screen       # exactly as the site writes it
    ```
    `{SCANNER_SECRET}` is filled in from the **Local connector secret** setting, so the secret never
    appears in the steps or the logs. Also: `key F11` (press a key), `click css=<selector>`.

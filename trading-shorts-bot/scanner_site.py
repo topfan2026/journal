@@ -30,12 +30,14 @@ SCANNER_START_SELECTOR and waits for SCANNER_READY_SELECTOR.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urljoin
 
-from config import BOT_DIR, env, env_float
+from config import BOT_DIR, env, env_bool, env_float
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ if Gateway Paper
   wait Connected
 end
 wait 10
-click Full Screen
+click Full screen
 """
 
 
@@ -157,7 +159,13 @@ class ScannerSite:
 
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self._pw = sync_playwright().start()
-        kwargs = dict(headless=False, no_viewport=True, args=["--start-maximized"])
+        kwargs = dict(
+            headless=False, no_viewport=True, args=["--start-maximized"],
+            # No "controlled by automated test software" / "--no-sandbox" bars on the stream.
+            # (Chrome's sandbox can't run as root on Linux, so it stays off there.)
+            chromium_sandbox=env_bool("BROWSER_SANDBOX", os.name == "nt" or sys.platform == "darwin"),
+            ignore_default_args=["--enable-automation"],
+        )
         channel = env("BROWSER_CHANNEL", "chrome")  # chrome | msedge | chromium (Playwright's own)
         if env("BROWSER_PATH"):  # any Chromium-based browser executable
             kwargs["executable_path"] = str(Path(env("BROWSER_PATH")).expanduser())
