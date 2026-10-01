@@ -457,3 +457,88 @@ def test_frozen_obs_is_force_restarted(monkeypatch):
     with pytest.raises(obs_control.OBSError):
         agent.recover(sleep=lambda s: None)
     assert calls == []
+
+
+def _png_data_uri(img):
+    import base64
+    import io
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def test_black_frame_detection():
+    from PIL import Image, ImageDraw
+    import obs_control
+    assert obs_control.frame_is_black(_png_data_uri(Image.new("RGB", (96, 54), (0, 0, 0))))
+    dark_ui = Image.new("RGB", (96, 54), (11, 15, 23))  # the scanner's dark theme, with rows of text
+    d = ImageDraw.Draw(dark_ui)
+    for y in range(4, 54, 6):
+        d.rectangle([2, y, 90, y + 2], fill=(34, 197, 94) if y % 12 else (239, 68, 68))
+    assert not obs_control.frame_is_black(_png_data_uri(dark_ui))
+    assert not obs_control.frame_is_black("")
+
+
+def test_capture_target_escaping():
+    import obs_control
+    assert obs_control.capture_target("LIVE BOT - Scanner", "chrome.exe") == "LIVE BOT - Scanner:Chrome_WidgetWin_1:chrome.exe"
+    assert obs_control.capture_target("a:b#c", "x.exe").startswith("a#3Ab#22c:")
+
+
+class CaptureClient:
+    def __init__(self, items, inputs=()):
+        self.items, self.inputs, self.sent = items, list(inputs), []
+
+    def send(self, name, data=None, raw=False):
+        self.sent.append((name, data))
+        if name == "GetSceneItemList":
+            return {"sceneItems": self.items}
+        if name == "GetInputList":
+            return {"inputs": [{"inputName": n} for n in self.inputs]}
+        if name in ("CreateInput", "CreateSceneItem"):
+            return {"sceneItemId": 7}
+        if name == "GetVideoSettings":
+            return {"baseWidth": 1920, "baseHeight": 1080}
+        return None
+
+
+def test_window_capture_is_repointed_or_created():
+    import obs_control
+    c = CaptureClient([{"sourceName": "Window Capture", "inputKind": "window_capture", "sceneItemId": 3,
+                        "sceneItemEnabled": False}])
+    obs_control.OBS(c).ensure_window_capture("Scanner", "LIVE BOT - Scanner", "chrome.exe")
+    settings = next(d for n, d in c.sent if n == "SetInputSettings")
+    assert settings["inputName"] == "Window Capture"
+    assert settings["inputSettings"]["window"] == "LIVE BOT - Scanner:Chrome_WidgetWin_1:chrome.exe"
+    assert settings["inputSettings"]["priority"] == 1 and settings["inputSettings"]["method"] == 2
+    assert ("SetSceneItemEnabled", {"sceneName": "Scanner", "sceneItemId": 3, "sceneItemEnabled": True}) in c.sent
+
+    c = CaptureClient([])  # scene without a capture: one is created and fitted to the canvas
+    obs_control.OBS(c).ensure_window_capture("Scanner", "LIVE BOT - Scanner", "chrome.exe")
+    names = [n for n, _ in c.sent]
+    assert "CreateInput" in names and "SetSceneItemTransform" in names
+
+
+def test_black_picture_escalation():
+    events = []
+
+    class Browser:
+        def restore(self): events.append("restore")
+        def close(self): events.append("close")
+        def run(self): events.append("reload")
+
+    class FakeOBS:
+        def ensure_window_capture(self, *a): events.append("repoint")
+
+    class Agent:
+        obs, scene, black = FakeOBS(), "Scanner", 0
+        def picture_black(self): return True
+
+    agent = Agent()
+    for _ in range(4):
+        live.LiveShow.check_picture(Browser(), agent)
+    assert events == ["repoint", "restore", "close", "reload"] and agent.black == 0
+    agent.picture_black = lambda: False
+    agent.black = 3
+    live.LiveShow.check_picture(Browser(), agent)
+    assert agent.black == 0

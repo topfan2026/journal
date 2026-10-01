@@ -114,6 +114,13 @@ def whole_words(text: str, negatable: bool = False) -> re.Pattern:
     return re.compile(rf"{no}(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
 
 
+def browser_exe() -> str:
+    """The executable name OBS sees for the bot's browser window."""
+    if env("BROWSER_PATH"):
+        return Path(env("BROWSER_PATH")).name
+    return "msedge.exe" if (env("BROWSER_CHANNEL", "chrome") or "").startswith("msedge") else "chrome.exe"
+
+
 def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
@@ -192,6 +199,7 @@ class ScannerSite:
     def __init__(self, profile_dir: Path):
         self.profile_dir = profile_dir
         self._pw = self.context = self.page = None
+        self.want_fullscreen = False
 
     # ------------------------------------------------------------------ browser
     def open(self) -> "ScannerSite":
@@ -314,8 +322,24 @@ class ScannerSite:
         elif verb == "hide":
             page.evaluate(HIDE_JS, arg)
 
+    def restore_window(self) -> bool:
+        """Un-minimise the bot's window (a minimised window streams as black). True if it was minimised."""
+        cdp = self.context.new_cdp_session(self.page)
+        try:
+            window = cdp.send("Browser.getWindowForTarget")
+            if window["bounds"].get("windowState") != "minimized":
+                return False
+            cdp.send("Browser.setWindowBounds", {"windowId": window["windowId"], "bounds": {"windowState": "normal"}})
+            if self.want_fullscreen:
+                cdp.send("Browser.setWindowBounds",
+                         {"windowId": window["windowId"], "bounds": {"windowState": "fullscreen"}})
+            return True
+        finally:
+            cdp.detach()
+
     def browser_fullscreen(self, on: bool = True) -> None:
         """Make the Chrome window itself full screen (like F11) - no site button needed."""
+        self.want_fullscreen = on
         cdp = self.context.new_cdp_session(self.page)
         try:
             window = cdp.send("Browser.getWindowForTarget")["windowId"]

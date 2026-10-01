@@ -73,6 +73,31 @@ def kill() -> None:
         subprocess.run(["pkill", "-x", name.removesuffix(".app")], capture_output=True)
 
 
+CAPTURE_INPUT = "Scanner window"
+PRIORITY_TITLE_MUST_MATCH = 1  # OBS win-capture: 0 = same type, 1 = title must match, 2 = same executable
+METHOD_WINDOWS_10 = 2          # 0 = automatic, 1 = BitBlt, 2 = Windows 10 (1903 and up)
+CHROMIUM_WINDOW_CLASS = "Chrome_WidgetWin_1"
+
+
+def capture_target(title: str, exe: str, window_class: str = CHROMIUM_WINDOW_CLASS) -> str:
+    """OBS's "title:class:exe" window id, with its escaping of '#' and ':'."""
+    esc = lambda text: text.replace("#", "#22").replace(":", "#3A")  # noqa: E731
+    return f"{esc(title)}:{esc(window_class)}:{esc(exe)}"
+
+
+def frame_is_black(data_uri: str) -> bool:
+    import base64
+    import io
+
+    from PIL import Image, ImageStat
+    if "," not in data_uri:
+        return False
+    with Image.open(io.BytesIO(base64.b64decode(data_uri.split(",", 1)[1]))) as img:
+        stat = ImageStat.Stat(img.convert("L"))
+    # A dark-themed scanner still has text and coloured rows; a missing capture is one flat colour.
+    return stat.mean[0] < 8 and stat.stddev[0] < 2
+
+
 WS_HELP = ("in OBS open Tools > WebSocket Server Settings, tick 'Enable WebSocket server', "
            "port {port}, click Apply")
 
@@ -117,6 +142,52 @@ class OBS:
         if scene not in scenes:
             raise OBSError(f"OBS has no scene named {scene!r} (have: {', '.join(sorted(scenes))})")
         self.req("SetCurrentProgramScene", {"sceneName": scene})
+
+    def current_scene(self) -> str:
+        v = self.req("GetCurrentProgramScene")
+        return v.get("sceneName") or v.get("currentProgramSceneName") or ""
+
+    def ensure_window_capture(self, scene: str, title: str, exe: str) -> str:
+        """Point the scene's Window Capture at the bot's browser window (or add one).
+
+        "Window title must match" plus the bot's fixed window title means OBS can never fall back
+        to another window, e.g. the same site open in your everyday browser on another monitor.
+        """
+        settings = {"window": capture_target(title, exe), "priority": PRIORITY_TITLE_MUST_MATCH,
+                    "method": METHOD_WINDOWS_10, "cursor": False}
+        items = self.req("GetSceneItemList", {"sceneName": scene}).get("sceneItems", [])
+        captures = [i for i in items if i.get("inputKind") == "window_capture"]
+        for item in captures:
+            self.req("SetInputSettings", {"inputName": item["sourceName"], "inputSettings": settings, "overlay": True})
+            if not item.get("sceneItemEnabled", True):
+                self.req("SetSceneItemEnabled", {"sceneName": scene, "sceneItemId": item["sceneItemId"],
+                                                 "sceneItemEnabled": True})
+        for item in items:
+            if item.get("inputKind") == "monitor_capture" and item.get("sceneItemEnabled", True):
+                log.warning("obs: scene %r also has a Display Capture (%s) - it shows a whole monitor",
+                            scene, item["sourceName"])
+        if captures:
+            return captures[0]["sourceName"]
+        inputs = {i["inputName"] for i in self.req("GetInputList").get("inputs", [])}
+        if CAPTURE_INPUT in inputs:
+            self.req("SetInputSettings", {"inputName": CAPTURE_INPUT, "inputSettings": settings, "overlay": True})
+            item_id = self.req("CreateSceneItem", {"sceneName": scene, "sourceName": CAPTURE_INPUT}).get("sceneItemId")
+        else:
+            item_id = self.req("CreateInput", {"sceneName": scene, "inputName": CAPTURE_INPUT,
+                                               "inputKind": "window_capture", "inputSettings": settings,
+                                               "sceneItemEnabled": True}).get("sceneItemId")
+        if item_id is not None:  # fit it to the canvas
+            video = self.req("GetVideoSettings")
+            self.req("SetSceneItemTransform", {"sceneName": scene, "sceneItemId": item_id, "sceneItemTransform": {
+                "positionX": 0, "positionY": 0, "boundsType": "OBS_BOUNDS_SCALE_INNER",
+                "boundsWidth": video.get("baseWidth", 1920), "boundsHeight": video.get("baseHeight", 1080)}})
+        log.info("obs: added Window Capture %r to scene %r", CAPTURE_INPUT, scene)
+        return CAPTURE_INPUT
+
+    def picture_is_black(self, scene: str) -> bool:
+        """True when what OBS sends is a flat black frame (the window isn't being captured)."""
+        data = self.req("GetSourceScreenshot", {"sourceName": scene, "imageFormat": "png", "imageWidth": 96})
+        return frame_is_black(data.get("imageData", ""))
 
     def set_stream(self, server: str, key: str) -> None:
         self.req("SetStreamServiceSettings", {"streamServiceType": "rtmp_custom",

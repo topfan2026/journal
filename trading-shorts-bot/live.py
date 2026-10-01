@@ -182,6 +182,15 @@ class BrowserAgent:
     def healthy(self) -> bool:
         return self.site.alive()
 
+    def restore(self) -> bool:
+        try:
+            if self.site.alive() and self.site.restore_window():
+                log.warning("[watchdog] the scanner window was minimised - restored it")
+                return True
+        except Exception as e:
+            log.debug("restore failed: %s", e)
+        return False
+
     def wait(self, seconds: float) -> None:
         if self.site.alive():
             self.site.wait(seconds)
@@ -248,6 +257,15 @@ class OBSAgent:
 
     def __init__(self):
         self.obs = None
+        self.scene = ""
+        self.black = 0
+
+    def picture_black(self) -> bool:
+        try:
+            return bool(self.obs and self.scene and self.obs.picture_is_black(self.scene))
+        except Exception as e:
+            log.debug("black-frame check failed: %s", e)
+            return False
 
     def run(self, stream: dict | None, start_streaming: bool) -> dict:
         from obs_control import OBS
@@ -256,6 +274,11 @@ class OBSAgent:
         scene = env("OBS_SCENE")
         if scene:
             self.obs.set_scene(scene)
+        self.scene = scene or self.obs.current_scene()
+        if env_bool("OBS_AUTO_CAPTURE", True) and self.scene:
+            from scanner_site import browser_exe, window_title
+            source = self.obs.ensure_window_capture(self.scene, window_title(), browser_exe())
+            log.info("[obs] %r captures the window %r", source, window_title())
         if stream:
             self.obs.set_stream(stream["server"], stream["key"])
         if start_streaming:
@@ -354,8 +377,29 @@ class LiveShow:
                 if streaming and not obs.healthy():
                     log.warning("[watchdog] OBS stopped streaming - restarting")
                     obs.recover()
+                if streaming:
+                    browser.restore()
+                    self.check_picture(browser, obs)
             except Exception as e:  # keep trying until the end time
                 log.error("[watchdog] recovery failed: %s", e)
+
+    @staticmethod
+    def check_picture(browser, obs) -> None:
+        """A black stream means OBS lost the window: re-point the capture, then reload the scanner."""
+        if not obs.picture_black():
+            obs.black = 0
+            return
+        obs.black += 1
+        log.warning("[watchdog] the stream picture is black (%d check(s) in a row)", obs.black)
+        if obs.black == 2:
+            from scanner_site import browser_exe, window_title
+            obs.obs.ensure_window_capture(obs.scene, window_title(), browser_exe())
+            browser.restore()
+        elif obs.black >= 4:
+            log.warning("[watchdog] still black - reopening the scanner")
+            browser.close()
+            browser.run()
+            obs.black = 0
 
     def shutdown(self, youtube, yt_result, obs, browser) -> None:
         if obs.obs is not None and not self.settings.dry_run:
