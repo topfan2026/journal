@@ -67,6 +67,13 @@ TABS: dict[str, list[Field]] = {
         Field("OBS_WS_PASSWORD", "WebSocket password", "secret", help="OBS: Tools > WebSocket Server Settings"),
         Field("OBS_SCENE", "Scene to stream", help="the scene with a Window Capture of the scanner browser"),
     ],
+    "TikTok": [
+        Field("TIKTOK_STUDIO", "Use TikTok LIVE Studio", "bool", default="false",
+              help="opens it at go-live time; you click Go LIVE in it"),
+        Field("TIKTOK_STUDIO_PATH", "TikTok LIVE Studio program", "file", help="use Find it, or Browse to the .exe"),
+        Field("TIKTOK_STUDIO_REMIND", "Pop up a reminder to press Go LIVE", "bool", default="true"),
+        Field("TIKTOK_STUDIO_CLOSE_AT_END", "Close it at the end time (ends the TikTok LIVE)", "bool", default="true"),
+    ],
     "YouTube": [
         Field("YOUTUBE_LIVE_API", "Create a new titled broadcast every day", "bool", default="true",
               help="off = stream with the key already set in OBS"),
@@ -200,24 +207,35 @@ class App:
                            command=lambda: self.spawn("live.py", "site-login")).pack(side="left", padx=(0, 6))
                 ttk.Button(row_btns, text="Test scanner steps",
                            command=lambda: self.spawn("live.py", "site-test")).pack(side="left")
+            if tab == "TikTok":
+                row_btns = ttk.Frame(frame)
+                row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
+                ttk.Button(row_btns, text="Find it", command=self.find_tiktok).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Open LIVE Studio now", command=self.open_tiktok).pack(side="left")
+                ttk.Label(frame, foreground="#777", wraplength=560, justify="left", text=(
+                    "Set up LIVE Studio once: Add source > Window capture > 'LIVE BOT - Scanner - Google Chrome', "
+                    "landscape view, your title. TikTok has no remote control for LIVE Studio, so pressing "
+                    "Go LIVE stays a click for you; the bot opens it, reminds you and closes it at the end.")
+                          ).grid(row=extra + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
             if tab == "YouTube":
                 ttk.Button(frame, text="Connect YouTube account…",
                            command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
 
-        bar = ttk.Frame(root, padding=(10, 4))
-        bar.pack(fill="x")
-        buttons = [
-            ("Save", self.save),
-            ("▶ Start scheduler", self.start_daemon),
-            ("■ Stop scheduler", self.stop_daemon),
-            ("Go live now", lambda: self.spawn("live.py", "run")),
-            ("End today's stream", lambda: self.spawn("live.py", "stop")),
-            ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
-            ("Check setup", lambda: self.spawn("live.py", "check")),
-            ("Update bot", self.update_bot),
+        rows = [
+            [("Save", self.save),
+             ("▶ Start scheduler", self.start_daemon),
+             ("■ Stop scheduler", self.stop_daemon),
+             ("Go live now", lambda: self.spawn("live.py", "run")),
+             ("End today's stream", lambda: self.spawn("live.py", "stop"))],
+            [("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
+             ("Check setup", lambda: self.spawn("live.py", "check")),
+             ("Update bot", self.update_bot)],
         ]
-        for text, cmd in buttons:
-            ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=(0, 6))
+        for buttons in rows:
+            bar = ttk.Frame(root, padding=(10, 2))
+            bar.pack(fill="x")
+            for text, cmd in buttons:
+                ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=(0, 6))
 
         auto = ttk.Frame(root, padding=(10, 0))
         auto.pack(fill="x")
@@ -405,6 +423,20 @@ class App:
                                 encoding="utf-8", errors="replace")
         self.write("$ update\n")
         threading.Thread(target=self._reader, args=(proc,), daemon=True).start()
+
+    def find_tiktok(self):
+        import tiktok_studio
+        hit = tiktok_studio.find_exe()
+        if hit:
+            self.vars["TIKTOK_STUDIO_PATH"].set(str(hit))
+            self.write(f"found TikTok LIVE Studio: {hit} (click Save)\n")
+        else:
+            self.write("couldn't find TikTok LIVE Studio - use Browse… and pick its .exe\n")
+
+    def open_tiktok(self):
+        import tiktok_studio
+        if self.save():
+            self.write(tiktok_studio.open_studio() + "\n")
 
     def connect_youtube(self):
         if self.save():

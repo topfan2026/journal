@@ -650,3 +650,32 @@ def test_running_scheduler_picks_up_new_time(settings, monkeypatch, tmp_path):
     monkeypatch.setattr(live.log, "info", lambda msg, *a: seen.append(msg % a if a else msg))
     assert live.daemon(settings) == 0
     assert any("schedule changed - next stream Fri 2026-10-02 06:15" in m for m in seen)
+
+
+def test_tiktok_studio_find_and_messages(tmp_path, monkeypatch):
+    import tiktok_studio
+    app_dir = tmp_path / "Programs" / "TikTok LIVE Studio"
+    app_dir.mkdir(parents=True)
+    (app_dir / "Uninstall TikTok LIVE Studio.exe").write_text("")
+    (app_dir / "TikTok LIVE Studio.exe").write_text("")
+    for key in ("ProgramFiles", "ProgramFiles(x86)", "APPDATA"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert tiktok_studio.find_exe() == app_dir / "TikTok LIVE Studio.exe"
+    monkeypatch.delenv("TIKTOK_STUDIO_PATH", raising=False)
+    assert "not set" in tiktok_studio.open_studio()
+    monkeypatch.setenv("TIKTOK_STUDIO_PATH", str(tmp_path / "missing.exe"))
+    assert "not found" in tiktok_studio.open_studio()
+
+
+def test_tiktok_off_by_default(monkeypatch):
+    import tiktok_studio
+    monkeypatch.delenv("TIKTOK_STUDIO", raising=False)
+    opened = []
+    monkeypatch.setattr(tiktok_studio, "open_studio", lambda: opened.append(1) or "x")
+    live.LiveShow.start_tiktok()
+    assert opened == []
+    monkeypatch.setenv("TIKTOK_STUDIO", "true")
+    monkeypatch.setattr(tiktok_studio, "remind", lambda *a: opened.append("remind"))
+    live.LiveShow.start_tiktok()
+    assert opened == [1, "remind"]

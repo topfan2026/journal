@@ -383,6 +383,8 @@ class LiveShow:
                 log.info("=== LIVE: %s", yt_result["url"])
             elif not s.dry_run:
                 log.info("=== LIVE (stream key set in OBS)")
+            if not s.dry_run:
+                self.start_tiktok()
             self.youtube, self.yt_result = youtube, yt_result
             self.watch(end, gateway, browser, obs, streaming=not s.dry_run)
             return 0
@@ -445,7 +447,24 @@ class LiveShow:
             browser.run()
             obs.black = 0
 
+    @staticmethod
+    def start_tiktok() -> None:
+        import tiktok_studio
+        if not tiktok_studio.enabled():
+            return
+        try:
+            log.info("[tiktok] %s", tiktok_studio.open_studio())
+            tiktok_studio.remind()
+        except Exception as e:
+            log.warning("[tiktok] couldn't open TikTok LIVE Studio: %s", e)
+
     def shutdown(self, youtube, yt_result, obs, browser) -> None:
+        import tiktok_studio
+        if tiktok_studio.enabled() and env_bool("TIKTOK_STUDIO_CLOSE_AT_END", True) and not self.settings.dry_run:
+            try:
+                log.info("[tiktok] %s", tiktok_studio.close_studio())
+            except Exception as e:
+                log.warning("[tiktok] close failed: %s", e)
         if obs.obs is not None and not self.settings.dry_run:
             try:
                 obs.obs.stop()
