@@ -407,3 +407,29 @@ def test_if_end_blocks():
 def test_fullscreen_step_parses_without_argument():
     import scanner_site
     assert scanner_site.parse_steps("fullscreen\nfullscreen off\n") == [("fullscreen", "on"), ("fullscreen", "off")]
+
+
+def test_gateway_login_retries_until_ready(monkeypatch):
+    attempts = []
+
+    class FakeIB:
+        def managedAccounts(self):
+            return ["DU617561"]
+
+        def disconnect(self):
+            attempts.append("disconnect")
+
+    def connect():
+        attempts.append("try")
+        if attempts.count("try") < 3:
+            raise ConnectionRefusedError("refused")
+        return FakeIB()
+    monkeypatch.setattr(ibkr, "connect", connect)
+    assert live.GatewayAgent.verify_login(sleep=lambda s: None) == ["DU617561"]
+    assert attempts == ["try", "try", "try", "disconnect"]
+
+    def live_account():
+        raise ibkr.IBKRError("not a paper account")
+    monkeypatch.setattr(ibkr, "connect", live_account)
+    with pytest.raises(ibkr.IBKRError, match="paper"):
+        live.GatewayAgent.verify_login(sleep=lambda s: None)  # never retried

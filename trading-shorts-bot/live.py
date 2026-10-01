@@ -134,11 +134,29 @@ class GatewayAgent:
         root = live_root(self.settings)
         result = ibkr.start_gateway(root / ".ibc" / "config.ini", self.settings.logs / "ibgateway.log")
         if env_bool("IB_VERIFY_LOGIN", True):
-            ib = ibkr.connect()  # also refuses a non-paper account
-            result["accounts"] = ib.managedAccounts()
-            ib.disconnect()
+            result["accounts"] = self.verify_login()
         log.info("[gateway] ready on port %s %s", result["port"], result.get("accounts", ""))
         return result
+
+    @staticmethod
+    def verify_login(sleep=time.sleep) -> list[str]:
+        """Gateway opens its port before it accepts API logins, so retry for IB_LOGIN_WAIT seconds."""
+        deadline = time.monotonic() + env_float("IB_LOGIN_WAIT", 90)
+        while True:
+            try:
+                ib = ibkr.connect()  # also refuses a non-paper account
+            except ibkr.IBKRError:
+                raise
+            except Exception as e:
+                if time.monotonic() > deadline:
+                    raise ibkr.IBKRError(f"IB Gateway is running but won't accept the API login: {e}") from e
+                log.info("[gateway] not accepting connections yet - retrying")
+                sleep(5)
+                continue
+            try:
+                return ib.managedAccounts()
+            finally:
+                ib.disconnect()
 
     def healthy(self) -> bool:
         return ibkr.port_open(ibkr.host(), ibkr.port())
