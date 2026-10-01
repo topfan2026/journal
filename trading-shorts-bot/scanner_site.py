@@ -200,11 +200,15 @@ class ScannerSite:
         # Exact label first; then the words anywhere, but as whole words, so "Connect"
         # never matches "Connection" and "Connected" never matches "Disconnected".
         words = whole_words(text, negatable=waiting)
-        if field:  # a text box, found by its label, placeholder or accessible name
+        if field:  # a text box, found by its label, placeholder or accessible name ...
+            after = "xpath=following::*[self::input or self::textarea][1]"
             return [scope.get_by_label(text, exact=True), scope.get_by_placeholder(text, exact=True),
                     scope.get_by_role("textbox", name=text, exact=True),
                     scope.get_by_label(words), scope.get_by_placeholder(words),
-                    scope.get_by_role("textbox", name=words)]
+                    scope.get_by_role("textbox", name=words),
+                    # ... or the first box after that text, for pages whose label isn't linked to the box
+                    scope.get_by_text(text, exact=True).locator(after),
+                    scope.get_by_text(words).locator(after)]
         return ([scope.get_by_role(r, name=text, exact=True) for r in CLICK_ROLES]
                 + [scope.get_by_text(text, exact=True)]
                 + [scope.get_by_role(r, name=words) for r in CLICK_ROLES]
