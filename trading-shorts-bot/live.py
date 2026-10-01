@@ -84,7 +84,10 @@ def end_time(start: datetime) -> datetime:
     if end:
         h, m = parse_hhmm(end)
         e = start.replace(hour=h, minute=m, second=0, microsecond=0)
-        return e if e > start else e + timedelta(days=1)
+        if e > start:
+            return e
+        # Started at or after today's end time (e.g. "Go live now" in the afternoon): run for
+        # LIVE_DURATION_MIN instead of until tomorrow's end time, which would overlap the next show.
     return start + timedelta(minutes=env_float("LIVE_DURATION_MIN", 240))
 
 

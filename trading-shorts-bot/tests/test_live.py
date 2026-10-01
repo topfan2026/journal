@@ -581,3 +581,12 @@ def test_os_window_title_has_browser_suffix(monkeypatch):
     assert scanner_site.os_window_title() == "LIVE BOT - Scanner - Google Chrome"
     monkeypatch.setenv("BROWSER_CHANNEL", "msedge")
     assert scanner_site.os_window_title() == "LIVE BOT - Scanner - Microsoft​ Edge"
+
+
+def test_late_manual_start_does_not_run_until_tomorrow(monkeypatch):
+    monkeypatch.setenv("LIVE_END", "10:00")
+    monkeypatch.setenv("LIVE_DURATION_MIN", "60")
+    late = datetime(2026, 10, 1, 10, 25, tzinfo=UTC)
+    assert live.end_time(late) == late + timedelta(minutes=60)
+    early = datetime(2026, 10, 1, 6, 0, tzinfo=UTC)
+    assert live.end_time(early) == early.replace(hour=10)
