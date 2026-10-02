@@ -717,3 +717,13 @@ def test_leftover_bot_browser_is_closed(tmp_path):
     assert scanner_site.close_stale_browsers(profile) == 1
     assert proc.wait(timeout=5) != 0
     assert scanner_site.close_stale_browsers(profile) == 0
+
+
+def test_power_flags(monkeypatch):
+    import power
+    seen = []
+    monkeypatch.setattr(power, "_set", lambda flags: seen.append(flags) or True)
+    power.stay_awake()
+    power.stay_awake(screen_on=True)
+    power.allow_screen_off()
+    assert seen == [0x80000001, 0x80000003, 0x80000001]

@@ -363,6 +363,8 @@ class LiveShow:
         log.info("=== live show %s -> %s%s", self.start.strftime("%Y-%m-%d %H:%M"), end.strftime("%H:%M"),
                  " | DRY RUN" if s.dry_run else "")
 
+        import power
+        power.stay_awake(screen_on=True)  # a sleeping PC or a blanked/locked screen breaks the stream
         gateway, browser, obs = GatewayAgent(s), BrowserAgent(s), OBSAgent()
         youtube = YouTubeAgent(s, session, self.start) if self.use_api and not s.dry_run else None
         yt_result: dict = {}
@@ -398,6 +400,7 @@ class LiveShow:
             return 1
         finally:
             self.shutdown(youtube, yt_result, obs, browser)
+            power.allow_screen_off()
 
     def watch(self, end: datetime, gateway, browser, obs, streaming: bool) -> None:
         every = env_float("LIVE_CHECK_SECONDS", 30)
@@ -522,6 +525,9 @@ def request_scheduler_stop(settings: Settings) -> None:
 
 def daemon(settings: Settings) -> int:
     lock = single_instance()  # noqa: F841  (released when the process exits)
+    import power
+    if power.stay_awake():
+        log.info("keeping this PC awake while the scheduler runs (idle sleep is paused)")
     stop_file = scheduler_stop_file(settings)
     stop_file.unlink(missing_ok=True)
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
