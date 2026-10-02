@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -115,6 +116,25 @@ def whole_words(text: str, negatable: bool = False) -> re.Pattern:
     return re.compile(rf"{no}(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
 
 
+def close_app(exe: Path | None, proc=None) -> None:
+    """Close the desktop scanner app (the one we started, or any running copy of it)."""
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(10)
+        except Exception:
+            proc.kill()
+    if exe is None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/IM", exe.name], capture_output=True)
+    else:
+        out = subprocess.run(["pgrep", "-f", "--", str(exe)], capture_output=True, text=True).stdout
+        for pid in out.split():
+            if pid.isdigit() and int(pid) not in (os.getpid(), os.getppid()):
+                subprocess.run(["kill", "-9", pid], capture_output=True)
+
+
 def close_stale_browsers(profile_dir: Path) -> int:
     """Kill browser processes started with --user-data-dir=<profile_dir> (the bot's own profile)."""
     profile = str(profile_dir.resolve())
@@ -136,8 +156,21 @@ def close_stale_browsers(profile_dir: Path) -> int:
         return 0
 
 
+def use_app() -> bool:
+    """SCANNER_SOURCE=app streams the desktop scanner app; anything else the website."""
+    return (env("SCANNER_SOURCE", "website") or "website").lower() == "app"
+
+
+def app_path() -> Path | None:
+    """SCANNER_APP: the desktop scanner app (Electron, e.g. Farhad AI Scanner.exe), used when SCANNER_SOURCE=app."""
+    path = env("SCANNER_APP")
+    return Path(path).expanduser() if (path and use_app()) else None
+
+
 def browser_exe() -> str:
     """The executable name OBS sees for the bot's browser window."""
+    if app_path():
+        return app_path().name
     if env("BROWSER_PATH"):
         return Path(env("BROWSER_PATH")).name
     return "msedge.exe" if (env("BROWSER_CHANNEL", "chrome") or "").startswith("msedge") else "chrome.exe"
@@ -151,6 +184,8 @@ def os_window_title() -> str:
     e.g. "LIVE BOT - Scanner - Google Chrome". Read from the real window when possible."""
     title = window_title()
     found = _find_window_title(title) if os.name == "nt" and title else None
+    if app_path():  # an app window's title is just its page title, no browser name added
+        return found or title
     return found or title + TITLE_SUFFIXES.get(browser_exe().lower(), " - Chromium")
 
 
@@ -184,8 +219,26 @@ def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
 
-def steps_file() -> Path:
-    return Path(env("SCANNER_STEPS_FILE", str(BOT_DIR / "scanner_steps.txt"))).expanduser()
+def steps_file(app: bool | None = None) -> Path:
+    """Website steps and desktop-app steps are kept in separate files, so switching keeps both."""
+    app = use_app() if app is None else app
+    default = BOT_DIR / ("scanner_steps_app.txt" if app else "scanner_steps.txt")
+    key = "SCANNER_APP_STEPS_FILE" if app else "SCANNER_STEPS_FILE"
+    return Path(env(key, str(default))).expanduser()
+
+
+DEFAULT_APP_STEPS = """\
+# What the bot does in the desktop scanner app every morning, top to bottom.
+# Make the words after click / wait match the app's buttons exactly.
+wait 5
+click Connect
+wait Connected
+click Scan
+"""
+
+
+def default_steps(app: bool | None = None) -> str:
+    return DEFAULT_APP_STEPS if (use_app() if app is None else app) else DEFAULT_STEPS
 
 
 def parse_steps(text: str) -> list[tuple[str, str]]:
@@ -262,6 +315,8 @@ class ScannerSite:
 
     # ------------------------------------------------------------------ browser
     def open(self) -> "ScannerSite":
+        if app_path():
+            return self.open_app()
         from playwright.sync_api import sync_playwright
 
         self.profile_dir.mkdir(parents=True, exist_ok=True)
@@ -304,18 +359,71 @@ class ScannerSite:
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
         return self
 
+    def open_app(self) -> "ScannerSite":
+        """Start the desktop app with Chromium's remote-debugging port and drive its window."""
+        import urllib.request
+
+        from playwright.sync_api import sync_playwright
+
+        exe = app_path()
+        if not exe.exists():
+            raise SiteError(f"scanner app not found: {exe}")
+        port = int(env_float("SCANNER_APP_PORT", 9333))
+        close_app(exe)  # it must start with the debugging port, so a copy that's already open is closed
+        args = [str(exe), f"--remote-debugging-port={port}", *shlex.split(env("SCANNER_APP_ARGS", "") or "",
+                                                                            posix=os.name != "nt")]
+        kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+        self._app = subprocess.Popen(args, cwd=str(exe.parent), stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, **kwargs)
+        endpoint = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + env_float("SCANNER_APP_START_TIMEOUT", 60)
+        while True:
+            try:
+                urllib.request.urlopen(endpoint + "/json/version", timeout=2).read()
+                break
+            except Exception:
+                if self._app.poll() is not None:
+                    raise SiteError(f"{exe.name} exited right after starting (code {self._app.returncode})")
+                if time.monotonic() > deadline:
+                    raise SiteError(f"{exe.name} started but its window never became controllable on port {port}")
+                time.sleep(1)
+        self._pw = sync_playwright().start()
+        browser = self._pw.chromium.connect_over_cdp(endpoint)
+        self.context = browser.contexts[0] if browser.contexts else browser.new_context()
+        deadline = time.monotonic() + 30
+        while not [p for p in self.context.pages if not p.url.startswith("devtools://")]:
+            if time.monotonic() > deadline:
+                raise SiteError(f"{exe.name} opened no window")
+            time.sleep(0.5)
+        self.page = next(p for p in self.context.pages if not p.url.startswith("devtools://"))
+        for page in self.context.pages:
+            self._keep_dialogs(page)
+        self.context.on("page", self._keep_dialogs)
+        title = window_title()
+        if title:  # for reloads, and right now for the window that is already open
+            self.context.add_init_script(TITLE_JS.replace("__TITLE__", json.dumps(title)))
+            self.page.evaluate(TITLE_JS.replace("__TITLE__", json.dumps(title)))
+        log.info("browser: driving %s (%s)", exe.name, self.page.url)
+        return self
+
     @staticmethod
     def _keep_dialogs(page) -> None:
         page.on("dialog", lambda dialog: log.info("browser: site asks %r - waiting for you to answer it",
                                                   dialog.message[:80]))
 
     def close(self) -> None:
-        for closer in (getattr(self.context, "close", None), getattr(self._pw, "stop", None)):
+        app = getattr(self, "_app", None)
+        closers = [getattr(self._pw, "stop", None)] if app else \
+            [getattr(self.context, "close", None), getattr(self._pw, "stop", None)]
+        for closer in closers:
             try:
                 if closer:
                     closer()
             except Exception:
                 pass
+        if app is not None:
+            close_app(app_path(), proc=app)
+            self._app = None
         self._pw = self.context = self.page = None
 
     @property

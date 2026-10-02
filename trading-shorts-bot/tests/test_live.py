@@ -727,3 +727,19 @@ def test_power_flags(monkeypatch):
     power.stay_awake(screen_on=True)
     power.allow_screen_off()
     assert seen == [0x80000001, 0x80000003, 0x80000001]
+
+
+def test_website_and_app_have_separate_steps(tmp_path, monkeypatch):
+    import scanner_site
+    monkeypatch.delenv("SCANNER_STEPS_FILE", raising=False)
+    monkeypatch.delenv("SCANNER_APP_STEPS_FILE", raising=False)
+    monkeypatch.setenv("SCANNER_APP", str(tmp_path / "Farhad AI Scanner.exe"))
+    monkeypatch.setenv("SCANNER_SOURCE", "website")
+    assert scanner_site.steps_file().name == "scanner_steps.txt" and scanner_site.app_path() is None
+    assert "aialgopro" in scanner_site.default_steps()
+    monkeypatch.setenv("SCANNER_SOURCE", "app")
+    assert scanner_site.steps_file().name == "scanner_steps_app.txt"
+    assert scanner_site.app_path().name == "Farhad AI Scanner.exe"
+    assert scanner_site.browser_exe() == "Farhad AI Scanner.exe"
+    assert scanner_site.os_window_title() == "LIVE BOT - Scanner"  # Electron: no browser suffix
+    assert scanner_site.parse_steps(scanner_site.default_steps())[1] == ("click", "Connect")

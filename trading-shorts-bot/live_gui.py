@@ -53,7 +53,10 @@ TABS: dict[str, list[Field]] = {
         Field("IB_READ_ONLY", "Read-only API (blocks orders)", "bool", default="false"),
     ],
     "Scanner site": [
+        Field("SCANNER_SOURCE", "Scanner to stream", "choice", default="website", choices=["website", "app"],
+              help="website = the site below in Chrome; app = the desktop app below. Each has its own steps."),
         Field("SCANNER_URL", "Site address", default="https://aialgopro.com"),
+        Field("SCANNER_APP", "Desktop app", "file", help="e.g. Farhad AI Scanner.exe"),
         Field("SCANNER_SECRET", "Local connector secret", "secret",
               help="used by the steps as {SCANNER_SECRET}"),
         Field("SCANNER_WARMUP_SECONDS", "Warm-up seconds", default="20"),
@@ -149,10 +152,10 @@ def validate(values: dict[str, str]) -> list[str]:
     return problems
 
 
-def read_steps() -> str:
-    from scanner_site import DEFAULT_STEPS, steps_file
-    path = steps_file()
-    return path.read_text(encoding="utf-8") if path.exists() else DEFAULT_STEPS
+def read_steps(app: bool | None = None) -> str:
+    from scanner_site import default_steps, steps_file
+    path = steps_file(app)
+    return path.read_text(encoding="utf-8") if path.exists() else default_steps(app)
 
 
 BROWSER_COMMANDS = {"run", "daemon", "check", "site-test", "site-login"}
@@ -196,11 +199,13 @@ class App:
                 self._field(frame, row, f, values.get(f.key, ""))
             extra = len(fields)
             if tab == "Scanner site":
-                ttk.Label(frame, text="Steps on the site\n(top to bottom)").grid(
+                ttk.Label(frame, text="Steps\n(top to bottom)").grid(
                     row=extra, column=0, sticky="nw", padx=(0, 10), pady=(10, 0))
                 self.steps = tk.Text(frame, height=11, wrap="none", font=("Consolas", 10), undo=True)
                 self.steps.grid(row=extra, column=1, sticky="ew", pady=(10, 0))
-                self.steps.insert("1.0", read_steps())
+                self.steps_for_app = values.get("SCANNER_SOURCE") == "app"
+                self.steps.insert("1.0", read_steps(self.steps_for_app))
+                self.vars["SCANNER_SOURCE"].trace_add("write", lambda *_: self.switch_steps())
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra + 1, column=1, sticky="w", pady=(8, 0))
                 ttk.Button(row_btns, text="Sign in to scanner site (once)…",
@@ -312,7 +317,7 @@ class App:
             from scanner_site import parse_steps, steps_file
             text = self.steps.get("1.0", "end").rstrip() + "\n"
             parse_steps(text)
-            steps_file().write_text(text, encoding="utf-8")
+            steps_file(self.steps_for_app).write_text(text, encoding="utf-8")
         except Exception as e:
             messagebox.showerror("Scanner steps", str(e))
             return False
@@ -423,6 +428,24 @@ class App:
                                 encoding="utf-8", errors="replace")
         self.write("$ update\n")
         threading.Thread(target=self._reader, args=(proc,), daemon=True).start()
+
+    def switch_steps(self):
+        """Website <-> desktop app: keep the box's current steps, show the other source's steps."""
+        from tkinter import messagebox
+        from scanner_site import parse_steps, steps_file
+        app = self.vars["SCANNER_SOURCE"].get() == "app"
+        if app == self.steps_for_app:
+            return
+        text = self.steps.get("1.0", "end").rstrip() + "\n"
+        try:
+            parse_steps(text)
+            steps_file(self.steps_for_app).write_text(text, encoding="utf-8")
+        except Exception as e:
+            messagebox.showwarning("Scanner steps", f"The current steps weren't saved: {e}")
+        self.steps_for_app = app
+        self.steps.delete("1.0", "end")
+        self.steps.insert("1.0", read_steps(app))
+        self.write(f"showing the {'desktop app' if app else 'website'} steps\n")
 
     def find_tiktok(self):
         import tiktok_studio

@@ -309,6 +309,11 @@ code: no AI tokens, and the same thing happens every morning.
    `{SCANNER_SECRET}` is filled in from the **Local connector secret** setting, so the secret never
    appears in the steps or the logs. Also: `key F11` (press a key), `click css=<selector>`.
 
+   **Website or desktop app.** *Scanner to stream* switches between the website (Chrome) and a
+   desktop scanner app such as **Farhad AI Scanner** (an Electron app). In app mode the bot starts
+   the app with a remote-control port and drives its window with the same kind of steps
+   (`click Connect`, `wait Connected`, `click Scan`); each mode keeps its own step list.
+
 6. Click **Check setup**, then **Test (no stream)**. That runs everything except going live.
 7. Tick **Start the scheduler automatically when I log in**. On Windows this puts a small launcher in
    your Startup folder (no admin rights needed) and starts the scheduler right away in a minimised

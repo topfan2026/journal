@@ -5,3 +5,4 @@ __pycache__/
 venv/
 .pytest_cache/
 scanner_steps.txt
+scanner_steps_app.txt
