@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -112,6 +113,27 @@ def whole_words(text: str, negatable: bool = False) -> re.Pattern:
     """Match *text* as whole words; with negatable, not when it reads "not <text>" (e.g. Not connected)."""
     no = r"(?<!not )(?<!no )" if negatable else ""
     return re.compile(rf"{no}(?<![\w]){re.escape(text.strip())}(?![\w])", re.IGNORECASE)
+
+
+def close_stale_browsers(profile_dir: Path) -> int:
+    """Kill browser processes started with --user-data-dir=<profile_dir> (the bot's own profile)."""
+    profile = str(profile_dir.resolve())
+    try:
+        if os.name == "nt":
+            ps = ("$p = '" + profile.replace("'", "''") + "'; "
+                  "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' OR Name='msedge.exe'\" | "
+                  "Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains($p.ToLower()) } | "
+                  "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }")
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
+                                 timeout=30).stdout
+        else:
+            out = subprocess.run(["pgrep", "-f", "--", f"--user-data-dir={profile}"], capture_output=True, text=True).stdout
+            for pid in out.split():
+                subprocess.run(["kill", "-9", pid], capture_output=True)
+        return len([line for line in out.split() if line.strip().isdigit()])
+    except Exception as e:  # never block the morning run on this
+        log.debug("stale browser check failed: %s", e)
+        return 0
 
 
 def browser_exe() -> str:
@@ -243,6 +265,12 @@ class ScannerSite:
         from playwright.sync_api import sync_playwright
 
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        # A bot browser left over from an earlier run holds this profile; Chrome would then hand
+        # over to it and exit at once. Only browsers using the bot's own profile are closed.
+        closed = close_stale_browsers(self.profile_dir)
+        if closed:
+            log.warning("browser: closed %d leftover bot browser process(es) using its profile", closed)
+            time.sleep(2)
         self._pw = sync_playwright().start()
         kwargs = dict(
             headless=False, no_viewport=True, args=["--start-maximized"],

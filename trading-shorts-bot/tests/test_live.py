@@ -679,3 +679,41 @@ def test_tiktok_off_by_default(monkeypatch):
     monkeypatch.setattr(tiktok_studio, "remind", lambda *a: opened.append("remind"))
     live.LiveShow.start_tiktok()
     assert opened == [1, "remind"]
+
+
+def test_obs_waits_while_loading():
+    from obsws_python.error import OBSSDKRequestError
+    import obs_control
+
+    class Loading:
+        def __init__(self): self.calls = 0
+        def send(self, name, data=None, raw=False):
+            self.calls += 1
+            if self.calls < 3:
+                raise OBSSDKRequestError(name, 207, "OBS is not ready to perform the request.")
+            return {"scenes": [{"sceneName": "Scanner"}]}
+    c = Loading()
+    assert obs_control.OBS(c).req("GetSceneList", sleep=lambda s: None)["scenes"]
+    assert c.calls == 3
+
+    class Broken:
+        def send(self, name, data=None, raw=False):
+            raise OBSSDKRequestError(name, 600, "No source")
+    with pytest.raises(OBSSDKRequestError):
+        obs_control.OBS(Broken()).req("GetSceneList", sleep=lambda s: None)
+
+
+def test_leftover_bot_browser_is_closed(tmp_path):
+    import subprocess as sp
+    import time as _t
+    import scanner_site
+    if os.name == "nt":
+        pytest.skip("posix process check")
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    proc = sp.Popen(["sleep", "30", f"--user-data-dir={profile.resolve()}"]) if False else \
+        sp.Popen([sys.executable, "-c", "import time; time.sleep(30)", f"--user-data-dir={profile.resolve()}"])
+    _t.sleep(0.3)
+    assert scanner_site.close_stale_browsers(profile) == 1
+    assert proc.wait(timeout=5) != 0
+    assert scanner_site.close_stale_browsers(profile) == 0

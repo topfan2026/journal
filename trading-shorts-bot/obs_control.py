@@ -73,6 +73,7 @@ def kill() -> None:
         subprocess.run(["pkill", "-x", name.removesuffix(".app")], capture_output=True)
 
 
+NOT_READY = 207                # obs-websocket: "OBS is not ready to perform the request" (still starting)
 CAPTURE_INPUT = "Scanner window"
 PRIORITY_TITLE_MUST_MATCH = 1  # OBS win-capture: 0 = same type, 1 = title must match, 2 = same executable
 METHOD_WINDOWS_10 = 2          # 0 = automatic, 1 = BitBlt, 2 = Windows 10 (1903 and up)
@@ -130,8 +131,16 @@ class OBS:
                 last = e
         raise OBSError(f"OBS started but its WebSocket never answered ({last}) - " + WS_HELP.format(port=port))
 
-    def req(self, name: str, data: dict | None = None) -> dict:
-        return self.c.send(name, data, raw=True) or {}
+    def req(self, name: str, data: dict | None = None, sleep=time.sleep) -> dict:
+        """Send a request; while OBS is still loading (code 207 "not ready") wait and retry."""
+        deadline = time.monotonic() + env_float("OBS_READY_TIMEOUT", 45)
+        while True:
+            try:
+                return self.c.send(name, data, raw=True) or {}
+            except Exception as e:
+                if getattr(e, "code", None) != NOT_READY or time.monotonic() > deadline:
+                    raise
+                sleep(1)
 
     def version(self) -> str:
         v = self.req("GetVersion")
