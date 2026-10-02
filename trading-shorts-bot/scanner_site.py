@@ -12,6 +12,7 @@ popup are tried before the rest of the page:
     goto https://aialgopro.com      open an address (or a path like /scanner)
     click Connection                click the button / link / tab / menu item with that text
     click css=#fullscreen           ... or the element matching a CSS selector
+    click at 16,14                  ... or a spot in the window (x,y from its top-left), for icon buttons
     type Local connector secret = {SCANNER_SECRET}
                                     fill a text box ({NAME} = a value saved in .env)
     select IBKR Gateway             pick that option in a drop-down list
@@ -50,6 +51,7 @@ DEFAULT_URL = "https://aialgopro.com"
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
 VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "hide", "if", "end")
+AT_POINT = re.compile(r"^at\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)  # "click at 16,14"
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
 DEFAULT_STEPS = """\
@@ -228,12 +230,21 @@ def steps_file(app: bool | None = None) -> Path:
 
 
 DEFAULT_APP_STEPS = """\
-# What the bot does in the desktop scanner app every morning, top to bottom.
-# Make the words after click / wait match the app's buttons exactly.
+# What the bot does in the desktop scanner app (Farhad AI Scanner) every morning, top to bottom.
+# Make the words after click / select / wait match the app exactly.
 wait 5
-click Connect
-wait Connected
-click Scan
+click Terminal / Connection
+if DISCONNECTED
+  select IB Gateway
+  select Paper
+  type Port = 4002
+  click Connect
+  wait Connected
+end
+click Scanner Layout
+wait 10
+click Clean view
+click at 16,14
 """
 
 
@@ -472,6 +483,10 @@ class ScannerSite:
         page = self.page
         if verb == "goto":
             page.goto(urljoin(self.url, arg), wait_until="domcontentloaded", timeout=self.timeout * 1000)
+        elif verb == "click" and AT_POINT.match(arg):
+            # A button with no words (an icon): click a spot in the window, counted from its top-left corner.
+            x, y = (int(v) for v in AT_POINT.match(arg).groups())
+            page.mouse.click(x, y)
         elif verb in ("click", "select"):
             # An option inside a normal drop-down list can't be clicked, it has to be selected.
             box = page.locator("select").filter(has=page.locator("option", has_text=arg))

@@ -742,4 +742,14 @@ def test_website_and_app_have_separate_steps(tmp_path, monkeypatch):
     assert scanner_site.app_path().name == "Farhad AI Scanner.exe"
     assert scanner_site.browser_exe() == "Farhad AI Scanner.exe"
     assert scanner_site.os_window_title() == "LIVE BOT - Scanner"  # Electron: no browser suffix
-    assert scanner_site.parse_steps(scanner_site.default_steps())[1] == ("click", "Connect")
+    assert scanner_site.parse_steps(scanner_site.default_steps())[1] == ("click", "Terminal / Connection")
+
+
+def test_click_at_point_and_app_default_steps():
+    import scanner_site
+    assert scanner_site.AT_POINT.match("at 16,14").groups() == ("16", "14")
+    assert scanner_site.AT_POINT.match("AT 5 , 9")
+    assert not scanner_site.AT_POINT.match("Attach file")
+    steps = scanner_site.parse_steps(scanner_site.DEFAULT_APP_STEPS)
+    assert ("click", "at 16,14") in steps and ("if", "DISCONNECTED") in steps
+    assert ("type", "Port = 4002") in steps and ("click", "Clean view") in steps
