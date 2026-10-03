@@ -766,3 +766,23 @@ def test_ifnot_block_parses_and_skips():
 def test_maximize_step_parses():
     import scanner_site
     assert scanner_site.parse_steps("maximize\n") == [("maximize", "window")]
+
+
+def test_missed_show_catch_up(settings, monkeypatch):
+    monkeypatch.setenv("LIVE_START", "06:15")
+    monkeypatch.setenv("LIVE_END", "10:00")
+    monkeypatch.setenv("LIVE_DAYS", "mon-fri")
+    monkeypatch.delenv("LIVE_CATCH_UP", raising=False)
+    mon = lambda h, m: datetime(2026, 10, 5, h, m, tzinfo=UTC)  # a Monday
+    assert live.missed_show(settings, mon(6, 0)) is None             # not started yet: normal schedule
+    assert live.missed_show(settings, mon(6, 40)) == mon(6, 15)      # PC came on late: go now
+    assert live.missed_show(settings, mon(9, 55)) is None            # under 10 min left: skip
+    assert live.missed_show(settings, mon(10, 30)) is None           # after the end time
+    assert live.missed_show(settings, datetime(2026, 10, 4, 7, 0, tzinfo=UTC)) is None  # Sunday
+    day = live.Session(live.live_root(settings) / "2026-10-05")
+    day.set("finished", {"ok": False})
+    assert live.missed_show(settings, mon(6, 40)) == mon(6, 15)      # a failed run is retried
+    day.set("finished", {"ok": True})
+    assert live.missed_show(settings, mon(7, 0)) is None             # already streamed today
+    monkeypatch.setenv("LIVE_CATCH_UP", "false")
+    assert live.missed_show(settings, mon(6, 40)) is None

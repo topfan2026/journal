@@ -320,6 +320,9 @@ code: no AI tokens, and the same thing happens every morning.
    window; on macOS/Linux it registers a launchd agent / systemd user service. Or click **Start scheduler** to run it
    while the app is open.
 
+If the PC was off and you log in after the start time but before the end time, the scheduler
+starts that day's stream straight away (once per day; `LIVE_CATCH_UP=false` turns this off).
+
 The PC must be on and logged in at 6:00 (a locked screen is fine; sleep is not), because OBS and the
 browser need your desktop. On Windows, set Power Options > Sleep to *Never*, or use a wake timer.
 

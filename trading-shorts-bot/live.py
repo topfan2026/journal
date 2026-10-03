@@ -512,6 +512,34 @@ def scheduler_running() -> bool:
         sock.close()
 
 
+def missed_show(settings: Settings, now: datetime) -> datetime | None:
+    """Today's start time if it has passed, its end time hasn't, and today's show hasn't run yet.
+
+    Lets a PC that was off (or a scheduler started late) still go live today instead of waiting
+    for tomorrow. LIVE_CATCH_UP=false turns this off.
+    """
+    if not env_bool("LIVE_CATCH_UP", True):
+        return None
+    h, m = parse_hhmm(env("LIVE_START", "06:00") or "06:00")
+    start = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if start.weekday() not in live_days() or not (start <= now):
+        return None
+    end = env("LIVE_END")
+    if end:  # catch up only inside today's window (end_time() would give a late run a full duration)
+        eh, em = parse_hhmm(end)
+        window_end = start.replace(hour=eh, minute=em)
+        if window_end <= start:
+            window_end += timedelta(days=1)
+    else:
+        window_end = start + timedelta(minutes=env_float("LIVE_DURATION_MIN", 240))
+    if now >= window_end - timedelta(minutes=env_float("LIVE_CATCH_UP_MIN_LEFT", 10)):
+        return None
+    state = Session(live_root(settings) / start.strftime("%Y-%m-%d")).state
+    if "stop" in state or state.get("finished", {}).get("ok"):
+        return None  # already streamed today, or you stopped it
+    return start
+
+
 def scheduler_stop_file(settings: Settings) -> Path:
     return live_root(settings) / "STOP_SCHEDULER"
 
@@ -534,7 +562,13 @@ def daemon(settings: Settings) -> int:
              env("LIVE_TZ") or "this computer's time zone")
     def plan() -> tuple[datetime, timedelta]:
         reload_env()  # the schedule may have been changed in the app since the scheduler started
-        return next_start(datetime.now(tz())), timedelta(minutes=env_float("LIVE_PREP_MIN", 10))
+        lead = timedelta(minutes=env_float("LIVE_PREP_MIN", 10))
+        late = missed_show(settings, datetime.now(tz()))
+        if late is not None:
+            log.info("today's stream (%s) hasn't run yet and it's still before the end time - starting it now",
+                     late.strftime("%H:%M"))
+            return late, lead
+        return next_start(datetime.now(tz())), lead
 
     while True:
         start, lead = plan()
@@ -571,6 +605,7 @@ def daemon(settings: Settings) -> int:
 def stop(settings: Settings) -> int:
     session = Session(live_root(settings) / datetime.now(tz()).strftime("%Y-%m-%d"))
     session.stop_file.touch()
+    session.set("stop", {"by": "you"})  # so a scheduler starting later today doesn't restart it
     log.info("asked today's stream to stop (%s)", session.stop_file)
     return 0
 
