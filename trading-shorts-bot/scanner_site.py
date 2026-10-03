@@ -21,6 +21,9 @@ popup are tried before the rest of the page:
     key F11                         press a key
     fullscreen                      make the browser window full screen (like F11)
     hide A row is tinted            hide text on the page that starts with these words
+    ifnot Terminal / Connection     only when that is NOT on screen (e.g. a closed menu), do the steps
+      click Scanner                 up to the matching 'end'
+    end
     if Gateway Paper                only when that shows up (within 10s), do the steps
       ...                           up to the matching 'end'; otherwise skip them
     end
@@ -50,7 +53,7 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "hide", "if", "end")
+VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "hide", "if", "ifnot", "end")
 AT_POINT = re.compile(r"^at\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)  # "click at 16,14"
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
@@ -233,6 +236,9 @@ DEFAULT_APP_STEPS = """\
 # Farhad AI Scanner, every morning (IB Gateway is already logged in to paper by the bot).
 # Make the words after click / select / wait match the app exactly.
 wait 5
+ifnot Terminal / Connection
+  click Scanner
+end
 click Terminal / Connection
 if DISCONNECTED
   select IB Gateway
@@ -274,7 +280,7 @@ def parse_steps(text: str) -> list[tuple[str, str]]:
             continue
         if not arg:
             raise SiteError(f"scanner steps line {n}: {verb!r} needs something after it")
-        if verb == "if":
+        if verb in ("if", "ifnot"):
             depth += 1
         if verb == "type" and "=" not in arg:
             raise SiteError(f"scanner steps line {n}: write it as  type <box name> = <text>")
@@ -288,7 +294,7 @@ def skip_block(steps: list[tuple[str, str]], i: int) -> int:
     """Index of the 'end' that closes the 'if' at index *i*."""
     depth = 0
     for j in range(i, len(steps)):
-        if steps[j][0] == "if":
+        if steps[j][0] in ("if", "ifnot"):
             depth += 1
         elif steps[j][0] == "end":
             depth -= 1
@@ -459,15 +465,22 @@ class ScannerSite:
                         log.info("browser: %r isn't on screen - skipping to its 'end'", arg)
                         idx = skip_block(steps, i - 1) + 1
                     continue
+                if verb == "ifnot":
+                    if self.exists(arg, seconds=env_float("SCANNER_IFNOT_SECONDS", 3)):
+                        log.info("browser: %r is already on screen - skipping to its 'end'", arg)
+                        idx = skip_block(steps, i - 1) + 1
+                    continue
                 try:
                     self.step(verb, arg)
                 except Exception as e:
                     if "has been closed" in str(e):
                         raise SiteError(f"scanner step {i} stopped: the browser window was closed "
                                         "(by hand, or by another test started at the same time)") from e
+                    seen = self.visible_labels()
                     raise SiteError(f"scanner step {i} '{shown(verb, arg)}' failed on {self.page.url}: "
                                     f"{str(e).splitlines()[0]}. Check the wording in the Scanner site tab; "
-                                    "if the site wants you to sign in, use 'Sign in to scanner site'.") from e
+                                    "if the site wants you to sign in, use 'Sign in to scanner site'."
+                                    + (f"\n  On screen right now: {seen}" if seen else "")) from e
             clicked = f"{len(steps)} steps"
         else:
             clicked = self._legacy_start()
@@ -573,10 +586,29 @@ class ScannerSite:
                 + [scope.get_by_role(r, name=words) for r in CLICK_ROLES]
                 + [scope.get_by_text(words)])
 
-    def exists(self, text: str) -> bool:
-        """For 'if': does *text* show up within SCANNER_IF_SECONDS (default 10)?"""
+    def visible_labels(self, limit: int = 40) -> str:
+        """The words on visible buttons, links, tabs and menu items - to show what a step could click."""
         try:
-            self.find(text, waiting=True, timeout=env_float("SCANNER_IF_SECONDS", 10))
+            labels = self.page.evaluate("""(limit) => {
+              const sel = 'button, a, [role=button], [role=tab], [role=menuitem], [role=link], li, summary, option, label';
+              const out = [];
+              for (const el of document.querySelectorAll(sel)) {
+                const r = el.getBoundingClientRect();
+                if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+                const t = (el.innerText || el.getAttribute('aria-label') || el.title || '').trim().replace(/\\s+/g, ' ');
+                if (t && t.length <= 40 && !out.includes(t)) out.push(t);
+                if (out.length >= limit) break;
+              }
+              return out;
+            }""", limit)
+            return " | ".join(labels)
+        except Exception:
+            return ""
+
+    def exists(self, text: str, seconds: float | None = None) -> bool:
+        """For 'if'/'ifnot': does *text* show up within *seconds* (default SCANNER_IF_SECONDS = 10)?"""
+        try:
+            self.find(text, waiting=True, timeout=env_float("SCANNER_IF_SECONDS", 10) if seconds is None else seconds)
             return True
         except SiteError:
             return False
