@@ -342,6 +342,21 @@ with what each did, live stats (viewers, privacy, auto-fixes, last health check)
 the broadcast in YouTube Studio counts too). Closing OBS or the scanner by hand is treated as a
 crash and fixed, so use the button to end a stream.
 
+### AI paper trader (step 1: rules, paper orders, stream panel)
+
+Tick **AI Trader > Run the AI paper trader during the stream**. When the stream goes live the bot
+starts `paper_trader.py`, which watches IBKR's top-gainer scanner and trades two long setups on
+1-minute bars: **opening-range breakout** and **VWAP reclaim** (`trading_rules.py`). It refuses a
+live account. Limits are code, not suggestions: `TRADER_MAX_TRADES` (5), stop after
+`TRADER_MAX_LOSSES` (3), size from `TRADER_RISK_USD`, no entries after `TRADER_LAST_ENTRY_ET`,
+everything closed at `TRADER_FLATTEN_ET` or when the stream ends. Mode **watch** only announces
+setups; **paper** places bracket orders (entry, stop, target) on the paper account.
+
+OBS gets a browser source **AI Trader panel** (http://127.0.0.1:47622/, bottom-right; move it in
+OBS and it stays put) with the position, day stats and the trader's commentary. The paper account
+needs market data (share your live account's data with the paper account in Client Portal).
+Next steps: free Windows voice, chat answers, AI-written commentary.
+
 ### Commands (same as the buttons)
 
 ```bash

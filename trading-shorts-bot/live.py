@@ -486,6 +486,7 @@ class LiveShow:
                 session.set("live", {"state": "live", "url": ""})
                 log.info("=== LIVE (stream key set in OBS)")
             if not s.dry_run:
+                self.start_trader(obs)
                 live_status.step(self.root, "live", "ok", "on air")
                 self.status(phase="live", message="Live", live_since=datetime.now(timezone.utc).isoformat())
                 self.start_tiktok()
@@ -545,6 +546,10 @@ class LiveShow:
                     log.warning("[watchdog] scanner window closed - reopening")
                     self.fixed("scanner", "reopened")
                     browser.run()
+                if streaming and not self.trader_alive():
+                    log.warning("[watchdog] the AI paper trader stopped - restarting it")
+                    self.fixed("live", "restarted the AI trader")
+                    self.start_trader()
                 if streaming and not obs.healthy():
                     log.warning("[watchdog] OBS stopped streaming - restarting")
                     self.fixed("obs", "restarted streaming")
@@ -597,6 +602,47 @@ class LiveShow:
             browser.run()
             obs.black = 0
 
+    # ------------------------------------------------------------------ AI paper trader
+    trader = None
+
+    def trader_stop_file(self) -> Path:
+        return self.session.folder / "TRADER_STOP"
+
+    def start_trader(self, obs=None) -> None:
+        """TRADER_ENABLED=true: run paper_trader.py next to the stream and show its panel in OBS."""
+        if not env_bool("TRADER_ENABLED", False):
+            return
+        import subprocess
+        import paper_trader
+        stop = self.trader_stop_file()
+        stop.unlink(missing_ok=True)
+        args = [sys.executable, str(Path(__file__).resolve().parent / "paper_trader.py"), "run",
+                "--stop-file", str(stop)]
+        flags = 0x08000000 if os.name == "nt" else 0  # no console window
+        self.trader = subprocess.Popen(args, cwd=str(Path(__file__).resolve().parent), creationflags=flags,
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log.info("[trader] AI paper trader started (%s mode)", env("TRADER_MODE", "paper"))
+        if obs is not None and obs.obs is not None and env_bool("TRADER_OVERLAY", True):
+            try:
+                obs.obs.ensure_browser_source(obs.scene, "AI Trader panel", paper_trader.overlay_url())
+            except Exception as e:
+                log.warning("[trader] couldn't add the overlay to OBS: %s", e)
+
+    def trader_alive(self) -> bool:
+        """Running, or finished normally for the day (exit 0) - only a crash needs a restart."""
+        return self.trader is None or self.trader.poll() in (None, 0)
+
+    def stop_trader(self) -> None:
+        if self.trader is None:
+            return
+        self.trader_stop_file().touch()  # it closes any open paper position, recaps, then exits
+        try:
+            self.trader.wait(env_float("TRADER_STOP_WAIT", 90))
+        except Exception:
+            self.trader.kill()
+        log.info("[trader] AI paper trader stopped")
+        self.trader = None
+
     @staticmethod
     def start_tiktok() -> None:
         import tiktok_studio
@@ -610,6 +656,7 @@ class LiveShow:
 
     def shutdown(self, youtube, yt_result, obs, browser) -> None:
         import tiktok_studio
+        self.stop_trader()
         if tiktok_studio.enabled() and env_bool("TIKTOK_STUDIO_CLOSE_AT_END", True) and not self.settings.dry_run:
             try:
                 log.info("[tiktok] %s", tiktok_studio.close_studio())

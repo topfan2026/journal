@@ -193,6 +193,41 @@ class OBS:
         log.info("obs: added Window Capture %r to scene %r", CAPTURE_INPUT, scene)
         return CAPTURE_INPUT
 
+    def ensure_browser_source(self, scene: str, name: str, url: str, width: int = 560, height: int = 380,
+                              margin: int = 24) -> str:
+        """A browser source (e.g. the AI trader panel) in the bottom-right corner, on top of the capture."""
+        settings = {"url": url, "width": width, "height": height, "reroute_audio": False,
+                    "css": "body { background-color: rgba(0,0,0,0); margin: 0; overflow: hidden; }"}
+        inputs = {i["inputName"] for i in self.req("GetInputList").get("inputs", [])}
+        items = self.req("GetSceneItemList", {"sceneName": scene}).get("sceneItems", [])
+        item = next((i for i in items if i.get("sourceName") == name), None)
+        if name in inputs:
+            self.req("SetInputSettings", {"inputName": name, "inputSettings": settings, "overlay": True})
+            if item is None:
+                item_id = self.req("CreateSceneItem", {"sceneName": scene, "sourceName": name}).get("sceneItemId")
+            else:
+                item_id = item["sceneItemId"]
+                self.req("SetSceneItemEnabled", {"sceneName": scene, "sceneItemId": item_id, "sceneItemEnabled": True})
+                return name  # keep wherever you moved it in OBS
+        else:
+            item_id = self.req("CreateInput", {"sceneName": scene, "inputName": name, "inputKind": "browser_source",
+                                               "inputSettings": settings, "sceneItemEnabled": True}).get("sceneItemId")
+        if item_id is not None:
+            video = self.req("GetVideoSettings")
+            self.req("SetSceneItemTransform", {"sceneName": scene, "sceneItemId": item_id, "sceneItemTransform": {
+                "positionX": video.get("baseWidth", 1920) - width - margin,
+                "positionY": video.get("baseHeight", 1080) - height - margin}})
+            self.req("SetSceneItemIndex", {"sceneName": scene, "sceneItemId": item_id, "sceneItemIndex": len(items)})
+        log.info("obs: added %r (%s) to scene %r", name, url, scene)
+        return name
+
+    def hide_source(self, scene: str, name: str) -> None:
+        items = self.req("GetSceneItemList", {"sceneName": scene}).get("sceneItems", [])
+        for i in items:
+            if i.get("sourceName") == name:
+                self.req("SetSceneItemEnabled", {"sceneName": scene, "sceneItemId": i["sceneItemId"],
+                                                 "sceneItemEnabled": False})
+
     def picture_is_black(self, scene: str) -> bool:
         """True when what OBS sends is a flat black frame (the window isn't being captured)."""
         data = self.req("GetSourceScreenshot", {"sourceName": scene, "imageFormat": "png", "imageWidth": 96})

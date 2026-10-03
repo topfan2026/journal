@@ -92,6 +92,25 @@ TABS: dict[str, list[Field]] = {
         Field("TIKTOK_STUDIO_REMIND", "Pop up a reminder to press Go LIVE", "bool", default="true"),
         Field("TIKTOK_STUDIO_CLOSE_AT_END", "Close it at the end time (ends the TikTok LIVE)", "bool", default="true"),
     ],
+    "AI Trader": [
+        Field("TRADER_ENABLED", "Run the AI paper trader during the stream", "bool", default="false",
+              help="trades scanner movers on the PAPER account and shows a panel on the stream"),
+        Field("TRADER_MODE", "Mode", "choice", default="watch", choices=["watch", "paper"],
+              help="watch = signals and commentary only; paper = places paper orders"),
+        Field("TRADER_STRATEGIES", "Strategies", default="orb,vwap", help="orb = opening-range breakout, "
+              "vwap = VWAP reclaim"),
+        Field("TRADER_MAX_TRADES", "Max trades per day", default="5"),
+        Field("TRADER_MAX_LOSSES", "Stop for the day after this many losses", default="3"),
+        Field("TRADER_RISK_USD", "Risk per trade ($, entry to stop)", default="100"),
+        Field("TRADER_MAX_POSITION_USD", "Max position size ($)", default="10000"),
+        Field("TRADER_ORB_MIN", "Opening range (minutes)", default="5"),
+        Field("TRADER_TARGET_R", "Target (x risk)", default="2"),
+        Field("TRADER_LAST_ENTRY_ET", "No new trades after (New York time)", default="11:30"),
+        Field("TRADER_FLATTEN_ET", "Close everything at (New York time)", default="15:50"),
+        Field("TRADER_MIN_PRICE", "Scanner: min price", default="2"),
+        Field("TRADER_MAX_PRICE", "Scanner: max price", default="200"),
+        Field("TRADER_OVERLAY", "Show the trader panel on the stream", "bool", default="true"),
+    ],
     "YouTube": [
         Field("YOUTUBE_LIVE_API", "Create a new titled broadcast every day", "bool", default="true",
               help="off = stream with the key already set in OBS"),
@@ -155,7 +174,7 @@ def validate(values: dict[str, str]) -> list[str]:
     if not days_to_list(values.get("LIVE_DAYS", "")):
         problems.append("pick at least one day")
     for key in ("LIVE_DURATION_MIN", "LIVE_PREP_MIN", "IB_PORT", "OBS_WS_PORT", "SCANNER_WARMUP_SECONDS",
-                "LIVE_PUBLIC_AFTER_MIN"):
+                "LIVE_PUBLIC_AFTER_MIN", "TRADER_MAX_TRADES", "TRADER_MAX_LOSSES", "TRADER_ORB_MIN"):
         if values.get(key) and not values[key].strip().isdigit():
             problems.append(f"{key}: must be a whole number")
     if values.get("LIVE_TZ"):
@@ -241,6 +260,18 @@ class App:
                     "landscape view, your title. TikTok has no remote control for LIVE Studio, so pressing "
                     "Go LIVE stays a click for you; the bot opens it, reminds you and closes it at the end.")
                           ).grid(row=extra + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
+            if tab == "AI Trader":
+                row_btns = ttk.Frame(frame)
+                row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
+                ttk.Button(row_btns, text="Run it now (watch only)",
+                           command=lambda: self.spawn("paper_trader.py", "run", "--watch")).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Preview the stream panel", command=self.preview_panel).pack(side="left")
+                ttk.Label(frame, foreground=DARK["muted"], wraplength=600, justify="left", text=(
+                    "Paper account only (it refuses a live account). Hard limits are enforced in code: max trades "
+                    "per day, stop after N losses, no new trades after the cut-off, everything closed at the "
+                    "flatten time or when the stream ends. Start with Mode = watch to see its calls before "
+                    "letting it place paper orders.")).grid(row=extra + 1, column=0, columnspan=2, sticky="w",
+                                                          pady=(10, 0))
             if tab == "YouTube":
                 ttk.Button(frame, text="Connect YouTube account…",
                            command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -782,6 +813,16 @@ class App:
         self.steps.delete("1.0", "end")
         self.steps.insert("1.0", read_steps(app))
         self.write(f"showing the {'desktop app' if app else 'website'} steps\n")
+
+    def preview_panel(self):
+        import socket
+        import webbrowser
+        import paper_trader
+        with socket.socket() as sock:
+            busy = sock.connect_ex(("127.0.0.1", int(paper_trader.overlay_url().rsplit(":", 1)[1].strip("/")))) == 0
+        if not busy:
+            self.spawn("paper_trader.py", "overlay")
+        self.root.after(1500, lambda: webbrowser.open(paper_trader.overlay_url()))
 
     def find_tiktok(self):
         import tiktok_studio
