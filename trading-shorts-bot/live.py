@@ -733,7 +733,7 @@ def daemon(settings: Settings) -> int:
             power.stay_awake()  # renewed after every wake from sleep
             if stop_file.exists():
                 return stopped()
-            time.sleep(min(30, max(1, (start - lead - datetime.now(tz())).total_seconds())))
+            time.sleep(min(5, max(1, (start - lead - datetime.now(tz())).total_seconds())))
             try:
                 new_start, new_lead = plan()
             except ConfigError as e:

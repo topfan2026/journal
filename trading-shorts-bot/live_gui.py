@@ -430,7 +430,9 @@ class App:
         self.b_title.configure(text=title)
         self.b_sub.configure(text=sub)
         self.b_clock.configure(text=clock)
-        self.sched_btn.configure(text="■ Stop scheduler" if running else "▶ Start scheduler")
+        if datetime.now().timestamp() >= getattr(self, "_button_hold_until", 0):
+            self.sched_btn.configure(text="■ Stop scheduler" if running and not self._stopping()
+                                     else "▶ Start scheduler")
         self._pipe_states = {}
 
         self._set_row("scheduler", "ok" if running else "failed",
@@ -494,9 +496,38 @@ class App:
         webbrowser.open(getattr(self, "current_url", "") or "https://studio.youtube.com")
 
     def toggle_scheduler(self):
+        from tkinter import messagebox
         import live
         running = (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running()
-        self.stop_daemon() if running else self.start_daemon()
+        if running and not self._stopping():
+            if not messagebox.askyesno(
+                    "Stop the scheduler?",
+                    "Stop the scheduler?\n\nNothing will start by itself until you click Start scheduler again "
+                    "(it also ends a stream that is live now)."):
+                return
+            self.stop_daemon()
+            self._hold_button("Stopping…")
+        else:
+            self.start_daemon()
+            self._hold_button("Starting…")
+
+    def _hold_button(self, text: str, seconds: int = 6) -> None:
+        """Show what's happening and ignore double clicks while the scheduler starts or stops."""
+        self.sched_btn.configure(text=text, state="disabled")
+        self._button_hold_until = datetime.now().timestamp() + seconds
+
+        def release():
+            self.sched_btn.configure(state="normal")
+        self.root.after(seconds * 1000, release)
+
+    def _stopping(self) -> bool:
+        """A scheduler that was asked to stop but hasn't exited yet."""
+        import live
+        from config import Settings
+        try:
+            return live.scheduler_stop_file(Settings.load()).exists()
+        except Exception:
+            return False
 
     def go_live_now(self):
         from tkinter import messagebox
@@ -597,6 +628,23 @@ class App:
                 self.write(wake.uninstall() + "\n")
         except Exception as e:
             self.write(f"couldn't set up waking the PC: {e}\n")
+        self.write_next()
+
+    def write_next(self) -> None:
+        """After Save: say exactly when the next stream happens, and warn if nothing will start it."""
+        import live
+        try:
+            start = live.next_start(datetime.now(live.tz()))
+        except Exception as e:
+            self.write(f"schedule problem: {e}\n")
+            return
+        prep = float(self.vars["LIVE_PREP_MIN"].get() or 10)
+        from datetime import timedelta
+        self.write(f"next stream: {start.strftime('%A %d %b %H:%M')} (setup starts "
+                   f"{(start - timedelta(minutes=prep)).strftime('%H:%M')})\n")
+        running = (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running()
+        if not running or self._stopping():
+            self.write("!! the scheduler is OFF - nothing will start. Click ▶ Start scheduler on the Status tab.\n")
 
     def update_status(self):
         import live
@@ -658,6 +706,12 @@ class App:
 
     def start_daemon(self):
         import live
+        if self._stopping() and live.scheduler_running():
+            # The old one is still shutting down: start the new one as soon as it has gone.
+            self.write("waiting for the previous scheduler to finish stopping, then starting it again…\n")
+            self._restart_tries = 30
+            self.root.after(2000, self._start_when_free)
+            return
         if (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running():
             self.write("scheduler is already running\n")
             return
@@ -667,6 +721,14 @@ class App:
             return
         self.daemon = self.spawn("live.py", "daemon", daemon=True)
         self.update_status()
+
+    def _start_when_free(self):
+        import live
+        if live.scheduler_running() and self._restart_tries > 0:
+            self._restart_tries -= 1
+            self.root.after(2000, self._start_when_free)
+            return
+        self.start_daemon()
 
     def stop_daemon(self):
         if self.daemon is None or self.daemon.poll() is not None:
