@@ -502,13 +502,7 @@ class ScannerSite:
             x, y = (int(v) for v in AT_POINT.match(arg).groups())
             page.mouse.click(x, y)
         elif verb in ("click", "select"):
-            # An option inside a normal drop-down list can't be clicked, it has to be selected.
-            box = page.locator("select").filter(has=page.locator("option", has_text=arg))
-            if not arg.startswith("css=") and box.count() and box.first.is_visible():
-                label = box.first.locator("option", has_text=arg).first.inner_text().strip()
-                box.first.select_option(label=label)
-            else:
-                self.find(arg).click(timeout=self.timeout * 1000)
+            self.click_or_select(arg)
         elif verb == "type":
             label, _, text = arg.partition("=")
             self.replace_text(self.find(label.strip(), field=True), expand(text.strip()))
@@ -585,6 +579,41 @@ class ScannerSite:
                 + [scope.get_by_text(text, exact=True)]
                 + [scope.get_by_role(r, name=words) for r in CLICK_ROLES]
                 + [scope.get_by_text(words)])
+
+    def _select_option(self, text: str) -> bool:
+        """Pick *text* in any visible drop-down list that has it (exact option text first, then whole words)."""
+        boxes = self.page.locator("select")
+        words = whole_words(text)
+        for k in range(boxes.count()):
+            box = boxes.nth(k)
+            try:
+                if not box.is_visible() or not box.is_enabled():
+                    continue
+                labels = [t.strip() for t in box.locator("option").all_inner_texts()]
+            except Exception:
+                continue
+            match = next((t for t in labels if t.lower() == text.strip().lower()), None) \
+                or next((t for t in labels if words.search(t)), None)
+            if match:
+                box.select_option(label=match)
+                return True
+        return False
+
+    def click_or_select(self, arg: str) -> None:
+        """Click the thing labelled *arg*; if it is an option in a drop-down list, select it instead."""
+        if arg.startswith("css="):
+            self.find(arg).click(timeout=self.timeout * 1000)
+            return
+        deadline = time.monotonic() + self.timeout
+        while True:
+            if self._select_option(arg):  # an option can't be clicked, it has to be selected
+                return
+            try:
+                self.find(arg, timeout=1).click(timeout=self.timeout * 1000)
+                return
+            except SiteError:
+                if time.monotonic() > deadline:
+                    raise SiteError(f"nothing called {arg!r} appeared within {self.timeout:.0f}s")
 
     def visible_labels(self, limit: int = 40) -> str:
         """The words on visible buttons, links, tabs and menu items - to show what a step could click."""
