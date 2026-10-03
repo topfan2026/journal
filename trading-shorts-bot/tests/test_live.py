@@ -871,3 +871,23 @@ def test_status_file_and_history(tmp_path):
     day.set("finished", {"ok": True})
     rows = live_status.history(tmp_path)
     assert rows[0]["date"] == "2026-10-02" and rows[0]["result"] == "ended by you"
+
+
+def test_local_connector_starts_missing_helpers(monkeypatch):
+    import local_connector
+    started, up = [], {"port": False}
+    monkeypatch.setenv("SCANNER_CONNECTOR_CMD", "python connector.py")
+    monkeypatch.setenv("SCANNER_TUNNEL_CMD", "cloudflared tunnel run ibkr")
+    monkeypatch.setattr(local_connector, "connector_up", lambda: up["port"])
+    monkeypatch.setattr(local_connector, "tunnel_up", lambda cmd: False)
+
+    def start(cmd, title):
+        started.append(cmd)
+        up["port"] = True
+    monkeypatch.setattr(local_connector, "_start", start)
+    msg = local_connector.ensure(sleep=lambda s: None)
+    assert started == ["python connector.py", "cloudflared tunnel run ibkr"]
+    assert "connector started" in msg and "tunnel started" in msg
+    monkeypatch.delenv("SCANNER_CONNECTOR_CMD")
+    monkeypatch.delenv("SCANNER_TUNNEL_CMD")
+    assert not local_connector.enabled()

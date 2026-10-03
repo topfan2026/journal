@@ -182,6 +182,10 @@ class BrowserAgent:
         self.site = ScannerSite(live_root(settings) / "browser-profile")
 
     def run(self) -> dict:
+        import local_connector
+        from scanner_site import use_app
+        if not use_app() and local_connector.enabled():
+            log.info("[connector] %s", local_connector.ensure())
         if not self.site.alive():
             self.site.close()
             self.site.open()
@@ -192,6 +196,11 @@ class BrowserAgent:
         return result
 
     def healthy(self) -> bool:
+        import local_connector
+        from scanner_site import use_app
+        if not use_app() and local_connector.enabled() and not local_connector.healthy():
+            log.warning("[watchdog] the scanner connector / tunnel stopped")
+            return False  # the watchdog's browser.run() starts it again and reconnects the site
         return self.site.alive()
 
     def restore(self) -> bool:
