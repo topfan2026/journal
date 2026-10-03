@@ -786,3 +786,23 @@ def test_missed_show_catch_up(settings, monkeypatch):
     assert live.missed_show(settings, mon(7, 0)) is None             # already streamed today
     monkeypatch.setenv("LIVE_CATCH_UP", "false")
     assert live.missed_show(settings, mon(6, 40)) is None
+
+
+def test_wake_task_xml_and_days():
+    from datetime import datetime, timezone, timedelta
+    import wake
+    pt = timezone(timedelta(hours=-7))
+    start = datetime(2026, 10, 5, 6, 15, tzinfo=pt)  # Monday
+    at, days = wake.wake_plan(start.astimezone(), 10, {0, 1, 2, 3, 4})
+    assert at == start - timedelta(minutes=20)
+    xml = wake.task_xml(at, days)
+    assert "<WakeToRun>true</WakeToRun>" in xml
+    assert "<Monday />" in xml and "<Friday />" in xml and "<Saturday />" not in xml
+
+
+def test_wake_before_midnight_moves_days_back():
+    from datetime import datetime, timedelta
+    import wake
+    start = datetime(2026, 10, 5, 0, 5).astimezone()  # Monday 00:05 local
+    at, days = wake.wake_plan(start, 10, {0, 4})
+    assert at.weekday() == 6 and days == {6, 3}

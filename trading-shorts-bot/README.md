@@ -323,8 +323,12 @@ code: no AI tokens, and the same thing happens every morning.
 If the PC was off and you log in after the start time but before the end time, the scheduler
 starts that day's stream straight away (once per day; `LIVE_CATCH_UP=false` turns this off).
 
-The PC must be on and logged in at 6:00 (a locked screen is fine; sleep is not), because OBS and the
-browser need your desktop. On Windows, set Power Options > Sleep to *Never*, or use a wake timer.
+The PC must be on and logged in at stream time (a locked screen is fine), because OBS and the
+browser need your desktop. While the scheduler runs it pauses idle sleep. If the PC still sleeps
+at night, tick **Schedule > Wake the PC from sleep for the stream** (`LIVE_WAKE=true`, Windows): on
+Save the app creates a task "LiveStreamBot Wake" that wakes the PC 10 minutes before setup on
+stream days, and turns on *Allow wake timers*. It works from Sleep/Hibernate, not from Shut down.
+Laptops: keep it plugged in, and set *Lid close action* to *Do nothing* if the lid may be closed.
 
 ### Commands (same as the buttons)
 

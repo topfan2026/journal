@@ -41,6 +41,8 @@ TABS: dict[str, list[Field]] = {
         Field("LIVE_DURATION_MIN", "Duration (minutes)", default="240"),
         Field("LIVE_TZ", "Time zone", default="", help="empty = this computer's time zone, or e.g. America/New_York"),
         Field("LIVE_PREP_MIN", "Start setup this many minutes early", default="10"),
+        Field("LIVE_WAKE", "Wake the PC from sleep for the stream", "bool", default="false",
+              help="Windows: wakes a sleeping PC 10 minutes before setup (not one that was shut down)"),
     ],
     "IB Gateway": [
         Field("IB_USERNAME", "Paper username"),
@@ -327,7 +329,24 @@ class App:
                 save_env(key, value)
         self.update_status()
         self.write(f"saved settings to {ENV_FILE}\n")
+        self.sync_wake(values)
         return True
+
+    def sync_wake(self, values: dict[str, str]) -> None:
+        """Create, update or remove the Windows wake-from-sleep task to match the schedule."""
+        try:
+            import live
+            import wake
+            from config import reload_env
+            if values.get("LIVE_WAKE") == "true":
+                reload_env()
+                start = live.next_start(datetime.now(live.tz()))
+                prep = float(values.get("LIVE_PREP_MIN") or 10)
+                self.write(wake.install(start, prep, live.live_days()) + "\n")
+            elif wake.installed():
+                self.write(wake.uninstall() + "\n")
+        except Exception as e:
+            self.write(f"couldn't set up waking the PC: {e}\n")
 
     def update_status(self):
         import live
