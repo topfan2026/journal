@@ -9,6 +9,7 @@ import pytest
 import ibkr
 import live
 import live_gui
+import live_status
 import youtube_live
 from obs_control import OBS, OBSError
 
@@ -807,3 +808,66 @@ def test_wake_before_midnight_moves_days_back():
     start = datetime(2026, 10, 5, 0, 5).astimezone()  # Monday 00:05 local
     at, days = wake.wake_plan(start, 10, {0, 4})
     assert at.weekday() == 6 and days == {6, 3}
+
+
+def test_end_today_is_final_for_scheduled_retries(settings, fake_agents, monkeypatch):
+    """End today's stream must stop the scheduler's retries; Go live now still works afterwards."""
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_DURATION_MIN", "600")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    runs = []
+
+    def boom(self, r):
+        runs.append(1)
+        live.stop(settings)  # you press End today's stream while it is failing
+        raise youtube_live.LiveError("no signal")
+    monkeypatch.setattr(live.YouTubeAgent, "go_live", boom)
+    start = datetime.now(live.tz())
+    assert live.run_show(settings, start, armed=start - timedelta(minutes=10), sleep=lambda s: None) == 0
+    assert len(runs) == 1                                   # not retried
+    assert live.LiveShow(settings, start=start, armed=start - timedelta(minutes=10)).run() == 0
+    assert len(runs) == 1                                   # a scheduled re-run today won't start it
+    status = live_status.read(live.live_root(settings))
+    assert status["phase"] in ("ended", "failed")
+
+
+def test_retry_after_failure_without_stop(settings, fake_agents, monkeypatch):
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_DURATION_MIN", "600")
+    monkeypatch.setenv("LIVE_RETRY_SECONDS", "0.01")
+    monkeypatch.setenv("LIVE_CHECK_SECONDS", "0")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    calls = []
+
+    def flaky(self, r):
+        calls.append(1)
+        if len(calls) == 1:
+            raise youtube_live.LiveError("no signal")
+        live.stop(settings)  # second try works; then you end it
+        return "live"
+    monkeypatch.setattr(live.YouTubeAgent, "go_live", flaky)
+    start = datetime.now(live.tz())
+    assert live.run_show(settings, start, armed=start - timedelta(minutes=10), sleep=lambda s: None) == 0
+    assert len(calls) == 2
+
+
+def test_stop_before_this_show_does_not_block_it():
+    from datetime import timezone
+    state = {"stop": {"by": "you", "at": "2026-10-02T01:50:00+00:00"}}
+    assert live.stopped_since(state, datetime(2026, 10, 2, 1, 0, tzinfo=timezone.utc))
+    assert not live.stopped_since(state, datetime(2026, 10, 2, 3, 0, tzinfo=timezone.utc))
+    assert not live.stopped_since({}, datetime(2026, 10, 2, 3, 0, tzinfo=timezone.utc))
+
+
+def test_status_file_and_history(tmp_path):
+    live_status.write(tmp_path, phase="setup", steps=live_status.reset_steps(tmp_path))
+    live_status.step(tmp_path, "gateway", "ok", "logged in: DU1")
+    st = live_status.read(tmp_path)
+    assert st["phase"] == "setup" and st["steps"]["gateway"]["state"] == "ok"
+    assert st["steps"]["obs"]["state"] == "waiting"
+    day = live.Session(tmp_path / "2026-10-02")
+    day.set("live", {"url": "https://youtu.be/x"})
+    day.set("stop", {"by": "you"})
+    day.set("finished", {"ok": True})
+    rows = live_status.history(tmp_path)
+    assert rows[0]["date"] == "2026-10-02" and rows[0]["result"] == "ended by you"

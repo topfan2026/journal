@@ -131,3 +131,13 @@ def go_live(yt, broadcast_id: str, stream_id: str, sleep=time.sleep) -> str:
 def end(yt, broadcast_id: str) -> None:
     if lifecycle(yt, broadcast_id) in ("live", "liveStarting"):
         yt.liveBroadcasts().transition(broadcastStatus="complete", id=broadcast_id, part="status").execute()
+
+
+def live_stats(yt, broadcast_id: str) -> dict:
+    """Viewers right now, and whether the broadcast was ended (e.g. in YouTube Studio). 1 quota unit."""
+    items = yt.videos().list(part="liveStreamingDetails", id=broadcast_id).execute().get("items", [])
+    if not items:
+        return {"ended": True, "viewers": None}
+    details = items[0].get("liveStreamingDetails", {})
+    viewers = details.get("concurrentViewers")
+    return {"ended": bool(details.get("actualEndTime")), "viewers": int(viewers) if viewers else None}

@@ -22,14 +22,16 @@ crash reuses it instead of creating a second broadcast.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import logging
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import ibkr
+import live_status
 from config import ConfigError, Settings, env, env_bool, env_float, reload_env
 from job import now_iso
 
@@ -110,9 +112,16 @@ class Session:
         return self.state.get(key) or {}
 
     def set(self, key: str, value: dict) -> None:
-        self.state[key] = {**value, "at": now_iso()}
         path = self.folder / "session.json"
-        tmp = path.with_suffix(".tmp")
+        # Re-read first: `live.py stop` (another process) may have written since we loaded it,
+        # and writing our stale copy back would lose the stop - the show would then restart.
+        if path.exists():
+            try:
+                self.state = json.loads(path.read_text(encoding="utf-8"))
+            except ValueError:
+                pass
+        self.state[key] = {**value, "at": now_iso()}
+        tmp = path.with_name(f"session.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(self.state, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)
 
@@ -290,6 +299,10 @@ class YouTubeAgent:
         import youtube_live as yl
         yl.end(self.yt, result["broadcast_id"])
 
+    def stats(self, result: dict) -> dict:
+        import youtube_live as yl
+        return yl.live_stats(self.yt, result["broadcast_id"])
+
 
 class OBSAgent:
     name = "obs"
@@ -348,18 +361,90 @@ class OBSAgent:
 
 # --------------------------------------------------------------------------- orchestrator
 
+class StopRequested(Exception):
+    """You ended today's stream (button, `live.py stop`, or in YouTube Studio)."""
+
+
+def stopped_since(state: dict, since: datetime) -> bool:
+    """Was a stop recorded in this day's session at or after `since`?"""
+    at = (state.get("stop") or {}).get("at")
+    if not at:
+        return False
+    try:
+        return datetime.fromisoformat(at) >= since.astimezone(timezone.utc)
+    except ValueError:
+        return True
+
+
+def _summary(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    if result.get("accounts"):
+        return f"logged in: {', '.join(map(str, result['accounts']))}"
+    for key in ("title", "url", "scene"):
+        if result.get(key):
+            return str(result[key])
+    return ""
+
+
 class LiveShow:
-    def __init__(self, settings: Settings, start: datetime | None = None):
+    def __init__(self, settings: Settings, start: datetime | None = None, armed: datetime | None = None):
+        """armed: when this show was set off; a stop recorded after it ends the show for good
+        (the scheduler passes the setup time, so its retries respect End today's stream)."""
         self.settings = settings
         self.start = start or datetime.now(tz())
+        self.armed = armed or datetime.now(tz())
         self.session = Session(live_root(settings) / self.start.strftime("%Y-%m-%d"))
+        self.root = live_root(settings)
         self.use_api = env_bool("YOUTUBE_LIVE_API", True)
         self.youtube, self.yt_result = None, {}
+        self.fixes = 0
+
+    def stop_requested(self) -> bool:
+        if self.session.stop_file.exists():
+            return True
+        fresh = Session(self.session.folder).state  # `live.py stop` writes from another process
+        return stopped_since(fresh, self.armed)
+
+    def check_stop(self) -> None:
+        if self.stop_requested():
+            raise StopRequested()
+
+    def status(self, **fields) -> None:
+        live_status.write(self.root, **fields)
+
+    def step(self, name: str, fn, *args, **kwargs):
+        live_status.step(self.root, name, "working")
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as e:
+            live_status.step(self.root, name, "failed", str(e)[:200])
+            raise
+        live_status.step(self.root, name, "ok", _summary(result))
+        self.check_stop()
+        return result
+
+    def wait_until(self, when: datetime, browser) -> None:
+        """Wait for go-live time, but react to End today's stream within a few seconds."""
+        while True:
+            left = (when - datetime.now(tz())).total_seconds()
+            if left <= 0:
+                return
+            self.check_stop()
+            browser.wait(min(5, left))
 
     def run(self) -> int:
         s, session = self.settings, self.session
+        if stopped_since(session.state, self.armed):
+            log.info("today's stream was ended - not starting it again (use Go live now to start one)")
+            self.status(phase="ended", message="Today's stream was ended")
+            return 0
         session.stop_file.unlink(missing_ok=True)
         end = end_time(self.start)
+        self.status(phase="test" if s.dry_run else "setup", message="Getting everything ready",
+                    show_start=self.start.isoformat(), show_end=end.isoformat(), live_since=None, url="",
+                    viewers=None, fixes=0, last_check=None, error="",
+                    privacy="" if s.dry_run else None, steps=live_status.reset_steps(self.root))
         log.info("=== live show %s -> %s%s", self.start.strftime("%Y-%m-%d %H:%M"), end.strftime("%H:%M"),
                  " | DRY RUN" if s.dry_run else "")
 
@@ -368,39 +453,58 @@ class LiveShow:
         gateway, browser, obs = GatewayAgent(s), BrowserAgent(s), OBSAgent()
         youtube = YouTubeAgent(s, session, self.start) if self.use_api and not s.dry_run else None
         yt_result: dict = {}
+        if not youtube:
+            live_status.step(self.root, "youtube", "off", "dry run" if s.dry_run else "stream key set in OBS")
+        failed = False
         try:
-            session.set("gateway", gateway.run())
-            session.set("browser", browser.run())
+            session.set("gateway", self.step("gateway", gateway.run))
+            session.set("browser", self.step("scanner", browser.run))
             if youtube:
-                yt_result = youtube.run()
-            session.set("obs", obs.run(yt_result.get("stream"), start_streaming=False))
+                yt_result = self.step("youtube", youtube.run)
+                self.status(url=yt_result.get("url", ""), privacy=getattr(youtube, "start_privacy", ""))
+            session.set("obs", self.step("obs", obs.run, yt_result.get("stream"), start_streaming=False))
             if not s.dry_run:
-                wait = (self.start - datetime.now(tz())).total_seconds()
-                if wait > 0:
+                if self.start > datetime.now(tz()):
                     log.info("ready - going live at %s", self.start.strftime("%H:%M"))
-                    browser.wait(wait)
+                    self.status(phase="ready", message=f"Ready - going live at {self.start.strftime('%H:%M')}")
+                    self.wait_until(self.start, browser)
+                live_status.step(self.root, "live", "working", "starting the stream")
                 obs.obs.start()
             if youtube:
                 session.set("live", {"state": youtube.go_live(yt_result), "url": yt_result["url"]})
                 log.info("=== LIVE: %s", yt_result["url"])
             elif not s.dry_run:
+                session.set("live", {"state": "live", "url": ""})
                 log.info("=== LIVE (stream key set in OBS)")
             if not s.dry_run:
+                live_status.step(self.root, "live", "ok", "on air")
+                self.status(phase="live", message="Live", live_since=datetime.now(timezone.utc).isoformat())
                 self.start_tiktok()
             self.youtube, self.yt_result = youtube, yt_result
             self.watch(end, gateway, browser, obs, streaming=not s.dry_run)
+            return 0
+        except StopRequested:
+            log.info("stop requested - ending today's stream")
             return 0
         except KeyboardInterrupt:
             log.info("interrupted - ending the stream")
             raise
         except Exception as e:
+            failed = True
             log.error("live show failed: %s", e)
             log.debug("details", exc_info=True)
             session.set("error", {"error": str(e)})
+            self.status(error=str(e)[:300])
             return 1
         finally:
+            self.status(phase="ending", message="Ending the stream")
             self.shutdown(youtube, yt_result, obs, browser)
             power.allow_screen_off()
+            if failed:
+                self.status(phase="failed", message="The stream failed - see the log")
+            else:
+                self.status(phase="tested" if s.dry_run else "ended",
+                            message="Test finished" if s.dry_run else "Stream ended")
 
     def watch(self, end: datetime, gateway, browser, obs, streaming: bool) -> None:
         every = env_float("LIVE_CHECK_SECONDS", 30)
@@ -408,29 +512,63 @@ class LiveShow:
             log.info("dry run: everything is up; leaving it for %.0fs so you can look", every)
             browser.wait(every)
             return
+        stats_every = env_float("LIVE_STATS_SECONDS", 120)
+        last_stats = 0.0
         while datetime.now(tz()) < end:
-            if self.session.stop_file.exists():
+            if self.stop_requested():
                 log.info("stop requested")
                 return
             browser.wait(every)
+            if self.stop_requested():
+                log.info("stop requested")
+                return
             try:
+                if streaming and self.youtube is not None and time.monotonic() - last_stats >= stats_every:
+                    last_stats = time.monotonic()
+                    if self.youtube_ended():
+                        return
                 if not gateway.healthy():
                     log.warning("[watchdog] IB Gateway is down - restarting")
+                    self.fixed("gateway", "restarted")
                     gateway.run()
                     browser.run()  # the scanner has to reconnect to the new Gateway
                 elif not browser.healthy():
                     log.warning("[watchdog] scanner window closed - reopening")
+                    self.fixed("scanner", "reopened")
                     browser.run()
                 if streaming and not obs.healthy():
                     log.warning("[watchdog] OBS stopped streaming - restarting")
+                    self.fixed("obs", "restarted streaming")
                     obs.recover()
                 if streaming:
-                    browser.restore()
+                    if browser.restore():
+                        self.fixed("scanner", "restored the minimised window")
                     self.check_picture(browser, obs)
                     if self.youtube is not None:
-                        self.youtube.check_go_public(self.yt_result, picture_ok=obs.healthy() and obs.black == 0)
+                        if self.youtube.check_go_public(self.yt_result, picture_ok=obs.healthy() and obs.black == 0):
+                            self.status(privacy=self.youtube.final_privacy)
             except Exception as e:  # keep trying until the end time
                 log.error("[watchdog] recovery failed: %s", e)
+                self.status(error=f"watchdog: {e}"[:300])
+            self.status(last_check=datetime.now(timezone.utc).isoformat(), fixes=self.fixes)
+
+    def fixed(self, name: str, what: str) -> None:
+        self.fixes += 1
+        live_status.step(self.root, name, "ok", f"{what} at {datetime.now(tz()).strftime('%H:%M')}")
+
+    def youtube_ended(self) -> bool:
+        """Update the viewer count; True (and a recorded stop) if the broadcast was ended on YouTube."""
+        try:
+            stats = self.youtube.stats(self.yt_result)
+        except Exception as e:
+            log.debug("youtube stats failed: %s", e)
+            return False
+        self.status(viewers=stats.get("viewers"))
+        if stats.get("ended"):
+            log.info("the broadcast was ended on YouTube - ending today's stream")
+            self.session.set("stop", {"by": "youtube"})
+            return True
+        return False
 
     @staticmethod
     def check_picture(browser, obs) -> None:
@@ -535,7 +673,8 @@ def missed_show(settings: Settings, now: datetime) -> datetime | None:
     if now >= window_end - timedelta(minutes=env_float("LIVE_CATCH_UP_MIN_LEFT", 10)):
         return None
     state = Session(live_root(settings) / start.strftime("%Y-%m-%d")).state
-    if "stop" in state or state.get("finished", {}).get("ok"):
+    armed = start - timedelta(minutes=env_float("LIVE_PREP_MIN", 10))
+    if stopped_since(state, armed) or state.get("finished", {}).get("ok"):
         return None  # already streamed today, or you stopped it
     return start
 
@@ -570,16 +709,30 @@ def daemon(settings: Settings) -> int:
             return late, lead
         return next_start(datetime.now(tz())), lead
 
+    root = live_root(settings)
+
+    def waiting(start: datetime, lead: timedelta) -> None:
+        state = live_status.read(root)
+        keep = state.get("phase") in ("ended", "failed", "tested") and age_minutes(state) < 120
+        live_status.write(root, scheduler="running", next_start=start.isoformat(),
+                          setup_at=(start - lead).isoformat(),
+                          **({} if keep else {"phase": "waiting", "message": "Waiting for the next stream"}))
+
+    def stopped() -> int:
+        stop_file.unlink(missing_ok=True)
+        live_status.write(root, scheduler="stopped", phase="stopped", message="Scheduler stopped")
+        log.info("scheduler stopped")
+        return 0
+
     while True:
         start, lead = plan()
         log.info("next stream %s (setup starts %s)", start.strftime("%a %Y-%m-%d %H:%M"),
                  (start - lead).strftime("%H:%M"))
+        waiting(start, lead)
         while datetime.now(tz()) < start - lead:
             power.stay_awake()  # renewed after every wake from sleep
             if stop_file.exists():
-                stop_file.unlink(missing_ok=True)
-                log.info("scheduler stopped")
-                return 0
+                return stopped()
             time.sleep(min(30, max(1, (start - lead - datetime.now(tz())).total_seconds())))
             try:
                 new_start, new_lead = plan()
@@ -590,23 +743,54 @@ def daemon(settings: Settings) -> int:
                 start, lead = new_start, new_lead
                 log.info("schedule changed - next stream %s (setup starts %s)",
                          start.strftime("%a %Y-%m-%d %H:%M"), (start - lead).strftime("%H:%M"))
-        retry = env_float("LIVE_RETRY_SECONDS", 120)
-        # A failed start (Gateway login, OBS, YouTube...) is retried until today's end time.
-        while LiveShow(settings, start=start).run() != 0 and datetime.now(tz()) + timedelta(seconds=retry) < end_time(start):
-            if stop_file.exists():
-                break
-            log.warning("retrying in %.0fs", retry)
-            time.sleep(retry)
+            waiting(start, lead)
+        run_show(settings, start, armed=start - lead, scheduler_stop=stop_file)
         if stop_file.exists():
-            stop_file.unlink(missing_ok=True)
-            log.info("scheduler stopped")
+            return stopped()
+
+
+def age_minutes(state: dict) -> float:
+    age = live_status.age_seconds(state)
+    return 1e9 if age is None else age / 60
+
+
+def run_show(settings: Settings, start: datetime, armed: datetime, scheduler_stop: Path | None = None,
+             sleep=time.sleep) -> int:
+    """Run today's show; a failed start (Gateway login, OBS, YouTube...) is retried until the end time,
+    but never after you ended it (End today's stream, `live.py stop`, YouTube Studio)."""
+    retry = env_float("LIVE_RETRY_SECONDS", 120)
+    while True:
+        show = LiveShow(settings, start=start, armed=armed)
+        rc = show.run()
+        if rc == 0 or show.stop_requested():
             return 0
+        if scheduler_stop is not None and scheduler_stop.exists():
+            return rc
+        retry_at = datetime.now(tz()) + timedelta(seconds=retry)
+        if retry_at >= end_time(start):
+            log.warning("giving up on today's stream - the end time is close")
+            return rc
+        log.warning("retrying in %.0fs", retry)
+        live_status.write(live_root(settings), phase="retrying",
+                          message=f"Something failed - trying again at {retry_at.strftime('%H:%M')}")
+        while datetime.now(tz()) < retry_at:  # End today's stream / Stop scheduler work during the wait too
+            if show.stop_requested() or (scheduler_stop is not None and scheduler_stop.exists()):
+                log.info("stop requested - not retrying")
+                live_status.write(live_root(settings), phase="ended", message="Today's stream was ended")
+                return rc
+            sleep(min(5, max(0.01, (retry_at - datetime.now(tz())).total_seconds())))
 
 
 def stop(settings: Settings) -> int:
-    session = Session(live_root(settings) / datetime.now(tz()).strftime("%Y-%m-%d"))
+    now = datetime.now(tz())
+    session = Session(live_root(settings) / now.strftime("%Y-%m-%d"))
     session.stop_file.touch()
-    session.set("stop", {"by": "you"})  # so a scheduler starting later today doesn't restart it
+    session.set("stop", {"by": "you"})  # so the scheduler doesn't restart or retry it today
+    # A stream that started yesterday evening and is still running after midnight.
+    yesterday = live_root(settings) / (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    if (yesterday / "session.json").exists():
+        Session(yesterday).stop_file.touch()
+        Session(yesterday).set("stop", {"by": "you"})
     log.info("asked today's stream to stop (%s)", session.stop_file)
     return 0
 
