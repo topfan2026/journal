@@ -20,7 +20,13 @@ from datetime import datetime
 
 from dotenv import dotenv_values
 
+import live_status
 from config import BOT_DIR, ENV_FILE, save_env
+
+COLORS = {"live": "#d93025", "setup": "#e37400", "waiting": "#1a73e8", "failed": "#a50e0e",
+          "off": "#5f6368", "muted": "#9aa0a6"}
+ICONS = {"ok": ("✓", "#188038"), "working": ("●", "#e37400"), "failed": ("✗", "#d93025"),
+         "waiting": ("○", "#9aa0a6"), "off": ("–", "#9aa0a6")}
 
 
 @dataclass
@@ -181,7 +187,7 @@ class App:
 
         self.tk, self.ttk, self.root = tk, ttk, root
         root.title("Live Stream Bot")
-        root.geometry("900x800")
+        root.geometry("940x900")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
         self.day_vars: dict[str, object] = {}
@@ -193,6 +199,7 @@ class App:
         values = current_values()
         nb = ttk.Notebook(root)
         nb.pack(fill="x", padx=10, pady=(10, 4))
+        self._build_status_tab(nb)
         for tab, fields in TABS.items():
             frame = ttk.Frame(nb, padding=12)
             frame.columnconfigure(1, weight=1)
@@ -229,12 +236,8 @@ class App:
                            command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
 
         rows = [
-            [("Save", self.save),
-             ("▶ Start scheduler", self.start_daemon),
-             ("■ Stop scheduler", self.stop_daemon),
-             ("Go live now", lambda: self.spawn("live.py", "run")),
-             ("End today's stream", lambda: self.spawn("live.py", "stop"))],
-            [("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
+            [("Save settings", self.save),
+             ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
              ("Check setup", lambda: self.spawn("live.py", "check")),
              ("Update bot", self.update_bot)],
         ]
@@ -252,13 +255,254 @@ class App:
         self.status = tk.StringVar()
         ttk.Label(auto, textvariable=self.status, foreground="#0a6").pack(side="right")
 
-        self.log = tk.Text(root, height=14, wrap="word", state="disabled", background="#0b0f17",
+        self.log = tk.Text(root, height=8, wrap="word", state="disabled", background="#0b0f17",
                            foreground="#e8edf5", insertbackground="#e8edf5", font=("Consolas", 10))
         self.log.pack(fill="both", expand=True, padx=10, pady=10)
         self.update_status()
+        self._refresh_wake()
+        self.refresh_dashboard()
         root.after(200, self.pump)
         root.after(15000, self._refresh_status)
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    # ------------------------------------------------------------------ status tab
+    def _build_status_tab(self, nb):
+        tk, ttk = self.tk, self.ttk
+        tab = ttk.Frame(nb, padding=10)
+        tab.columnconfigure(0, weight=1)
+        tab.columnconfigure(1, weight=1)
+        nb.add(tab, text="  Status  ")
+
+        self.banner = tk.Frame(tab, bg=COLORS["off"], padx=16, pady=12)
+        self.banner.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self.banner.columnconfigure(0, weight=1)
+        self.b_title = tk.Label(self.banner, font=("Segoe UI", 20, "bold"), fg="white", bg=COLORS["off"], anchor="w")
+        self.b_title.grid(row=0, column=0, sticky="w")
+        self.b_sub = tk.Label(self.banner, font=("Segoe UI", 11), fg="white", bg=COLORS["off"], anchor="w")
+        self.b_sub.grid(row=1, column=0, sticky="w")
+        self.b_clock = tk.Label(self.banner, font=("Segoe UI", 18, "bold"), fg="white", bg=COLORS["off"])
+        self.b_clock.grid(row=0, column=1, rowspan=2, sticky="e")
+
+        actions = ttk.Frame(tab)
+        actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 6))
+        self.sched_btn = ttk.Button(actions, text="▶ Start scheduler", command=self.toggle_scheduler, width=20)
+        self.sched_btn.pack(side="left", padx=(0, 6))
+        ttk.Button(actions, text="● Go live now", command=self.go_live_now).pack(side="left", padx=(0, 6))
+        ttk.Button(actions, text="■ End today's stream", command=self.end_today).pack(side="left", padx=(0, 6))
+        ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left")
+
+        steps = ttk.LabelFrame(tab, text=" Checklist ", padding=8)
+        steps.grid(row=2, column=0, sticky="nsew", padx=(0, 6))
+        steps.columnconfigure(2, weight=1)
+        self.rows = {}
+        names = [("scheduler", "Scheduler"), ("wake", "Wake from sleep")] + [
+            (n, live_status.STEP_LABELS[n]) for n in live_status.STEPS]
+        for r, (key, label) in enumerate(names):
+            icon = tk.Label(steps, text="○", font=("Segoe UI", 13, "bold"), width=2, fg=COLORS["muted"])
+            icon.grid(row=r, column=0, sticky="w")
+            ttk.Label(steps, text=label, font=("Segoe UI", 10, "bold")).grid(row=r, column=1, sticky="w", padx=(2, 10))
+            detail = ttk.Label(steps, text="", foreground="#555", wraplength=260)
+            detail.grid(row=r, column=2, sticky="w")
+            self.rows[key] = (icon, detail)
+
+        stats = ttk.LabelFrame(tab, text=" This stream ", padding=8)
+        stats.grid(row=2, column=1, sticky="nsew", padx=(6, 0))
+        stats.columnconfigure(1, weight=1)
+        self.stats = {}
+        for r, (key, label) in enumerate([("live_for", "Live for"), ("viewers", "Watching now"),
+                                          ("privacy", "Privacy"), ("fixes", "Auto-fixes"),
+                                          ("last_check", "Last health check"), ("ends", "Ends at"),
+                                          ("problem", "Last problem")]):
+            ttk.Label(stats, text=label).grid(row=r, column=0, sticky="w", padx=(0, 10), pady=1)
+            val = ttk.Label(stats, text="–", font=("Segoe UI", 10, "bold"), wraplength=240)
+            val.grid(row=r, column=1, sticky="w", pady=1)
+            self.stats[key] = val
+
+        hist = ttk.LabelFrame(tab, text=" Last 7 days (double-click to open on YouTube) ", padding=6)
+        hist.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        self.hist = ttk.Treeview(hist, columns=("date", "result", "minutes", "public"), show="headings", height=5)
+        for col, text, width in (("date", "Day", 130), ("result", "Result", 300), ("minutes", "Live (min)", 90),
+                                 ("public", "Went public", 90)):
+            self.hist.heading(col, text=text)
+            self.hist.column(col, width=width, anchor="w")
+        self.hist.pack(fill="x")
+        self.hist.bind("<Double-1>", self._open_history)
+        self.hist_urls: dict[str, str] = {}
+
+    def _refresh_wake(self):
+        """schtasks is slow-ish, so check the wake task now and after Save, not every refresh."""
+        def work():
+            try:
+                import wake
+                self.wake_installed = wake.installed()
+            except Exception:
+                self.wake_installed = False
+        self.wake_installed = getattr(self, "wake_installed", False)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _set_row(self, key, state, detail=""):
+        icon, label = self.rows[key]
+        sym, color = ICONS.get(state, ICONS["waiting"])
+        icon.configure(text=sym, fg=color)
+        label.configure(text=detail)
+
+    def refresh_dashboard(self):
+        try:
+            self._refresh_dashboard()
+        except Exception as e:  # never let the status screen kill the app
+            self.b_sub.configure(text=f"(status screen error: {e})")
+        self.root.after(2000, self.refresh_dashboard)
+
+    def _refresh_dashboard(self):
+        import live
+        from datetime import timezone
+        if getattr(self, "live_root", None) is None:
+            from config import Settings
+            self.live_root = live.live_root(Settings.load())
+        root = self.live_root
+        st = live_status.read(root)
+        now = datetime.now(live.tz())
+        running = (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running()
+        phase = st.get("phase", "")
+        age = live_status.age_seconds(st)
+        active = phase in ("setup", "ready", "live", "ending", "test")
+        stale = active and age is not None and age > (180 if phase == "live" else 420)
+        try:
+            nxt = live.next_start(now)
+        except Exception:
+            nxt = None
+
+        def hm(iso):
+            try:
+                return datetime.fromisoformat(iso).astimezone(live.tz()).strftime("%H:%M")
+            except Exception:
+                return ""
+
+        def until(when):
+            secs = int((when - now).total_seconds())
+            if secs <= 0:
+                return ""
+            h, m = divmod(secs // 60, 60)
+            return f"in {h} h {m:02d} min" if h else f"in {m} min {secs % 60:02d} s"
+
+        clock = ""
+        if stale:
+            kind, title = "failed", "No news from the bot"
+            sub = f"Last update {int(age // 60)} min ago - it may have been closed. Check the scheduler window."
+        elif phase == "live":
+            kind, title = "live", "● LIVE NOW"
+            sub = f"on YouTube since {hm(st.get('live_since'))}" + (
+                f"  •  {st.get('privacy')}" if st.get("privacy") else "")
+            try:
+                secs = int((datetime.now(timezone.utc) - datetime.fromisoformat(st["live_since"])).total_seconds())
+                clock = f"{secs // 3600}:{secs // 60 % 60:02d}:{secs % 60:02d}"
+            except Exception:
+                pass
+        elif phase in ("setup", "test"):
+            kind = "setup"
+            title = "Test run…" if phase == "test" else "Getting ready…"
+            working = [live_status.STEP_LABELS[n] for n, v in st.get("steps", {}).items()
+                       if v.get("state") == "working" and n in live_status.STEP_LABELS]
+            sub = f"now: {working[0]}" if working else st.get("message", "")
+            if st.get("show_start"):
+                clock = f"goes live {hm(st['show_start'])}"
+        elif phase == "ready":
+            kind, title = "setup", "Ready"
+            sub = st.get("message", "")
+            try:
+                clock = until(datetime.fromisoformat(st["show_start"]))
+            except Exception:
+                pass
+        elif phase == "ending":
+            kind, title, sub = "setup", "Ending the stream…", ""
+        elif phase == "retrying":
+            kind, title, sub = "failed", "Problem - retrying", st.get("message", "")
+        elif not running:
+            kind, title = "off", "Scheduler is OFF"
+            sub = "Nothing will start by itself. Click ▶ Start scheduler."
+        else:
+            kind = "waiting"
+            title = "Waiting for the next stream"
+            sub = f"next: {nxt.strftime('%A %d %b  %H:%M')}" if nxt else st.get("message", "")
+            if phase in ("ended", "failed", "tested") and age is not None and age < 3600:
+                last = {"ended": "Last stream ended", "failed": "Last stream FAILED - see the log",
+                        "tested": "Test finished"}[phase]
+                sub = f"{last}  •  {sub}"
+            clock = until(nxt) if nxt else ""
+        color = COLORS[kind]
+        for w in (self.banner, self.b_title, self.b_sub, self.b_clock):
+            w.configure(bg=color)
+        self.b_title.configure(text=title)
+        self.b_sub.configure(text=sub)
+        self.b_clock.configure(text=clock)
+        self.sched_btn.configure(text="■ Stop scheduler" if running else "▶ Start scheduler")
+
+        self._set_row("scheduler", "ok" if running else "failed",
+                      ("running" + (f" - next stream {nxt.strftime('%a %H:%M')}" if nxt else "")) if running
+                      else "stopped - nothing starts by itself")
+        if (self.vars.get("LIVE_WAKE") and self.vars["LIVE_WAKE"].get()) and nxt is not None:
+            prep = float(self.vars["LIVE_PREP_MIN"].get() or 10)
+            import wake
+            at = wake.wake_time(nxt, prep).strftime("%H:%M")
+            self._set_row("wake", "ok" if self.wake_installed else "waiting",
+                          f"wakes the PC at {at}" if self.wake_installed else "click Save settings to set it up")
+        else:
+            self._set_row("wake", "off", "off (the PC must be awake at stream time)")
+        steps = st.get("steps", {})
+        for name in live_status.STEPS:
+            v = steps.get(name, {})
+            self._set_row(name, v.get("state", "waiting"), v.get("detail", ""))
+
+        live_for = "–"
+        if phase == "live" and clock:
+            live_for = clock
+        self.stats["live_for"].configure(text=live_for)
+        viewers = st.get("viewers")
+        self.stats["viewers"].configure(text="–" if viewers is None or phase != "live" else str(viewers))
+        self.stats["privacy"].configure(text=st.get("privacy") or "–")
+        self.stats["fixes"].configure(text=str(st.get("fixes") or 0) if active else "–")
+        self.stats["last_check"].configure(text=hm(st.get("last_check")) or "–")
+        self.stats["ends"].configure(text=hm(st.get("show_end")) if active else "–")
+        self.stats["problem"].configure(text=st.get("error") or "none")
+        self.current_url = st.get("url", "")
+
+        if getattr(self, "_hist_tick", 0) % 5 == 0:
+            self.hist.delete(*self.hist.get_children())
+            self.hist_urls.clear()
+            for row in live_status.history(root):
+                mins = "" if row["minutes"] is None else f"{row['minutes']:.0f}"
+                day = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%a %d %b %Y")
+                iid = self.hist.insert("", "end", values=(day, row["result"] + (
+                    f": {row['error'][:60]}" if row["result"] == "failed" and row["error"] else ""),
+                    mins, "yes" if row["public"] else ""))
+                self.hist_urls[iid] = row["url"]
+        self._hist_tick = getattr(self, "_hist_tick", 0) + 1
+
+    def _open_history(self, _event):
+        import webbrowser
+        sel = self.hist.selection()
+        if sel and self.hist_urls.get(sel[0]):
+            webbrowser.open(self.hist_urls[sel[0]])
+
+    def open_youtube(self):
+        import webbrowser
+        webbrowser.open(getattr(self, "current_url", "") or "https://studio.youtube.com")
+
+    def toggle_scheduler(self):
+        import live
+        running = (self.daemon is not None and self.daemon.poll() is None) or live.scheduler_running()
+        self.stop_daemon() if running else self.start_daemon()
+
+    def go_live_now(self):
+        from tkinter import messagebox
+        if messagebox.askyesno("Go live now", "Start streaming to YouTube now?"):
+            self.spawn("live.py", "run")
+
+    def end_today(self):
+        from tkinter import messagebox
+        if messagebox.askyesno("End today's stream",
+                               "End today's stream now?\nIt won't restart today; the schedule carries on tomorrow."):
+            self.spawn("live.py", "stop")
 
     # ------------------------------------------------------------------ fields
     def _field(self, frame, row, f: Field, value: str):
@@ -330,6 +574,7 @@ class App:
         self.update_status()
         self.write(f"saved settings to {ENV_FILE}\n")
         self.sync_wake(values)
+        self._refresh_wake()
         return True
 
     def sync_wake(self, values: dict[str, str]) -> None:

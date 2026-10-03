@@ -330,6 +330,18 @@ Save the app creates a task "LiveStreamBot Wake" that wakes the PC 10 minutes be
 stream days, and turns on *Allow wake timers*. It works from Sleep/Hibernate, not from Shut down.
 Laptops: keep it plugged in, and set *Lid close action* to *Do nothing* if the lid may be closed.
 
+### Status tab
+
+The app opens on **Status**: a coloured banner (blue waiting with a countdown, orange getting
+ready, red LIVE with the time on air, grey scheduler off), Start/Stop scheduler, Go live now,
+End today's stream, a checklist (scheduler, wake-up, Gateway, scanner, YouTube, OBS, streaming)
+with what each did, live stats (viewers, privacy, auto-fixes, last health check) and the last
+7 days. The bot writes this to `Live/status.json`.
+
+**End today's stream** is final for the day: the scheduler doesn't retry or restart it (ending
+the broadcast in YouTube Studio counts too). Closing OBS or the scanner by hand is treated as a
+crash and fixed, so use the button to end a stream.
+
 ### Commands (same as the buttons)
 
 ```bash
