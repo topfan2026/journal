@@ -144,7 +144,7 @@ def test_overlay_server_serves_state(tmp_path):
     assert pt.serve_overlay(tmp_path, port=47681)
     body = urllib.request.urlopen("http://127.0.0.1:47681/state").read()
     assert json.loads(body)["phase"] == "hunting"
-    assert b"AI PAPER TRADER" in urllib.request.urlopen("http://127.0.0.1:47681/").read()
+    assert b">TRADES<" in urllib.request.urlopen("http://127.0.0.1:47681/").read()
 
 
 def test_replay_broker_simulates_fills_and_exits(tmp_path, monkeypatch):

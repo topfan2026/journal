@@ -396,7 +396,7 @@ class Trader:
         elif self.replay:
             self.say(f"REPLAY of {self.clock():%A %b %d}: real 1-minute bars, simulated fills, no orders. "
                      "Watch how the rules would have traded it.")
-        self.say(f"AI paper trader online - paper account {accounts[0]}. "
+        self.say(f"Trader online. "
                  f"Today's rules: max {self.book.max_trades} trades, stop after {self.book.max_losses} losses."
                  + (" Watch-only mode: no orders." if self.watch_only else ""))
         try:
@@ -506,7 +506,7 @@ class Trader:
         limit = tr.tick_round(sig.entry * (1 + env_float("TRADER_ENTRY_SLIP", 0.002)))
         handle = self.broker.place_bracket(sig.symbol, qty, limit, sig.target, sig.stop)
         self.open = {**record, "handle": handle, "placed": self.clock().timestamp(), "state": "entry order sent"}
-        self.say("Taking a paper trade - " + plan)
+        self.say("Taking a trade - " + plan)
 
     def manage(self, now: datetime) -> None:
         pos = self.open
@@ -556,9 +556,8 @@ class Trader:
         if not real:
             self.say("No trades today. Sometimes the best trade is no trade.")
         else:
-            self.say(f"That's the session: {len(real)} paper trades, {self.book.wins} wins, {self.book.losses} losses, "
-                     f"{'+' if self.book.pnl >= 0 else '-'}${abs(self.book.pnl):.0f}. Paper trading - "
-                     "educational, not financial advice.")
+            self.say(f"That's the session: {len(real)} trades, {self.book.wins} wins, {self.book.losses} losses, "
+                     f"{'+' if self.book.pnl >= 0 else '-'}${abs(self.book.pnl):.0f}. Not financial advice.")
         self.phase = "finished"
         self.save()
 
