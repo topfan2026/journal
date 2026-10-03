@@ -575,6 +575,7 @@ def daemon(settings: Settings) -> int:
         log.info("next stream %s (setup starts %s)", start.strftime("%a %Y-%m-%d %H:%M"),
                  (start - lead).strftime("%H:%M"))
         while datetime.now(tz()) < start - lead:
+            power.stay_awake()  # renewed after every wake from sleep
             if stop_file.exists():
                 stop_file.unlink(missing_ok=True)
                 log.info("scheduler stopped")

@@ -798,6 +798,7 @@ def test_wake_task_xml_and_days():
     xml = wake.task_xml(at, days)
     assert "<WakeToRun>true</WakeToRun>" in xml
     assert "<Monday />" in xml and "<Friday />" in xml and "<Saturday />" not in xml
+    assert "power.py&quot; hold" in xml or 'power.py" hold' in xml
 
 
 def test_wake_before_midnight_moves_days_back():

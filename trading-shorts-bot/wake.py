@@ -2,8 +2,9 @@
 
 Creates a per-user task "LiveStreamBot Wake" with "Wake the computer to run this task" on the
 stream days, a few minutes before setup starts. It runs only while you are logged in (a sleeping
-PC stays logged in), so it needs no admin rights or password. It does nothing itself: waking is
-the point. Once awake, the scheduler keeps the PC awake (see power.py).
+PC stays logged in), so it needs no admin rights or password. The task runs `power.py hold`,
+which keeps the PC awake until the scheduler's setup has started - a timer wake otherwise drops
+back to sleep after a minute or two.
 
 A PC that was *shut down* can't be woken this way - use Sleep at night.
 """
@@ -12,13 +13,17 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 log = logging.getLogger(__name__)
 
 TASK = "LiveStreamBot Wake"
+BOT_DIR = Path(__file__).resolve().parent
+HOLD_MIN = 30  # stay awake this long after waking: the scheduler's setup starts within it
 DAY_TAGS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -34,7 +39,16 @@ def wake_plan(start: datetime, prep_min: float, weekdays: set[int]) -> tuple[dat
     return at, {(d + shift) % 7 for d in weekdays}
 
 
-def task_xml(at: datetime, weekdays: set[int]) -> str:
+def pythonw() -> str:
+    """The windowless python next to this one (so waking doesn't flash a console)."""
+    exe = Path(sys.executable)
+    quiet = exe.with_name("pythonw.exe")
+    return str(quiet if quiet.exists() else exe)
+
+
+def task_xml(at: datetime, weekdays: set[int], python: str | None = None, bot_dir: Path = BOT_DIR) -> str:
+    python = escape(python or pythonw())
+    script = escape(str(bot_dir / "power.py"))
     days = "".join(f"<{DAY_TAGS[d]} />" for d in sorted(weekdays))
     boundary = at.replace(tzinfo=None, second=0, microsecond=0).isoformat()
     return f"""<?xml version="1.0" encoding="UTF-16"?>
@@ -53,10 +67,10 @@ def task_xml(at: datetime, weekdays: set[int]) -> str:
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <StartWhenAvailable>false</StartWhenAvailable>
-    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT{HOLD_MIN + 10}M</ExecutionTimeLimit>
     <Enabled>true</Enabled>
   </Settings>
-  <Actions Context="Author"><Exec><Command>cmd.exe</Command><Arguments>/c exit</Arguments></Exec></Actions>
+  <Actions Context="Author"><Exec><Command>{python}</Command><Arguments>"{script}" hold {HOLD_MIN}</Arguments><WorkingDirectory>{escape(str(bot_dir))}</WorkingDirectory></Exec></Actions>
 </Task>
 """
 

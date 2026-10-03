@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import time
 
 log = logging.getLogger(__name__)
 
@@ -36,3 +38,16 @@ def stay_awake(screen_on: bool = False) -> bool:
 def allow_screen_off() -> bool:
     """Back to 'system awake, screen may turn off' (between streams)."""
     return stay_awake(screen_on=False)
+
+
+def hold(minutes: float) -> None:
+    """Keep the PC (and screen) on for a while: run by the wake task so a timer wake doesn't
+    drop straight back to sleep before the scheduler starts setup."""
+    stay_awake(screen_on=True)
+    time.sleep(minutes * 60)
+
+
+if __name__ == "__main__":
+    # pythonw power.py hold 30
+    if len(sys.argv) >= 2 and sys.argv[1] == "hold":
+        hold(float(sys.argv[2]) if len(sys.argv) > 2 else 30)
