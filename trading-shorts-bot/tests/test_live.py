@@ -891,3 +891,26 @@ def test_local_connector_starts_missing_helpers(monkeypatch):
     monkeypatch.delenv("SCANNER_CONNECTOR_CMD")
     monkeypatch.delenv("SCANNER_TUNNEL_CMD")
     assert not local_connector.enabled()
+
+
+def test_daemon_does_not_replan_a_finished_show(settings, monkeypatch):
+    """After today's show is done/ended, the scheduler waits for the next one instead of looping on it."""
+    now = datetime.now(live.tz())
+    start = now + timedelta(minutes=3)  # setup time (10 min early) has already passed
+    monkeypatch.setenv("LIVE_START", start.strftime("%H:%M"))
+    monkeypatch.setenv("LIVE_DAYS", "mon-sun")
+    monkeypatch.setenv("LIVE_PREP_MIN", "10")
+    monkeypatch.setenv("LIVE_LOCK_PORT", "47698")
+    monkeypatch.setattr(live, "reload_env", lambda: None)
+    calls = []
+
+    def fake_run_show(settings, start, armed, scheduler_stop=None):
+        calls.append(start)
+        if len(calls) > 3:
+            raise AssertionError("re-planned the same show")
+        return 0
+    monkeypatch.setattr(live, "run_show", fake_run_show)
+    stop_file = live.scheduler_stop_file(settings)
+    monkeypatch.setattr(live.time, "sleep", lambda s: stop_file.touch())  # first wait: ask it to stop
+    assert live.daemon(settings) == 0
+    assert len(calls) == 1

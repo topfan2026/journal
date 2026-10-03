@@ -708,15 +708,21 @@ def daemon(settings: Settings) -> int:
     stop_file.unlink(missing_ok=True)
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
              env("LIVE_TZ") or "this computer's time zone")
+    done: list[datetime] = []  # shows already handled: never plan the same one twice
+
     def plan() -> tuple[datetime, timedelta]:
         reload_env()  # the schedule may have been changed in the app since the scheduler started
         lead = timedelta(minutes=env_float("LIVE_PREP_MIN", 10))
-        late = missed_show(settings, datetime.now(tz()))
-        if late is not None:
+        now = datetime.now(tz())
+        late = missed_show(settings, now)
+        if late is not None and late not in done:
             log.info("today's stream (%s) hasn't run yet and it's still before the end time - starting it now",
                      late.strftime("%H:%M"))
             return late, lead
-        return next_start(datetime.now(tz())), lead
+        start = next_start(now)
+        while start in done:
+            start = next_start(start)
+        return start, lead
 
     root = live_root(settings)
 
@@ -754,6 +760,7 @@ def daemon(settings: Settings) -> int:
                          start.strftime("%a %Y-%m-%d %H:%M"), (start - lead).strftime("%H:%M"))
             waiting(start, lead)
         run_show(settings, start, armed=start - lead, scheduler_stop=stop_file)
+        done.append(start)
         if stop_file.exists():
             return stopped()
 
