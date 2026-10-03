@@ -20,6 +20,7 @@ popup are tried before the rest of the page:
     wait 5                          wait 5 seconds
     key F11                         press a key
     fullscreen                      make the browser window full screen (like F11)
+    maximize                        maximise the window (the [] button) - done automatically for apps
     hide A row is tinted            hide text on the page that starts with these words
     ifnot Terminal / Connection     only when that is NOT on screen (e.g. a closed menu), do the steps
       click Scanner                 up to the matching 'end'
@@ -53,7 +54,7 @@ DEFAULT_URL = "https://aialgopro.com"
 
 
 CLICK_ROLES = ("button", "link", "tab", "menuitem", "option", "radio", "checkbox", "switch")
-VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "hide", "if", "ifnot", "end")
+VERBS = ("goto", "click", "select", "type", "wait", "key", "fullscreen", "maximize", "hide", "if", "ifnot", "end")
 AT_POINT = re.compile(r"^at\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)  # "click at 16,14"
 DIALOGS = "[role=dialog]:visible, [role=alertdialog]:visible, [aria-modal=true]:visible, dialog[open]"
 
@@ -220,6 +221,35 @@ def _find_window_title(prefix: str) -> str | None:
         return None
 
 
+def _win_maximize(title: str) -> bool:
+    """Windows only: maximise and bring forward the visible window whose title starts with *title*."""
+    if os.name != "nt" or not title:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hits: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def visit(hwnd, _):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if buf.value.startswith(title):
+                    hits.append(hwnd)
+            return True
+        user32.EnumWindows(visit, 0)
+        for hwnd in hits:
+            user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+            user32.SetForegroundWindow(hwnd)
+        return bool(hits)
+    except Exception as e:
+        log.debug("window maximise failed: %s", e)
+        return False
+
+
 def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
@@ -271,6 +301,9 @@ def parse_steps(text: str) -> list[tuple[str, str]]:
             raise SiteError(f"scanner steps line {n}: unknown step {verb!r} (use {', '.join(VERBS)})")
         if verb == "fullscreen":
             steps.append((verb, arg or "on"))
+            continue
+        if verb == "maximize":
+            steps.append((verb, arg or "window"))
             continue
         if verb == "end":
             depth -= 1
@@ -421,6 +454,10 @@ class ScannerSite:
         if title:  # for reloads, and right now for the window that is already open
             self.context.add_init_script(TITLE_JS.replace("__TITLE__", json.dumps(title)))
             self.page.evaluate(TITLE_JS.replace("__TITLE__", json.dumps(title)))
+        if env_bool("SCANNER_APP_MAXIMIZE", True):
+            time.sleep(0.5)  # let the pinned title reach the window first
+            if not self.maximize_window():
+                log.warning("browser: couldn't maximise the %s window - add a 'maximize' step", exe.name)
         log.info("browser: driving %s (%s)", exe.name, self.page.url)
         return self
 
@@ -515,8 +552,27 @@ class ScannerSite:
             page.keyboard.press(arg)
         elif verb == "fullscreen":
             self.browser_fullscreen(arg.lower() not in ("off", "no", "false"))
+        elif verb == "maximize":
+            if not self.maximize_window():
+                raise SiteError("couldn't maximise the window")
         elif verb == "hide":
             page.evaluate(HIDE_JS, arg)
+
+    def maximize_window(self) -> bool:
+        """Maximise the window (the [] button): Chrome's window API, else Windows itself (desktop apps)."""
+        cdp_ok = False
+        try:
+            cdp = self.context.new_cdp_session(self.page)
+            try:
+                window = cdp.send("Browser.getWindowForTarget")["windowId"]
+                cdp.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": "maximized"}})
+                cdp_ok = True
+            finally:
+                cdp.detach()
+        except Exception as e:  # Electron apps often don't offer the window API
+            log.debug("CDP maximise failed: %s", e)
+        # Some apps accept that request and ignore it, so on Windows also maximise the window directly.
+        return _win_maximize(os_window_title()) or cdp_ok
 
     def restore_window(self) -> bool:
         """Un-minimise the bot's window (a minimised window streams as black). True if it was minimised."""

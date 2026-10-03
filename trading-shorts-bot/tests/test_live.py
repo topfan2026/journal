@@ -761,3 +761,8 @@ def test_ifnot_block_parses_and_skips():
     assert steps[0] == ("ifnot", "Terminal / Connection")
     assert scanner_site.skip_block(steps, 0) == 2
     assert scanner_site.parse_steps(scanner_site.DEFAULT_APP_STEPS)[1] == ("ifnot", "Terminal / Connection")
+
+
+def test_maximize_step_parses():
+    import scanner_site
+    assert scanner_site.parse_steps("maximize\n") == [("maximize", "window")]
