@@ -150,12 +150,174 @@ class IBBroker:
             self.ib.disconnect()
 
 
+class ReplayBroker:
+    """Plays a past session back through the trader: real IBKR 1-minute bars, simulated fills.
+
+    No orders are sent. The clock moves one minute per loop (TRADER_REPLAY_SPEED real seconds each),
+    so a whole morning plays in a few minutes on the stream panel.
+    """
+
+    def __init__(self, day: datetime, symbols: list[str] | None = None, speed: float = 1.0):
+        self.day, self.symbols, self.speed = day, symbols or [], speed
+        self.now = et_time("09:30", day)
+        self.data: dict[str, list[tr.Bar]] = {}
+        self.orders: list[dict] = []
+        self.ib = None
+
+    def clock(self) -> datetime:
+        return self.now
+
+    def connect(self) -> list[str]:
+        import ibkr
+        from ib_async import IB, Stock
+        self.ib = IB()
+        self.ib.connect(ibkr.host(), ibkr.port(), clientId=int(env_float("TRADER_CLIENT_ID", 31)) + 1,
+                        readonly=True, timeout=env_float("IB_CONNECT_TIMEOUT", 20))
+        accounts = self.ib.managedAccounts()
+        ibkr.check_paper(accounts)
+        if not self.symbols:
+            try:
+                self.symbols = IBBroker.scan(self, int(env_float("TRADER_CANDIDATES", 6)))[:6]
+            except Exception as e:
+                log.warning("[replay] scanner unavailable (%s) - using a default list", e)
+        if not self.symbols:
+            self.symbols = ["NVDA", "TSLA", "AMD", "PLTR", "SOFI", "SMCI"]
+        end = self.day.strftime("%Y%m%d") + " 16:00:00 US/Eastern"
+        for sym in self.symbols:
+            try:
+                c = Stock(sym, "SMART", "USD")
+                self.ib.qualifyContracts(c)
+                raw = self.ib.reqHistoricalData(c, end, "1 D", "1 min", "TRADES", useRTH=True)
+                self.data[sym] = [tr.Bar(str(b.date), b.open, b.high, b.low, b.close, b.volume) for b in raw]
+                log.info("[replay] %s: %d bars", sym, len(self.data[sym]))
+            except Exception as e:
+                log.warning("[replay] no bars for %s: %s", sym, e)
+        if not any(self.data.values()):
+            raise RuntimeError("IBKR returned no historical bars - is market data enabled for the paper account?")
+        return accounts
+
+    def connected(self) -> bool:
+        return True
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(self.speed)
+        self.now += timedelta(minutes=1)
+
+    def _index(self) -> int:
+        return int((self.now - et_time("09:30", self.now)).total_seconds() // 60)
+
+    def scan(self, rows: int) -> list[str]:
+        return [s for s in self.symbols if self.data.get(s)][:rows]
+
+    def bars(self, symbol: str) -> list[tr.Bar]:
+        return self.data.get(symbol, [])[:max(0, self._index())]
+
+    def last_price(self, symbol: str) -> float | None:
+        b = self.bars(symbol)
+        return b[-1].close if b else None
+
+    def place_bracket(self, symbol, qty, limit, target, stop):
+        h = {"symbol": symbol, "limit": limit, "target": target, "stop": stop, "from": self._index(),
+             "fill": None, "exit": None, "exit_price": None}
+        self.orders.append(h)
+        return h
+
+    def status(self, h) -> dict:
+        bars = self.data.get(h["symbol"], [])[h["from"]:self._index()]
+        for b in bars:
+            if h["fill"] is None:
+                if b.low <= h["limit"]:
+                    h["fill"] = min(h["limit"], b.open)
+                continue
+            if h["exit"] is None:
+                if b.low <= h["stop"]:  # stop first if a bar hits both: the cautious assumption
+                    h["exit"], h["exit_price"] = "stop", h["stop"]
+                elif b.high >= h["target"]:
+                    h["exit"], h["exit_price"] = "target", h["target"]
+        h["from"] = self._index()
+        return {"filled": h["fill"] is not None, "fill": h["fill"], "dead": False,
+                "exit": h["exit"], "exit_price": h["exit_price"]}
+
+    def cancel(self, h) -> None:
+        pass
+
+    def flatten(self, symbol, h, qty) -> float | None:
+        return self.last_price(symbol)
+
+    def disconnect(self) -> None:
+        if self.ib is not None:
+            self.ib.disconnect()
+
+
+def simulated_session(symbol: str, seed: int, bars: int = 390) -> list[tr.Bar]:
+    """Made-up but realistic 1-minute bars: a gapper that either breaks out, fakes out, or dips
+    under VWAP and reclaims it - so the rules have something to trade at any time of day."""
+    import random
+    rnd = random.Random(seed)
+    price = rnd.uniform(4, 60)
+    style = rnd.choice(["breakout", "fakeout", "reclaim", "chop"])
+    vol0 = rnd.uniform(20_000, 120_000)
+    out, t0 = [], datetime(2000, 1, 1, 9, 30)
+    for i in range(bars):
+        drift, vol_mult = 0.0, 1.0
+        if style == "breakout" and 6 <= i < 40:
+            drift, vol_mult = 0.004, (3.0 if i == 6 else 1.6)
+        elif style == "fakeout" and i == 6:
+            drift, vol_mult = 0.006, 3.0
+        elif style == "fakeout" and 7 <= i < 20:
+            drift = -0.004
+        elif style == "reclaim" and 5 <= i < 25:
+            drift = -0.003
+        elif style == "reclaim" and i == 25:
+            drift, vol_mult = 0.012, 3.5
+        elif style == "reclaim" and 26 <= i < 70:
+            drift, vol_mult = 0.002, 1.4
+        decay = 1.8 if i < 30 else 1.0  # busy open, quieter later
+        change = drift + rnd.gauss(0, 0.0025)
+        o = price
+        c = max(0.5, o * (1 + change))
+        h = max(o, c) * (1 + abs(rnd.gauss(0, 0.001)))
+        l = min(o, c) * (1 - abs(rnd.gauss(0, 0.001)))
+        v = vol0 * decay * vol_mult * rnd.uniform(0.6, 1.4)
+        out.append(tr.Bar((t0 + timedelta(minutes=i)).strftime("%H:%M"), round(o, 2), round(h, 2),
+                          round(l, 2), round(c, 2), round(v)))
+        price = c
+    return out
+
+
+class SimBroker(ReplayBroker):
+    """Simulated tickers: no IB Gateway or market data needed - for demos and testing any time."""
+
+    def connect(self) -> list[str]:
+        import random
+        seed = int(env_float("TRADER_SIM_SEED", 0)) or random.randrange(1, 10**6)
+        names = ["SIMA", "SIMB", "SIMC", "SIMD", "SIME", "SIMF"]
+        self.symbols = self.symbols or names
+        self.data = {sym: simulated_session(sym, seed + i) for i, sym in enumerate(self.symbols)}
+        log.info("[sim] simulated session, seed %s", seed)
+        return ["SIMULATED"]
+
+    def disconnect(self) -> None:
+        pass
+
+
+def last_session(now: datetime) -> datetime:
+    """The most recent weekday session that has finished (US holidays aren't skipped)."""
+    day = now if now.weekday() < 5 and now >= et_time("16:05", now) else now - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 # --------------------------------------------------------------------------- trader
 
 class Trader:
     def __init__(self, live_root: Path, broker, watch_only: bool = False, stop_file: Path | None = None,
-                 clock=None):
+                 clock=None, replay: bool = False, journal_root: Path | None = None, simulated: bool = False):
         self.root = live_root
+        self.replay = replay
+        self.simulated = simulated
+        self.journal_root = journal_root or live_root
         self.broker = broker
         self.watch_only = watch_only
         self.stop_file = stop_file
@@ -179,7 +341,7 @@ class Trader:
         self.save()
 
     def journal_path(self) -> Path:
-        return self.root / self.day / "trades.json"
+        return self.journal_root / self.day / "trades.json"
 
     def _load_today(self) -> None:
         try:
@@ -194,7 +356,8 @@ class Trader:
             if px:
                 unreal = round((px - self.open["fill"]) * self.open["qty"], 2)
         state = {
-            "phase": self.phase, "mode": "watch" if self.watch_only else "paper",
+            "phase": self.phase, "mode": ("simulation" if self.simulated else "replay" if self.replay
+                                          else "watch" if self.watch_only else "paper"),
             "watching": self.watching[:8], "position": self._public(self.open, unreal),
             "trades": self.book.trades[-10:], "stats": {
                 "trades": len(self.book.trades), "max_trades": self.book.max_trades,
@@ -227,6 +390,12 @@ class Trader:
         self.phase = "connecting"
         self.save()
         accounts = self.broker.connect()
+        if self.simulated:
+            self.say("SIMULATION: made-up tickers and prices to show how the AI trader works - "
+                     "not real market data, no orders.")
+        elif self.replay:
+            self.say(f"REPLAY of {self.clock():%A %b %d}: real 1-minute bars, simulated fills, no orders. "
+                     "Watch how the rules would have traded it.")
         self.say(f"AI paper trader online - paper account {accounts[0]}. "
                  f"Today's rules: max {self.book.max_trades} trades, stop after {self.book.max_losses} losses."
                  + (" Watch-only mode: no orders." if self.watch_only else ""))
@@ -235,6 +404,8 @@ class Trader:
                 now = self.clock()
                 if now >= et_time(env("TRADER_FLATTEN_ET", "15:50") or "15:50", now):
                     self.say("Flatten time - closing out for the day.")
+                    break
+                if self.replay and not self.open and now >= et_time(env("TRADER_REPLAY_END", "12:00") or "12:00", now):
                     break
                 try:
                     self.step(now)
@@ -286,9 +457,9 @@ class Trader:
         self.save()
 
     def scan(self, now: datetime, every: float) -> None:
-        if time.monotonic() - self.last_scan < every and self.watching:
+        if self.clock().timestamp() - self.last_scan < every and self.watching:
             return
-        self.last_scan = time.monotonic()
+        self.last_scan = self.clock().timestamp()
         rows = int(env_float("TRADER_CANDIDATES", 6))
         try:
             found = self.broker.scan(rows * 2)
@@ -334,7 +505,7 @@ class Trader:
             return
         limit = tr.tick_round(sig.entry * (1 + env_float("TRADER_ENTRY_SLIP", 0.002)))
         handle = self.broker.place_bracket(sig.symbol, qty, limit, sig.target, sig.stop)
-        self.open = {**record, "handle": handle, "placed": time.monotonic(), "state": "entry order sent"}
+        self.open = {**record, "handle": handle, "placed": self.clock().timestamp(), "state": "entry order sent"}
         self.say("Taking a paper trade - " + plan)
 
     def manage(self, now: datetime) -> None:
@@ -345,7 +516,7 @@ class Trader:
                 pos["fill"], pos["state"] = st["fill"] or pos["entry"], "in the trade"
                 self.say(f"Filled {pos['symbol']} at {pos['fill']:.2f}. Stop {pos['stop']:.2f}, "
                          f"target {pos['target']:.2f}.")
-            elif st["dead"] or time.monotonic() - pos["placed"] > env_float("TRADER_FILL_TIMEOUT", 90):
+            elif st["dead"] or self.clock().timestamp() - pos["placed"] > env_float("TRADER_FILL_TIMEOUT", 90):
                 self.broker.cancel(pos["handle"])
                 self.say(f"{pos['symbol']} ran without us - the entry didn't fill, so the order is cancelled. "
                          "No trade.")
@@ -432,11 +603,21 @@ def overlay_url() -> str:
     return f"http://127.0.0.1:{int(env_float('TRADER_OVERLAY_PORT', 47622))}/"
 
 
+def keep_panel_up(stop: Path, rc: int) -> int:
+    """After a replay / simulation, leave the panel (with the recap) up for a while."""
+    end = time.monotonic() + env_float("TRADER_PANEL_LINGER", 600)
+    while time.monotonic() < end and not stop.exists():
+        time.sleep(1)
+    return rc
+
+
 def main(argv: list[str] | None = None) -> int:
     from live import live_root
     from watcher import setup_logging
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["run", "overlay"])
+    ap.add_argument("command", choices=["run", "overlay", "replay", "simulate"])
+    ap.add_argument("--date", help="replay: YYYY-MM-DD (default: the last trading day)")
+    ap.add_argument("--symbols", help="replay: comma-separated symbols (default: IBKR scanner)")
     ap.add_argument("--watch", action="store_true", help="signals and commentary only, no orders")
     ap.add_argument("--stop-file")
     args = ap.parse_args(argv)
@@ -452,9 +633,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"overlay at {overlay_url()} - Ctrl+C to stop")
         while True:
             time.sleep(1)
-    watch = args.watch or (env("TRADER_MODE", "paper") or "paper").lower() == "watch"
     stop = Path(args.stop_file) if args.stop_file else root / "TRADER_STOP"
     stop.unlink(missing_ok=True)
+    if args.command == "simulate":
+        now = datetime.now(eastern())
+        day = now if now.weekday() < 5 else last_session(now)
+        broker = SimBroker(day, None, speed=env_float("TRADER_REPLAY_SPEED", 1.0))
+        print(f"simulated session - watch it at {overlay_url()}")
+        journal = root / "replay"
+        (journal / day.strftime("%Y-%m-%d") / "trades.json").unlink(missing_ok=True)
+        rc = Trader(root, broker, stop_file=stop, clock=broker.clock, replay=True, journal_root=journal,
+                    simulated=True).run()
+        return keep_panel_up(stop, rc)
+    if args.command == "replay":
+        day = (datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=eastern()) if args.date
+               else last_session(datetime.now(eastern())))
+        symbols = [x.strip().upper() for x in (args.symbols or "").split(",") if x.strip()]
+        broker = ReplayBroker(day, symbols, speed=env_float("TRADER_REPLAY_SPEED", 1.0))
+        print(f"replaying {day:%A %Y-%m-%d} - watch it at {overlay_url()}")
+        # The replay keeps its own journal folder so it never mixes with real paper trades.
+        journal = root / "replay"
+        (journal / day.strftime("%Y-%m-%d") / "trades.json").unlink(missing_ok=True)  # start the replay fresh
+        rc = Trader(root, broker, stop_file=stop, clock=broker.clock, replay=True, journal_root=journal).run()
+        return keep_panel_up(stop, rc)
+    watch = args.watch or (env("TRADER_MODE", "paper") or "paper").lower() == "watch"
     return Trader(root, IBBroker(readonly=watch), watch_only=watch, stop_file=stop).run()
 
 

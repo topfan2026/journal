@@ -57,7 +57,7 @@ async function tick() {
   try {
     const s = await (await fetch("/state", {cache: "no-store"})).json();
     const st = s.stats || {};
-    $("phase").textContent = (s.mode === "watch" ? "watch only • " : "") + (s.phase || "");
+    $("phase").textContent = (s.mode === "watch" ? "watch only • " : s.mode === "replay" ? "replay • " : s.mode === "simulation" ? "simulation • " : "") + (s.phase || "");
     $("trades").textContent = `${st.trades || 0}/${st.max_trades || 5}`;
     $("wl").textContent = `${st.wins || 0}W / ${st.losses || 0}L`;
     const pnl = st.pnl || 0;

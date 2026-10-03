@@ -145,3 +145,49 @@ def test_overlay_server_serves_state(tmp_path):
     body = urllib.request.urlopen("http://127.0.0.1:47681/state").read()
     assert json.loads(body)["phase"] == "hunting"
     assert b"AI PAPER TRADER" in urllib.request.urlopen("http://127.0.0.1:47681/").read()
+
+
+def test_replay_broker_simulates_fills_and_exits(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADER_STRATEGIES", "orb")
+    monkeypatch.setenv("TRADER_REPLAY_END", "09:50")
+    day = datetime(2026, 10, 2, tzinfo=ET)
+    closes = [10.0, 10.2, 10.1, 10.3, 10.2, 10.25, 10.6, 10.8, 11.0, 11.3, 11.6, 11.9, 12.2] + [12.2] * 30
+    vols = [1000] * 6 + [3000] + [1500] * 36
+    b = pt.ReplayBroker(day, ["ABC"], speed=0)
+    b.data = {"ABC": bars_from(closes, vols)}
+    b.connect = lambda: ["DU1"]
+    t = pt.Trader(tmp_path, b, clock=b.clock, replay=True, journal_root=tmp_path / "replay")
+    assert t.run() == 0
+    trades = [x for x in t.book.trades if x.get("result")]
+    assert trades and trades[0]["symbol"] == "ABC" and trades[0]["result"] == "win"
+    assert (tmp_path / "replay" / "2026-10-02" / "trades.json").exists()
+    assert '"mode": "replay"' in (tmp_path / "trader.json").read_text()
+
+
+def test_last_session():
+    sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)
+    assert pt.last_session(sat).date().isoformat() == "2026-10-02"
+    mon_morning = datetime(2026, 10, 5, 9, 0, tzinfo=ET)
+    assert pt.last_session(mon_morning).date().isoformat() == "2026-10-02"
+
+
+def test_simulation_needs_no_ibkr(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADER_REPLAY_END", "11:00")
+    monkeypatch.setenv("TRADER_SIM_SEED", "7")
+    b = pt.SimBroker(datetime(2026, 10, 5, tzinfo=ET), None, speed=0)
+    t = pt.Trader(tmp_path, b, clock=b.clock, replay=True, simulated=True, journal_root=tmp_path / "sim")
+    assert t.run() == 0
+    state = (tmp_path / "trader.json").read_text()
+    assert '"mode": "simulation"' in state and "SIMULATION" in state
+
+
+def test_simulated_sessions_produce_trades():
+    """Across a few seeds the made-up sessions must give the rules something to trade."""
+    hits = 0
+    for seed in range(1, 40):
+        bars = pt.simulated_session("X", seed)
+        for i in range(7, 120):
+            if tr.find_signal("X", bars[:i], ["orb", "vwap"]):
+                hits += 1
+                break
+    assert hits >= 10

@@ -265,6 +265,10 @@ class App:
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
                 ttk.Button(row_btns, text="Run it now (watch only)",
                            command=lambda: self.spawn("paper_trader.py", "run", "--watch")).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Simulate (any time)", command=self.simulate_trader).pack(
+                    side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Replay last trading day", command=self.replay_trader).pack(
+                    side="left", padx=(0, 6))
                 ttk.Button(row_btns, text="Preview the stream panel", command=self.preview_panel).pack(side="left")
                 ttk.Label(frame, foreground=DARK["muted"], wraplength=600, justify="left", text=(
                     "Paper account only (it refuses a live account). Hard limits are enforced in code: max trades "
@@ -813,6 +817,22 @@ class App:
         self.steps.delete("1.0", "end")
         self.steps.insert("1.0", read_steps(app))
         self.write(f"showing the {'desktop app' if app else 'website'} steps\n")
+
+    def replay_trader(self):
+        """Weekend / evening test: plays the last session's real bars through the rules, no orders."""
+        import webbrowser
+        import paper_trader
+        if self.spawn("paper_trader.py", "replay"):
+            self.write("replaying the last trading day - the panel opens in your browser (needs IB Gateway running)\n")
+            self.root.after(4000, lambda: webbrowser.open(paper_trader.overlay_url()))
+
+    def simulate_trader(self):
+        """Made-up tickers and prices: no Gateway or market data needed. The panel opens in your browser."""
+        import webbrowser
+        import paper_trader
+        if self.spawn("paper_trader.py", "simulate"):
+            self.write("simulated trading session - the panel opens in your browser\n")
+            self.root.after(2500, lambda: webbrowser.open(paper_trader.overlay_url()))
 
     def preview_panel(self):
         import socket
