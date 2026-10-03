@@ -728,7 +728,9 @@ def daemon(settings: Settings) -> int:
 
     def waiting(start: datetime, lead: timedelta) -> None:
         state = live_status.read(root)
-        keep = state.get("phase") in ("ended", "failed", "tested") and age_minutes(state) < 120
+        keep = (state.get("phase") in ("ended", "failed", "tested") and age_minutes(state) < 120) or (
+            # a test or Go live now running in another process: don't paint over its progress
+            state.get("phase") in ("setup", "ready", "live", "ending", "test") and age_minutes(state) < 10)
         live_status.write(root, scheduler="running", next_start=start.isoformat(),
                           setup_at=(start - lead).isoformat(),
                           **({} if keep else {"phase": "waiting", "message": "Waiting for the next stream"}))
