@@ -751,7 +751,7 @@ def test_click_at_point_and_app_default_steps():
     assert scanner_site.AT_POINT.match("AT 5 , 9")
     assert not scanner_site.AT_POINT.match("Attach file")
     steps = scanner_site.parse_steps(scanner_site.DEFAULT_APP_STEPS)
-    assert ("click", "at 16,14") in steps and ("if", "DISCONNECTED") in steps
+    assert ("click", "◧") in steps and ("if", "DISCONNECTED") in steps
     assert ("type", "Port = 4002") in steps and ("click", "Clean view") in steps
 
 

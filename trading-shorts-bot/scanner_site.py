@@ -251,7 +251,7 @@ click Scanner
 wait Top Gainers
 wait 5
 click Clean view
-click at 16,14
+click ◧
 """
 
 
@@ -590,7 +590,7 @@ class ScannerSite:
         """The words on visible buttons, links, tabs and menu items - to show what a step could click."""
         try:
             labels = self.page.evaluate("""(limit) => {
-              const sel = 'button, a, [role=button], [role=tab], [role=menuitem], [role=link], li, summary, option, label';
+              const sel = 'button, a, [role=button], [role=tab], [role=menuitem], [role=link], li, summary, label';
               const out = [];
               for (const el of document.querySelectorAll(sel)) {
                 const r = el.getBoundingClientRect();
@@ -598,6 +598,12 @@ class ScannerSite:
                 const t = (el.innerText || el.getAttribute('aria-label') || el.title || '').trim().replace(/\\s+/g, ' ');
                 if (t && t.length <= 40 && !out.includes(t)) out.push(t);
                 if (out.length >= limit) break;
+              }
+              for (const sel of document.querySelectorAll('select')) {
+                const r = sel.getBoundingClientRect();
+                if (!r.width || !r.height) continue;
+                const opts = [...sel.options].map(o => o.text.trim()).filter(Boolean).slice(0, 8);
+                if (opts.length) out.push('list: ' + opts.join(' / '));
               }
               return out;
             }""", limit)
