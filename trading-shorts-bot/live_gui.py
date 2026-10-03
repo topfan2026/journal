@@ -111,6 +111,16 @@ TABS: dict[str, list[Field]] = {
         Field("TRADER_MAX_PRICE", "Scanner: max price", default="200"),
         Field("TRADER_OVERLAY", "Show the trader panel on the stream", "bool", default="true"),
     ],
+    "Market Radar": [
+        Field("RADAR_ENABLED", "Send the Market Radar to Telegram", "bool", default="false",
+              help="a market-regime report (trend, VIX, breadth, credit, yields) at the times below"),
+        Field("RADAR_TIMES", "Send at (HH:MM, comma separated)", default="06:00,13:15",
+              help="this computer's time; the scheduler must be running"),
+        Field("RADAR_DAYS", "Days", default="mon-fri"),
+        Field("RADAR_WATCHLIST", "Watchlist (optional)", help="e.g. NVDA,TSLA,AMD - adds a heat map"),
+        Field("TELEGRAM_BOT_TOKEN", "Telegram bot token", "secret", help="from @BotFather in Telegram"),
+        Field("TELEGRAM_CHAT_ID", "Telegram chat id", help="message your bot once, then click Find my chat ID"),
+    ],
     "YouTube": [
         Field("YOUTUBE_LIVE_API", "Create a new titled broadcast every day", "bool", default="true",
               help="off = stream with the key already set in OBS"),
@@ -276,6 +286,14 @@ class App:
                     "flatten time or when the stream ends. Start with Mode = watch to see its calls before "
                     "letting it place paper orders.")).grid(row=extra + 1, column=0, columnspan=2, sticky="w",
                                                           pady=(10, 0))
+            if tab == "Market Radar":
+                row_btns = ttk.Frame(frame)
+                row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
+                ttk.Button(row_btns, text="Find my chat ID", command=self.radar_chat_id).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Preview report",
+                           command=lambda: self.spawn("market_radar.py", "print")).pack(side="left", padx=(0, 6))
+                ttk.Button(row_btns, text="Send to Telegram now",
+                           command=lambda: self.spawn("market_radar.py", "send")).pack(side="left")
             if tab == "YouTube":
                 ttk.Button(frame, text="Connect YouTube account…",
                            command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -825,6 +843,24 @@ class App:
         if self.spawn("paper_trader.py", "replay"):
             self.write("replaying the last trading day - the panel opens in your browser (needs IB Gateway running)\n")
             self.root.after(4000, lambda: webbrowser.open(paper_trader.overlay_url()))
+
+    def radar_chat_id(self):
+        """Fill in the chat id of whoever last messaged the bot."""
+        if not self.save():
+            return
+
+        def work():
+            try:
+                import market_radar
+                from config import reload_env
+                reload_env()
+                found = market_radar.telegram_chat_id()
+                chat = found.split()[0]
+                self.lines.put(f"found your Telegram chat: {found} - click Save settings\n")
+                self.root.after(0, lambda: self.vars["TELEGRAM_CHAT_ID"].set(chat))
+            except Exception as e:
+                self.lines.put(f"couldn't find the chat id: {e}\n")
+        threading.Thread(target=work, daemon=True).start()
 
     def simulate_trader(self):
         """Made-up tickers and prices: no Gateway or market data needed. The panel opens in your browser."""

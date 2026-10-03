@@ -753,6 +753,9 @@ def daemon(settings: Settings) -> int:
         log.info("keeping this PC awake while the scheduler runs (idle sleep is paused)")
     stop_file = scheduler_stop_file(settings)
     stop_file.unlink(missing_ok=True)
+    import threading
+    import market_radar
+    threading.Thread(target=market_radar.radar_loop, args=(threading.Event(),), daemon=True).start()
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
              env("LIVE_TZ") or "this computer's time zone")
     done: list[datetime] = []  # shows already handled: never plan the same one twice
