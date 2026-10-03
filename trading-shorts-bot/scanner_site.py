@@ -250,6 +250,32 @@ def _win_maximize(title: str) -> bool:
         return False
 
 
+def _win_restore(title: str) -> bool:
+    """Windows only: if the window titled *title* is minimised, maximise it again. True if it was."""
+    if os.name != "nt" or not title:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        restored = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def visit(hwnd, _):
+            length = user32.GetWindowTextLengthW(hwnd)
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            if buf.value.startswith(title) and user32.IsIconic(hwnd):
+                user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+                restored.append(hwnd)
+            return True
+        user32.EnumWindows(visit, 0)
+        return bool(restored)
+    except Exception as e:
+        log.debug("window restore failed: %s", e)
+        return False
+
+
 def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
@@ -264,8 +290,12 @@ def steps_file(app: bool | None = None) -> Path:
 
 DEFAULT_APP_STEPS = """\
 # Farhad AI Scanner, every morning (IB Gateway is already logged in to paper by the bot).
-# Make the words after click / select / wait match the app exactly.
+# The app remembers how it was left, so each part only acts when needed.
 wait 5
+# show the side menu if it's hidden (the corner button reads ☰ when hidden, ◧ when shown)
+ifnot ◧
+  click ☰
+end
 ifnot Terminal / Connection
   click Scanner
 end
@@ -280,8 +310,13 @@ end
 click Scanner
 wait Top Gainers
 wait 5
-click Clean view
-click ◧
+# hide the tools, then the side menu - only if they're showing
+ifnot Show tools
+  click Clean view
+end
+ifnot ☰
+  click ◧
+end
 """
 
 
@@ -560,6 +595,9 @@ class ScannerSite:
 
     def maximize_window(self) -> bool:
         """Maximise the window (the [] button): Chrome's window API, else Windows itself (desktop apps)."""
+        if getattr(self, "_app", None) is not None:
+            # Desktop (Electron) apps may never answer Chrome's window API - the call would hang.
+            return _win_maximize(os_window_title())
         cdp_ok = False
         try:
             cdp = self.context.new_cdp_session(self.page)
@@ -576,6 +614,8 @@ class ScannerSite:
 
     def restore_window(self) -> bool:
         """Un-minimise the bot's window (a minimised window streams as black). True if it was minimised."""
+        if getattr(self, "_app", None) is not None:
+            return _win_restore(os_window_title())
         cdp = self.context.new_cdp_session(self.page)
         try:
             window = cdp.send("Browser.getWindowForTarget")
@@ -592,6 +632,9 @@ class ScannerSite:
     def browser_fullscreen(self, on: bool = True) -> None:
         """Make the Chrome window itself full screen (like F11) - no site button needed."""
         self.want_fullscreen = on
+        if getattr(self, "_app", None) is not None:  # apps: maximise instead (see maximize_window)
+            self.maximize_window()
+            return
         cdp = self.context.new_cdp_session(self.page)
         try:
             window = cdp.send("Browser.getWindowForTarget")["windowId"]
