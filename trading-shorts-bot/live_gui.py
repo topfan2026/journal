@@ -25,6 +25,8 @@ from config import BOT_DIR, ENV_FILE, save_env
 
 COLORS = {"live": "#d93025", "setup": "#e37400", "waiting": "#1a73e8", "failed": "#a50e0e",
           "off": "#5f6368", "muted": "#9aa0a6"}
+DARK = {"bg": "#0d1117", "panel": "#161b22", "field": "#0d1117", "border": "#30363d", "fg": "#e6edf3",
+        "muted": "#8b949e", "accent": "#1f6feb", "select": "#1f6feb"}
 ICONS = {"ok": ("✓", "#188038"), "working": ("●", "#e37400"), "failed": ("✗", "#d93025"),
          "waiting": ("○", "#9aa0a6"), "off": ("–", "#9aa0a6")}
 
@@ -186,8 +188,9 @@ class App:
         from tkinter import ttk
 
         self.tk, self.ttk, self.root = tk, ttk, root
+        apply_dark_theme(root)
         root.title("Live Stream Bot")
-        root.geometry("940x900")
+        root.geometry("960x960")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
         self.day_vars: dict[str, object] = {}
@@ -210,7 +213,9 @@ class App:
             if tab == "Scanner site":
                 ttk.Label(frame, text="Steps\n(top to bottom)").grid(
                     row=extra, column=0, sticky="nw", padx=(0, 10), pady=(10, 0))
-                self.steps = tk.Text(frame, height=11, wrap="none", font=("Consolas", 10), undo=True)
+                self.steps = tk.Text(frame, height=11, wrap="none", font=("Consolas", 10), undo=True, bg=DARK["field"],
+                                     fg=DARK["fg"], insertbackground=DARK["fg"], highlightthickness=1,
+                                     highlightbackground=DARK["border"], relief="flat")
                 self.steps.grid(row=extra, column=1, sticky="ew", pady=(10, 0))
                 self.steps_for_app = values.get("SCANNER_SOURCE") == "app"
                 self.steps.insert("1.0", read_steps(self.steps_for_app))
@@ -226,7 +231,7 @@ class App:
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
                 ttk.Button(row_btns, text="Find it", command=self.find_tiktok).pack(side="left", padx=(0, 6))
                 ttk.Button(row_btns, text="Open LIVE Studio now", command=self.open_tiktok).pack(side="left")
-                ttk.Label(frame, foreground="#777", wraplength=560, justify="left", text=(
+                ttk.Label(frame, foreground=DARK["muted"], wraplength=560, justify="left", text=(
                     "Set up LIVE Studio once: Add source > Window capture > 'LIVE BOT - Scanner - Google Chrome', "
                     "landscape view, your title. TikTok has no remote control for LIVE Studio, so pressing "
                     "Go LIVE stays a click for you; the bot opens it, reminds you and closes it at the end.")
@@ -253,9 +258,9 @@ class App:
         ttk.Checkbutton(auto, text="Start the scheduler automatically when I log in",
                         variable=self.auto_var, command=self.toggle_autostart).pack(side="left")
         self.status = tk.StringVar()
-        ttk.Label(auto, textvariable=self.status, foreground="#0a6").pack(side="right")
+        ttk.Label(auto, textvariable=self.status, foreground="#3fb950").pack(side="right")
 
-        self.log = tk.Text(root, height=8, wrap="word", state="disabled", background="#0b0f17",
+        self.log = tk.Text(root, height=7, wrap="word", state="disabled", background="#010409", relief="flat",
                            foreground="#e8edf5", insertbackground="#e8edf5", font=("Consolas", 10))
         self.log.pack(fill="both", expand=True, padx=10, pady=10)
         self.update_status()
@@ -291,36 +296,29 @@ class App:
         ttk.Button(actions, text="■ End today's stream", command=self.end_today).pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left")
 
-        steps = ttk.LabelFrame(tab, text=" Checklist ", padding=8)
-        steps.grid(row=2, column=0, sticky="nsew", padx=(0, 6))
-        steps.columnconfigure(2, weight=1)
-        self.rows = {}
-        names = [("scheduler", "Scheduler"), ("wake", "Wake from sleep")] + [
-            (n, live_status.STEP_LABELS[n]) for n in live_status.STEPS]
-        for r, (key, label) in enumerate(names):
-            icon = tk.Label(steps, text="○", font=("Segoe UI", 13, "bold"), width=2, fg=COLORS["muted"])
-            icon.grid(row=r, column=0, sticky="w")
-            ttk.Label(steps, text=label, font=("Segoe UI", 10, "bold")).grid(row=r, column=1, sticky="w", padx=(2, 10))
-            detail = ttk.Label(steps, text="", foreground="#555", wraplength=260)
-            detail.grid(row=r, column=2, sticky="w")
-            self.rows[key] = (icon, detail)
+        from pipeline_view import PipelineView
+        self.pipe = PipelineView(tab, height=320)
+        self.pipe.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-        stats = ttk.LabelFrame(tab, text=" This stream ", padding=8)
-        stats.grid(row=2, column=1, sticky="nsew", padx=(6, 0))
-        stats.columnconfigure(1, weight=1)
+        cards = ttk.Frame(tab)
+        cards.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         self.stats = {}
-        for r, (key, label) in enumerate([("live_for", "Live for"), ("viewers", "Watching now"),
-                                          ("privacy", "Privacy"), ("fixes", "Auto-fixes"),
-                                          ("last_check", "Last health check"), ("ends", "Ends at"),
-                                          ("problem", "Last problem")]):
-            ttk.Label(stats, text=label).grid(row=r, column=0, sticky="w", padx=(0, 10), pady=1)
-            val = ttk.Label(stats, text="–", font=("Segoe UI", 10, "bold"), wraplength=240)
-            val.grid(row=r, column=1, sticky="w", pady=1)
+        for i, (key, label) in enumerate([("live_for", "LIVE FOR"), ("viewers", "WATCHING"), ("privacy", "PRIVACY"),
+                                          ("fixes", "AUTO-FIXES"), ("last_check", "LAST CHECK"), ("ends", "ENDS AT")]):
+            cards.columnconfigure(i, weight=1, uniform="card")
+            card = tk.Frame(cards, bg=DARK["panel"], padx=10, pady=6, highlightthickness=1,
+                            highlightbackground=DARK["border"])
+            card.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
+            val = tk.Label(card, text="–", font=("Segoe UI", 16, "bold"), fg=DARK["fg"], bg=DARK["panel"])
+            val.pack(anchor="w")
+            tk.Label(card, text=label, font=("Segoe UI", 8, "bold"), fg=DARK["muted"], bg=DARK["panel"]).pack(anchor="w")
             self.stats[key] = val
+        self.problem = ttk.Label(tab, text="", foreground="#f85149")
+        self.problem.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
         hist = ttk.LabelFrame(tab, text=" Last 7 days (double-click to open on YouTube) ", padding=6)
-        hist.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        self.hist = ttk.Treeview(hist, columns=("date", "result", "minutes", "public"), show="headings", height=5)
+        hist.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.hist = ttk.Treeview(hist, columns=("date", "result", "minutes", "public"), show="headings", height=4)
         for col, text, width in (("date", "Day", 130), ("result", "Result", 300), ("minutes", "Live (min)", 90),
                                  ("public", "Went public", 90)):
             self.hist.heading(col, text=text)
@@ -341,10 +339,7 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def _set_row(self, key, state, detail=""):
-        icon, label = self.rows[key]
-        sym, color = ICONS.get(state, ICONS["waiting"])
-        icon.configure(text=sym, fg=color)
-        label.configure(text=detail)
+        self._pipe_states[key] = (state, detail)
 
     def refresh_dashboard(self):
         try:
@@ -436,34 +431,44 @@ class App:
         self.b_sub.configure(text=sub)
         self.b_clock.configure(text=clock)
         self.sched_btn.configure(text="■ Stop scheduler" if running else "▶ Start scheduler")
+        self._pipe_states = {}
 
         self._set_row("scheduler", "ok" if running else "failed",
-                      ("running" + (f" - next stream {nxt.strftime('%a %H:%M')}" if nxt else "")) if running
-                      else "stopped - nothing starts by itself")
+                      (f"next {nxt.strftime('%a %H:%M')}" if nxt else "running") if running else "OFF")
         if (self.vars.get("LIVE_WAKE") and self.vars["LIVE_WAKE"].get()) and nxt is not None:
             prep = float(self.vars["LIVE_PREP_MIN"].get() or 10)
             import wake
             at = wake.wake_time(nxt, prep).strftime("%H:%M")
             self._set_row("wake", "ok" if self.wake_installed else "waiting",
-                          f"wakes the PC at {at}" if self.wake_installed else "click Save settings to set it up")
+                          f"wakes PC {at}" if self.wake_installed else "Save to set it up")
         else:
-            self._set_row("wake", "off", "off (the PC must be awake at stream time)")
+            self._set_row("wake", "off", "off")
         steps = st.get("steps", {})
         for name in live_status.STEPS:
             v = steps.get(name, {})
             self._set_row(name, v.get("state", "waiting"), v.get("detail", ""))
 
-        live_for = "–"
-        if phase == "live" and clock:
-            live_for = clock
-        self.stats["live_for"].configure(text=live_for)
+        import tiktok_studio
+        if not tiktok_studio.enabled():
+            self._set_row("tiktok", "off", "off")
+        elif phase == "live":
+            self._set_row("tiktok", "working", "press Go LIVE in Studio")
+        else:
+            self._set_row("tiktok", "waiting", "opens when live")
+        if not running and not active:
+            for name in live_status.STEPS:  # nothing is happening: show the chain idle
+                if self._pipe_states[name][0] != "failed":
+                    self._pipe_states[name] = ("waiting", "")
+        self.pipe.set_states(self._pipe_states)
+
+        self.stats["live_for"].configure(text=clock if phase == "live" and clock else "–")
         viewers = st.get("viewers")
         self.stats["viewers"].configure(text="–" if viewers is None or phase != "live" else str(viewers))
         self.stats["privacy"].configure(text=st.get("privacy") or "–")
         self.stats["fixes"].configure(text=str(st.get("fixes") or 0) if active else "–")
         self.stats["last_check"].configure(text=hm(st.get("last_check")) or "–")
         self.stats["ends"].configure(text=hm(st.get("show_end")) if active else "–")
-        self.stats["problem"].configure(text=st.get("error") or "none")
+        self.problem.configure(text=f"Last problem: {st['error']}" if st.get("error") and active else "")
         self.current_url = st.get("url", "")
 
         if getattr(self, "_hist_tick", 0) % 5 == 0:
@@ -535,7 +540,7 @@ class App:
                 ttk.Button(cell, text="Browse…", command=lambda: self.browse(var, f.kind)).grid(
                     row=0, column=1, padx=(6, 0))
         if f.help:
-            ttk.Label(cell, text=f.help, foreground="#777").grid(row=1, column=0, columnspan=2, sticky="w")
+            ttk.Label(cell, text=f.help, foreground=DARK["muted"]).grid(row=1, column=0, columnspan=2, sticky="w")
         self.vars[f.key] = var
 
     def browse(self, var, kind):
@@ -781,6 +786,44 @@ class App:
                 return
             stop_gracefully(self.daemon)
         self.root.destroy()
+
+
+def apply_dark_theme(root) -> None:
+    """A dark, app-like look for all tabs (ttk 'clam' theme recoloured)."""
+    from tkinter import ttk
+    d = DARK
+    st = ttk.Style(root)
+    st.theme_use("clam")
+    root.configure(bg=d["bg"])
+    root.option_add("*TCombobox*Listbox.background", d["panel"])
+    root.option_add("*TCombobox*Listbox.foreground", d["fg"])
+    root.option_add("*TCombobox*Listbox.selectBackground", d["select"])
+    st.configure(".", background=d["bg"], foreground=d["fg"], fieldbackground=d["field"], bordercolor=d["border"],
+                 lightcolor=d["border"], darkcolor=d["border"], troughcolor=d["panel"], focuscolor=d["accent"],
+                 selectbackground=d["select"], selectforeground="white", insertcolor=d["fg"],
+                 font=("Segoe UI", 10))
+    st.configure("TFrame", background=d["bg"])
+    st.configure("TLabel", background=d["bg"], foreground=d["fg"])
+    st.configure("TLabelframe", background=d["bg"], bordercolor=d["border"])
+    st.configure("TLabelframe.Label", background=d["bg"], foreground=d["muted"], font=("Segoe UI", 9, "bold"))
+    st.configure("TNotebook", background=d["bg"], bordercolor=d["border"], tabmargins=(0, 4, 0, 0))
+    st.configure("TNotebook.Tab", background=d["panel"], foreground=d["muted"], padding=(14, 6),
+                 bordercolor=d["border"])
+    st.map("TNotebook.Tab", background=[("selected", d["bg"])], foreground=[("selected", d["fg"])])
+    st.configure("TButton", background=d["panel"], foreground=d["fg"], padding=(10, 5), bordercolor=d["border"])
+    st.map("TButton", background=[("active", "#21262d"), ("pressed", d["accent"])])
+    st.configure("TEntry", fieldbackground=d["field"], foreground=d["fg"], insertcolor=d["fg"])
+    st.configure("TCombobox", fieldbackground=d["field"], background=d["panel"], foreground=d["fg"],
+                 arrowcolor=d["fg"])
+    st.map("TCombobox", fieldbackground=[("readonly", d["field"])], foreground=[("readonly", d["fg"])])
+    st.configure("TCheckbutton", background=d["bg"], foreground=d["fg"], indicatorbackground=d["field"],
+                 indicatorforeground=d["fg"])
+    st.map("TCheckbutton", background=[("active", d["bg"])],
+           indicatorbackground=[("selected", d["accent"]), ("active", d["panel"])])
+    st.configure("Treeview", background=d["panel"], fieldbackground=d["panel"], foreground=d["fg"], rowheight=22,
+                 bordercolor=d["border"])
+    st.configure("Treeview.Heading", background=d["bg"], foreground=d["muted"], font=("Segoe UI", 9, "bold"))
+    st.map("Treeview", background=[("selected", d["select"])])
 
 
 def stop_gracefully(proc: subprocess.Popen, timeout: float = 90) -> None:
