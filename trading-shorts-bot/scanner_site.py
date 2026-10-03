@@ -230,7 +230,7 @@ def steps_file(app: bool | None = None) -> Path:
 
 
 DEFAULT_APP_STEPS = """\
-# What the bot does in the desktop scanner app (Farhad AI Scanner) every morning, top to bottom.
+# Farhad AI Scanner, every morning (IB Gateway is already logged in to paper by the bot).
 # Make the words after click / select / wait match the app exactly.
 wait 5
 click Terminal / Connection
@@ -241,8 +241,9 @@ if DISCONNECTED
   click Connect
   wait Connected
 end
-click Scanner Layout
-wait 10
+click Scanner
+wait Top Gainers
+wait 5
 click Clean view
 click at 16,14
 """
