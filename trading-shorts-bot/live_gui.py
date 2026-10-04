@@ -95,8 +95,8 @@ TABS: dict[str, list[Field]] = {
     "AI Trader": [
         Field("TRADER_ENABLED", "Run the AI paper trader during the stream", "bool", default="false",
               help="trades scanner movers on the PAPER account and shows a panel on the stream"),
-        Field("TRADER_MODE", "Mode", "choice", default="watch", choices=["watch", "paper"],
-              help="watch = signals and commentary only; paper = places paper orders"),
+        Field("TRADER_MODE", "Mode", "choice", default="watch", choices=["watch", "paper", "simulate"],
+              help="watch = signals only; paper = places paper orders; simulate = made-up session (testing)"),
         Field("TRADER_STRATEGIES", "Strategies", default="orb,vwap", help="orb = opening-range breakout, "
               "vwap = VWAP reclaim"),
         Field("TRADER_MAX_TRADES", "Max trades per day", default="5"),

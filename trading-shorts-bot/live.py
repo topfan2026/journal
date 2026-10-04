@@ -616,7 +616,9 @@ class LiveShow:
         import paper_trader
         stop = self.trader_stop_file()
         stop.unlink(missing_ok=True)
-        args = [sys.executable, str(Path(__file__).resolve().parent / "paper_trader.py"), "run",
+        # TRADER_MODE=simulate shows a simulated session on the stream (demos, weekends, testing).
+        command = "simulate" if (env("TRADER_MODE", "watch") or "").lower() == "simulate" else "run"
+        args = [sys.executable, str(Path(__file__).resolve().parent / "paper_trader.py"), command,
                 "--stop-file", str(stop)]
         flags = 0x08000000 if os.name == "nt" else 0  # no console window
         self.trader = subprocess.Popen(args, cwd=str(Path(__file__).resolve().parent), creationflags=flags,
