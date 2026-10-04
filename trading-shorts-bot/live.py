@@ -621,14 +621,26 @@ class LiveShow:
         args = [sys.executable, str(Path(__file__).resolve().parent / "paper_trader.py"), command,
                 "--stop-file", str(stop)]
         flags = 0x08000000 if os.name == "nt" else 0  # no console window
+        errors = self.settings.logs / "trader-output.log"  # a crash at start-up lands here, not nowhere
+        errors.parent.mkdir(parents=True, exist_ok=True)
         self.trader = subprocess.Popen(args, cwd=str(Path(__file__).resolve().parent), creationflags=flags,
-                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log.info("[trader] AI paper trader started (%s mode)", env("TRADER_MODE", "paper"))
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=open(errors, "a", encoding="utf-8"))
+        log.info("[trader] started (%s mode)", env("TRADER_MODE", "watch"))
         if obs is not None and obs.obs is not None and env_bool("TRADER_OVERLAY", True):
+            # OBS loads the page once: wait until the trader's panel server answers, or OBS shows an error page.
+            port = int(paper_trader.overlay_url().rstrip("/").rsplit(":", 1)[1])
+            deadline = time.monotonic() + env_float("TRADER_PANEL_WAIT", 30)
+            while not ibkr.port_open("127.0.0.1", port) and time.monotonic() < deadline:
+                if self.trader.poll() is not None:
+                    log.error("[trader] it stopped right away - see %s", errors)
+                    return
+                time.sleep(0.5)
             try:
                 obs.obs.ensure_browser_source(obs.scene, "AI Trader panel", paper_trader.overlay_url())
+                log.info("[trader] panel shown in OBS (%s)", paper_trader.overlay_url())
             except Exception as e:
-                log.warning("[trader] couldn't add the overlay to OBS: %s", e)
+                log.warning("[trader] couldn't add the panel to OBS: %s", e)
 
     def trader_alive(self) -> bool:
         """Running, or finished normally for the day (exit 0) - only a crash needs a restart."""

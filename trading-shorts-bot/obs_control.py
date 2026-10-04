@@ -203,6 +203,10 @@ class OBS:
         item = next((i for i in items if i.get("sourceName") == name), None)
         if name in inputs:
             self.req("SetInputSettings", {"inputName": name, "inputSettings": settings, "overlay": True})
+            try:  # reload the page: an earlier load may have hit a server that wasn't up yet
+                self.req("PressInputPropertiesButton", {"inputName": name, "propertyName": "refreshnocache"})
+            except Exception as e:
+                log.debug("obs: refresh %s: %s", name, e)
             if item is None:
                 item_id = self.req("CreateSceneItem", {"sceneName": scene, "sourceName": name}).get("sceneItemId")
             else:
