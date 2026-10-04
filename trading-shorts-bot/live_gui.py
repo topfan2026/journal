@@ -92,25 +92,6 @@ TABS: dict[str, list[Field]] = {
         Field("TIKTOK_STUDIO_REMIND", "Pop up a reminder to press Go LIVE", "bool", default="true"),
         Field("TIKTOK_STUDIO_CLOSE_AT_END", "Close it at the end time (ends the TikTok LIVE)", "bool", default="true"),
     ],
-    "AI Trader": [
-        Field("TRADER_ENABLED", "Run the AI paper trader during the stream", "bool", default="false",
-              help="trades scanner movers on the PAPER account and shows a panel on the stream"),
-        Field("TRADER_MODE", "Mode", "choice", default="watch", choices=["watch", "paper", "simulate"],
-              help="watch = signals only; paper = places paper orders; simulate = made-up session (testing)"),
-        Field("TRADER_STRATEGIES", "Strategies", default="orb,vwap", help="orb = opening-range breakout, "
-              "vwap = VWAP reclaim"),
-        Field("TRADER_MAX_TRADES", "Max trades per day", default="5"),
-        Field("TRADER_MAX_LOSSES", "Stop for the day after this many losses", default="3"),
-        Field("TRADER_RISK_USD", "Risk per trade ($, entry to stop)", default="100"),
-        Field("TRADER_MAX_POSITION_USD", "Max position size ($)", default="10000"),
-        Field("TRADER_ORB_MIN", "Opening range (minutes)", default="5"),
-        Field("TRADER_TARGET_R", "Target (x risk)", default="2"),
-        Field("TRADER_LAST_ENTRY_ET", "No new trades after (New York time)", default="11:30"),
-        Field("TRADER_FLATTEN_ET", "Close everything at (New York time)", default="15:50"),
-        Field("TRADER_MIN_PRICE", "Scanner: min price", default="2"),
-        Field("TRADER_MAX_PRICE", "Scanner: max price", default="200"),
-        Field("TRADER_OVERLAY", "Show the trader panel on the stream", "bool", default="true"),
-    ],
     "Market Radar": [
         Field("RADAR_ENABLED", "Send the Market Radar to Telegram", "bool", default="false",
               help="a market-regime report (trend, VIX, breadth, credit, yields) at the times below"),
@@ -184,7 +165,7 @@ def validate(values: dict[str, str]) -> list[str]:
     if not days_to_list(values.get("LIVE_DAYS", "")):
         problems.append("pick at least one day")
     for key in ("LIVE_DURATION_MIN", "LIVE_PREP_MIN", "IB_PORT", "OBS_WS_PORT", "SCANNER_WARMUP_SECONDS",
-                "LIVE_PUBLIC_AFTER_MIN", "TRADER_MAX_TRADES", "TRADER_MAX_LOSSES", "TRADER_ORB_MIN"):
+                "LIVE_PUBLIC_AFTER_MIN"):
         if values.get(key) and not values[key].strip().isdigit():
             problems.append(f"{key}: must be a whole number")
     if values.get("LIVE_TZ"):
@@ -270,22 +251,6 @@ class App:
                     "landscape view, your title. TikTok has no remote control for LIVE Studio, so pressing "
                     "Go LIVE stays a click for you; the bot opens it, reminds you and closes it at the end.")
                           ).grid(row=extra + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
-            if tab == "AI Trader":
-                row_btns = ttk.Frame(frame)
-                row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
-                ttk.Button(row_btns, text="Run it now (watch only)",
-                           command=lambda: self.spawn("paper_trader.py", "run", "--watch")).pack(side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Simulate (any time)", command=self.simulate_trader).pack(
-                    side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Replay last trading day", command=self.replay_trader).pack(
-                    side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Preview the stream panel", command=self.preview_panel).pack(side="left")
-                ttk.Label(frame, foreground=DARK["muted"], wraplength=600, justify="left", text=(
-                    "Paper account only (it refuses a live account). Hard limits are enforced in code: max trades "
-                    "per day, stop after N losses, no new trades after the cut-off, everything closed at the "
-                    "flatten time or when the stream ends. Start with Mode = watch to see its calls before "
-                    "letting it place paper orders.")).grid(row=extra + 1, column=0, columnspan=2, sticky="w",
-                                                          pady=(10, 0))
             if tab == "Market Radar":
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -836,14 +801,6 @@ class App:
         self.steps.insert("1.0", read_steps(app))
         self.write(f"showing the {'desktop app' if app else 'website'} steps\n")
 
-    def replay_trader(self):
-        """Weekend / evening test: plays the last session's real bars through the rules, no orders."""
-        import webbrowser
-        import paper_trader
-        if self.spawn("paper_trader.py", "replay"):
-            self.write("replaying the last trading day - the panel opens in your browser (needs IB Gateway running)\n")
-            self.root.after(4000, lambda: webbrowser.open(paper_trader.overlay_url()))
-
     def radar_chat_id(self):
         """Fill in the chat id of whoever last messaged the bot."""
         if not self.save():
@@ -861,24 +818,6 @@ class App:
             except Exception as e:
                 self.lines.put(f"couldn't find the chat id: {e}\n")
         threading.Thread(target=work, daemon=True).start()
-
-    def simulate_trader(self):
-        """Made-up tickers and prices: no Gateway or market data needed. The panel opens in your browser."""
-        import webbrowser
-        import paper_trader
-        if self.spawn("paper_trader.py", "simulate"):
-            self.write("simulated trading session - the panel opens in your browser\n")
-            self.root.after(2500, lambda: webbrowser.open(paper_trader.overlay_url()))
-
-    def preview_panel(self):
-        import socket
-        import webbrowser
-        import paper_trader
-        with socket.socket() as sock:
-            busy = sock.connect_ex(("127.0.0.1", int(paper_trader.overlay_url().rsplit(":", 1)[1].strip("/")))) == 0
-        if not busy:
-            self.spawn("paper_trader.py", "overlay")
-        self.root.after(1500, lambda: webbrowser.open(paper_trader.overlay_url()))
 
     def find_tiktok(self):
         import tiktok_studio
