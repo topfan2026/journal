@@ -398,7 +398,10 @@ def test_if_end_blocks():
     steps = scanner_site.parse_steps(scanner_site.DEFAULT_STEPS)
     i = steps.index(("if", "Gateway Paper"))
     end = scanner_site.skip_block(steps, i)
-    assert steps[end] == ("end", "") and steps[end + 1:] == [("wait", "10"), ("click", "Full screen"), ("hide", "A row is tinted")]
+    assert steps[end] == ("end", "") and steps[end + 1:] == [
+        ("if", "Private IBKR Gateway setup"), ("key", "Escape"), ("end", ""),
+        ("if", "Private IBKR Gateway setup"), ("click", "Close"), ("end", ""),
+        ("wait", "10"), ("click", "Full screen"), ("hide", "A row is tinted")]
     with pytest.raises(scanner_site.SiteError, match="missing its 'end'"):
         scanner_site.parse_steps("if A\nclick B\n")
     with pytest.raises(scanner_site.SiteError, match="without an 'if'"):
