@@ -70,8 +70,16 @@ click Scan Market
 if Gateway Paper
   click Gateway Paper
   type Local connector secret = {SCANNER_SECRET}
-  click Test Connection
+  click Test connector
   wait Connected
+  click Connect read-only
+end
+# The connection window doesn't always close by itself: Esc, then its Close button.
+if Private IBKR Gateway setup
+  key Escape
+end
+if Private IBKR Gateway setup
+  click Close
 end
 wait 10
 click Full screen
