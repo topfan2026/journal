@@ -401,6 +401,7 @@ def test_if_end_blocks():
     assert steps[end] == ("end", "") and steps[end + 1:] == [
         ("if", "Private IBKR Gateway setup"), ("key", "Escape"), ("end", ""),
         ("if", "Private IBKR Gateway setup"), ("click", "Close"), ("end", ""),
+        ("select", "Stream Mode"), ("wait", "5"), ("select", "YouTube"),
         ("wait", "10"), ("click", "Full screen"), ("hide", "A row is tinted")]
     with pytest.raises(scanner_site.SiteError, match="missing its 'end'"):
         scanner_site.parse_steps("if A\nclick B\n")

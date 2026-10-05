@@ -81,6 +81,10 @@ end
 if Private IBKR Gateway setup
   click Close
 end
+# Stream Mode with the panel layout saved as "YouTube" (Save layout in the bot's own browser).
+select Stream Mode
+wait 5
+select YouTube
 wait 10
 click Full screen
 hide A row is tinted
