@@ -81,10 +81,10 @@ end
 if Private IBKR Gateway setup
   click Close
 end
-# Stream Mode with the panel layout saved as "YouTube" (Save layout in the bot's own browser).
+# Stream Mode, then the wall layout picked in the app (Scanner site tab > Wall layout on the stream).
 select Stream Mode
 wait 5
-select YouTube
+select {SCANNER_LAYOUT}
 wait 10
 click Full screen
 hide A row is tinted
@@ -383,10 +383,14 @@ def skip_block(steps: list[tuple[str, str]], i: int) -> int:
     return len(steps)
 
 
+# Names the steps may use without setting them first.
+EXPAND_DEFAULTS = {"SCANNER_LAYOUT": "A+ setups"}
+
+
 def expand(text: str) -> str:
     """Replace {SCANNER_SECRET}-style names with values from .env, so secrets stay out of the steps."""
     def value(m):
-        v = env(m.group(1))
+        v = env(m.group(1), EXPAND_DEFAULTS.get(m.group(1)))
         if v is None:
             raise SiteError(f"{{{m.group(1)}}} is used in the steps but not set (Scanner site tab)")
         return v
@@ -400,9 +404,14 @@ def shown(verb: str, arg: str) -> str:
     return f"{verb} {arg}"
 
 
+def use_layout_setting(text: str) -> str:
+    """Older saved steps picked the "YouTube" layout by name; point that line at the app's drop-down."""
+    return re.sub(r"(?mi)^(\s*)select YouTube\s*$", r"\1select {SCANNER_LAYOUT}", text)
+
+
 def load_steps() -> list[tuple[str, str]]:
     path = steps_file()
-    return parse_steps(path.read_text(encoding="utf-8")) if path.exists() else []
+    return parse_steps(use_layout_setting(path.read_text(encoding="utf-8"))) if path.exists() else []
 
 
 class ScannerSite:

@@ -401,7 +401,7 @@ def test_if_end_blocks():
     assert steps[end] == ("end", "") and steps[end + 1:] == [
         ("if", "Private IBKR Gateway setup"), ("key", "Escape"), ("end", ""),
         ("if", "Private IBKR Gateway setup"), ("click", "Close"), ("end", ""),
-        ("select", "Stream Mode"), ("wait", "5"), ("select", "YouTube"),
+        ("select", "Stream Mode"), ("wait", "5"), ("select", "{SCANNER_LAYOUT}"),
         ("wait", "10"), ("click", "Full screen"), ("hide", "A row is tinted")]
     with pytest.raises(scanner_site.SiteError, match="missing its 'end'"):
         scanner_site.parse_steps("if A\nclick B\n")
@@ -929,3 +929,14 @@ def test_streams_start_public_by_default(tmp_path, monkeypatch):
     agent = live.YouTubeAgent(None, live.Session(tmp_path / "d"), datetime.now(UTC))
     assert agent.start_privacy == "public"
     assert agent.check_go_public({"broadcast_id": "B", "stream": {"id": "S"}}, True, now=0) is False  # nothing to switch
+
+
+def test_stream_layout_choice(monkeypatch):
+    import scanner_site
+    assert "select {SCANNER_LAYOUT}" in scanner_site.DEFAULT_STEPS
+    monkeypatch.delenv("SCANNER_LAYOUT", raising=False)
+    assert scanner_site.expand("{SCANNER_LAYOUT}") == "A+ setups"
+    monkeypatch.setenv("SCANNER_LAYOUT", "YouTube")
+    assert scanner_site.expand("{SCANNER_LAYOUT}") == "YouTube"
+    old = "select Stream Mode\nwait 5\n  select YouTube \nwait 10\n"
+    assert scanner_site.use_layout_setting(old) == "select Stream Mode\nwait 5\n  select {SCANNER_LAYOUT}\nwait 10\n"
