@@ -556,6 +556,7 @@ def test_goes_public_only_after_healthy_minutes(tmp_path, monkeypatch):
     monkeypatch.setattr(youtube_live, "set_privacy", lambda yt, bid, p: calls.append((bid, p)))
     monkeypatch.setenv("LIVE_PUBLIC_AFTER_MIN", "3")
     monkeypatch.setenv("LIVE_PRIVACY", "public")
+    monkeypatch.setenv("LIVE_START_PRIVACY", "unlisted")
     session = live.Session(tmp_path / "day")
     agent = live.YouTubeAgent(None, session, datetime.now(UTC))
     agent.yt = object()
@@ -918,3 +919,13 @@ def test_daemon_does_not_replan_a_finished_show(settings, monkeypatch):
     monkeypatch.setattr(live.time, "sleep", lambda s: stop_file.touch())  # first wait: ask it to stop
     assert live.daemon(settings) == 0
     assert len(calls) == 1
+
+
+def test_streams_start_public_by_default(tmp_path, monkeypatch):
+    """YouTube only notifies subscribers for a stream that starts public."""
+    monkeypatch.delenv("LIVE_START_PRIVACY", raising=False)
+    monkeypatch.setenv("LIVE_PRIVACY", "public")
+    monkeypatch.setenv("LIVE_PUBLIC_AFTER_MIN", "3")
+    agent = live.YouTubeAgent(None, live.Session(tmp_path / "d"), datetime.now(UTC))
+    assert agent.start_privacy == "public"
+    assert agent.check_go_public({"broadcast_id": "B", "stream": {"id": "S"}}, True, now=0) is False  # nothing to switch

@@ -273,7 +273,9 @@ class YouTubeAgent:
         """Start unlisted and go public only once the stream has looked right for a few minutes."""
         if env_float("LIVE_PUBLIC_AFTER_MIN", 3) <= 0:
             return self.final_privacy
-        return env("LIVE_START_PRIVACY", "unlisted") or "unlisted"
+        # Public from the start by default: YouTube notifies subscribers and recommends a stream only
+        # when it STARTS public - one switched to public a few minutes later gets almost no viewers.
+        return env("LIVE_START_PRIVACY", "public") or "public"
 
     def check_go_public(self, result: dict, picture_ok: bool, now: float | None = None) -> bool:
         """Called every watchdog check; switches to the final privacy after LIVE_PUBLIC_AFTER_MIN healthy minutes."""
