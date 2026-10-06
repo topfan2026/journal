@@ -53,19 +53,12 @@ TABS: dict[str, list[Field]] = {
               help="Windows: wakes a sleeping PC 10 minutes before setup (not one that was shut down)"),
     ],
     "IB Gateway": [
-        Field("IB_TRADING_MODE", "Account to log in", "choice", default="paper", choices=["paper", "live"],
-              help="live = real-time data for the website scanner (always read-only: no orders). "
-                   "Approve the login in IBKR Mobile"),
         Field("IB_USERNAME", "Paper username"),
         Field("IB_PASSWORD", "Paper password", "secret"),
-        Field("IB_LIVE_USERNAME", "Live username", help="used when the account is live"),
-        Field("IB_LIVE_PASSWORD", "Live password", "secret"),
-        Field("IB_LIVE_PORT", "Live API port", default="4001",
-              help="set the website connector's IBKR_PORT to this too (Gateway live = 4001)"),
         Field("IBC_PATH", "IBC folder", "dir", help="unzipped IBC from github.com/IbcAlpha/IBC/releases"),
         Field("TWS_MAJOR_VRSN", "Gateway version", help="e.g. 1030 for 10.30 (Gateway: Help > About)"),
         Field("TWS_PATH", "Gateway install folder", "dir", help="usually C:/Jts or ~/Jts"),
-        Field("IB_PORT", "Paper API port", default="4002", help="must match the port aialgopro connects to"),
+        Field("IB_PORT", "API port", default="4002", help="must match the port aialgopro connects to"),
         Field("IB_REQUIRE_PAPER", "Refuse non-paper accounts", "bool", default="true"),
         Field("IB_READ_ONLY", "Read-only API (blocks orders)", "bool", default="false"),
     ],
@@ -594,11 +587,8 @@ class App:
             self.data_btn.configure(text="Stopping…")
             threading.Thread(target=stop_gracefully, args=(proc, 20), daemon=True).start()
             return
-        mode = self.vars["IB_TRADING_MODE"].get() if "IB_TRADING_MODE" in self.vars else "paper"
         if not messagebox.askyesno("Website data only",
-                                   f"Start IB Gateway ({mode}) for the website scanner, without OBS or YouTube?"
-                                   + ("\n\nLive account: read-only. Approve the login in IBKR Mobile on your phone."
-                                      if mode == "live" else "")):
+                                   "Start IB Gateway (paper) for the website scanner, without OBS or YouTube?"):
             return
         self.data_proc = self.spawn("live.py", "data")
 

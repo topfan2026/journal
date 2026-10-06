@@ -87,26 +87,6 @@ def test_paper_guard(monkeypatch):
     ibkr.check_paper(["U1234567"])
 
 
-def test_live_mode_is_read_only_with_its_own_login_and_port(tmp_path, monkeypatch):
-    monkeypatch.setenv("IB_USERNAME", "paperuser")
-    monkeypatch.setenv("IB_PASSWORD", "p1")
-    monkeypatch.setenv("IB_TRADING_MODE", "live")
-    monkeypatch.setenv("IB_LIVE_USERNAME", "realuser")
-    monkeypatch.setenv("IB_LIVE_PASSWORD", "r1")
-    monkeypatch.setenv("IB_READ_ONLY", "false")  # live is read-only regardless
-    text = ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()
-    assert "TradingMode=live" in text and "IbLoginId=realuser" in text and "ReadOnlyApi=yes" in text
-    assert "OverrideTwsApiPort=4001" in text and ibkr.port() == 4001
-    monkeypatch.setenv("IBC_PATH", "/opt/ibc")
-    monkeypatch.setenv("TWS_MAJOR_VRSN", "1030")
-    assert any(c.lower().endswith("live") for c in ibkr.gateway_command(tmp_path / "c.ini"))
-    ibkr.check_paper(["U1234567"])  # a live account is expected in live mode
-    monkeypatch.delenv("IB_LIVE_USERNAME")
-    assert "IbLoginId=paperuser" in ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()  # falls back
-    monkeypatch.setenv("IB_TRADING_MODE", "paper")
-    assert ibkr.port() == 4002 and not ibkr.read_only()
-
-
 def test_website_data_only_starts_gateway_and_connector(settings, monkeypatch):
     calls = []
     up = {"gw": False}

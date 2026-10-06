@@ -810,17 +810,17 @@ def run_show(settings: Settings, start: datetime, armed: datetime, scheduler_sto
 
 
 def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
-    """Website data only: IB Gateway (paper or live, per IB_TRADING_MODE) plus the scanner site's
+    """Website data only: IB Gateway (paper) plus the scanner site's
     connector and tunnel, kept running until stopped -- no OBS, YouTube or browser.
     Checks every 30 s and restarts whatever stopped. IB Gateway itself is left running on stop."""
     import local_connector
 
     root = live_root(settings)
     gateway = GatewayAgent(settings)
-    what = f"IB Gateway {ibkr.mode()}{' (read-only)' if ibkr.read_only() else ''} on port {ibkr.port()}"
+    what = f"IB Gateway paper on port {ibkr.port()}"
 
     def status(state: str, detail: str) -> None:
-        live_status.write(root, data={"state": state, "detail": detail, "mode": ibkr.mode(), "port": ibkr.port(),
+        live_status.write(root, data={"state": state, "detail": detail, "port": ibkr.port(),
                                       "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
 
     log.info("[data] website data only: %s%s", what, " + scanner connector" if local_connector.enabled() else "")
@@ -829,11 +829,11 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
         while True:
             try:
                 if not gateway.healthy():
-                    live_status.step(root, "gateway", "working", f"starting ({ibkr.mode()})")
+                    live_status.step(root, "gateway", "working", "starting")
                     result = gateway.run()
                     live_status.step(root, "gateway", "ok", _summary(result) or f"port {ibkr.port()}")
                 else:
-                    live_status.step(root, "gateway", "ok", f"{ibkr.mode()} · port {ibkr.port()}")
+                    live_status.step(root, "gateway", "ok", f"port {ibkr.port()}")
                 if local_connector.enabled() and not local_connector.healthy():
                     log.info("[connector] %s", local_connector.ensure(sleep=sleep))
                 status("on", what)
