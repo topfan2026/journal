@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 STEPS = ("gateway", "scanner", "youtube", "obs", "live")
-STEP_LABELS = {"gateway": "IB Gateway (paper)", "scanner": "Scanner", "youtube": "YouTube broadcast",
+STEP_LABELS = {"gateway": "IB Gateway", "scanner": "Scanner", "youtube": "YouTube broadcast",
                "obs": "OBS", "live": "Streaming"}
 
 

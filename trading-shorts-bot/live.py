@@ -809,6 +809,52 @@ def run_show(settings: Settings, start: datetime, armed: datetime, scheduler_sto
             sleep(min(5, max(0.01, (retry_at - datetime.now(tz())).total_seconds())))
 
 
+def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
+    """Website data only: IB Gateway (paper or live, per IB_TRADING_MODE) plus the scanner site's
+    connector and tunnel, kept running until stopped -- no OBS, YouTube or browser.
+    Checks every 30 s and restarts whatever stopped. IB Gateway itself is left running on stop."""
+    import local_connector
+
+    root = live_root(settings)
+    gateway = GatewayAgent(settings)
+    what = f"IB Gateway {ibkr.mode()}{' (read-only)' if ibkr.read_only() else ''} on port {ibkr.port()}"
+
+    def status(state: str, detail: str) -> None:
+        live_status.write(root, data={"state": state, "detail": detail, "mode": ibkr.mode(), "port": ibkr.port(),
+                                      "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+    log.info("[data] website data only: %s%s", what, " + scanner connector" if local_connector.enabled() else "")
+    status("starting", what)
+    try:
+        while True:
+            try:
+                if not gateway.healthy():
+                    live_status.step(root, "gateway", "working", f"starting ({ibkr.mode()})")
+                    result = gateway.run()
+                    live_status.step(root, "gateway", "ok", _summary(result) or f"port {ibkr.port()}")
+                else:
+                    live_status.step(root, "gateway", "ok", f"{ibkr.mode()} · port {ibkr.port()}")
+                if local_connector.enabled() and not local_connector.healthy():
+                    log.info("[connector] %s", local_connector.ensure(sleep=sleep))
+                status("on", what)
+            except Exception as e:  # keep trying: the point of this mode is to stay up
+                log.error("[data] %s - trying again in 60 s", e)
+                live_status.step(root, "gateway", "failed", str(e)[:120])
+                status("failed", str(e)[:200])
+                if once:
+                    return 1
+                sleep(60)
+                continue
+            if once:
+                return 0
+            for _ in range(6):
+                sleep(5)
+    except KeyboardInterrupt:
+        log.info("[data] stopped (IB Gateway is left running; close its window to log out)")
+        status("off", "stopped")
+        return 0
+
+
 def stop(settings: Settings) -> int:
     now = datetime.now(tz())
     session = Session(live_root(settings) / now.strftime("%Y-%m-%d"))
@@ -864,7 +910,7 @@ def main(argv: list[str] | None = None) -> int:
     from watcher import setup_logging
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login", "site-test"])
+    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login", "site-test", "data"])
     ap.add_argument("--dry-run", action="store_true", default=None)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
@@ -885,6 +931,8 @@ def main(argv: list[str] | None = None) -> int:
             return LiveShow(settings).run()
         if args.command == "stop":
             return stop(settings)
+        if args.command == "data":
+            return run_data(settings)
         if args.command == "site-test":
             agent = BrowserAgent(settings)
             try:

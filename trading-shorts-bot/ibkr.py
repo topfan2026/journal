@@ -1,4 +1,7 @@
-"""Gateway agent's plumbing: start IB Gateway (paper) through IBC and check the login.
+"""Gateway agent's plumbing: start IB Gateway through IBC and check the login.
+
+Paper by default. IB_TRADING_MODE=live logs in to the live account instead, for real-time market data
+on the website scanner; the API is then always read-only, so nothing can place an order.
 
 IB Gateway has no login API, so the login is automated with IBC
 (https://github.com/IbcAlpha/IBC), the standard open-source tool for starting
@@ -34,8 +37,26 @@ def host() -> str:
     return env("IB_HOST", "127.0.0.1") or "127.0.0.1"
 
 
+def mode() -> str:
+    """'paper' (default) or 'live'."""
+    return "live" if (env("IB_TRADING_MODE", "paper") or "paper").strip().lower() == "live" else "paper"
+
+
 def port() -> int:
+    if mode() == "live":
+        return int(env_float("IB_LIVE_PORT", 4001))  # 4001 = IB Gateway live
     return int(env_float("IB_PORT", 4002))  # 4002 = IB Gateway paper
+
+
+def credentials() -> tuple[str, str]:
+    """The login for the current mode; live falls back to the paper fields if no live login is set."""
+    if mode() == "live" and env("IB_LIVE_USERNAME") and env("IB_LIVE_PASSWORD"):
+        return env("IB_LIVE_USERNAME"), env("IB_LIVE_PASSWORD")
+    return require_env("IB_USERNAME", "IB_PASSWORD")
+
+
+def read_only() -> bool:
+    return mode() == "live" or env_bool("IB_READ_ONLY", False)
 
 
 def port_open(h: str, p: int, timeout: float = 1.0) -> bool:
@@ -49,14 +70,16 @@ def port_open(h: str, p: int, timeout: float = 1.0) -> bool:
 # --------------------------------------------------------------------------- gateway
 
 def write_ibc_ini(path: Path) -> Path:
-    """IBC config with the paper login. Kept owner-readable only; never commit it."""
-    user, password = require_env("IB_USERNAME", "IB_PASSWORD")
+    """IBC config with the login for the current mode. Kept owner-readable only; never commit it."""
+    user, password = credentials()
     settings = {
         "IbLoginId": user,
         "IbPassword": password,
-        "TradingMode": "paper",
+        "TradingMode": mode(),
         "OverrideTwsApiPort": str(port()),
-        "ReadOnlyApi": "yes" if env_bool("IB_READ_ONLY", False) else "no",
+        "ReadOnlyApi": "yes" if read_only() else "no",
+        # Live logins need the IBKR Mobile approval; if it times out, IBC tries the login again.
+        "ReloginAfterSecondFactorAuthenticationTimeout": "yes",
         "AcceptNonBrokerageAccountWarning": "yes",
         "AcceptIncomingConnectionAction": "accept",
         "ExistingSessionDetectedAction": env("IB_EXISTING_SESSION", "primary"),
@@ -79,11 +102,11 @@ def gateway_command(ini: Path) -> list[str]:
     if os.name == "nt":
         tws = Path(env("TWS_PATH", "C:/Jts") or "C:/Jts")
         return [str(ibc / "scripts" / "StartIBC.bat"), version, "/Gateway", f"/TwsPath:{tws}",
-                f"/IbcPath:{ibc}", f"/Config:{ini}", "/Mode:paper"]
+                f"/IbcPath:{ibc}", f"/Config:{ini}", f"/Mode:{mode()}"]
     default_tws = "~/Applications" if sys.platform == "darwin" else "~/Jts"
     tws = Path(env("TWS_PATH", default_tws) or default_tws).expanduser()
     return [str(ibc / "scripts" / "ibcstart.sh"), version, "--gateway", f"--tws-path={tws}",
-            f"--ibc-path={ibc}", f"--ibc-ini={ini}", "--mode=paper"]
+            f"--ibc-path={ibc}", f"--ibc-ini={ini}", f"--mode={mode()}"]
 
 
 def start_gateway(ini: Path, log_file: Path) -> dict:
@@ -91,13 +114,15 @@ def start_gateway(ini: Path, log_file: Path) -> dict:
     if port_open(h, p):
         return {"started": False, "port": p, "note": "already running"}
     cmd = gateway_command(write_ibc_ini(ini))
-    log.info("starting IB Gateway (paper) via IBC")
+    log.info("starting IB Gateway (%s%s) via IBC", mode(), ", read-only" if read_only() else "")
+    if mode() == "live":
+        log.info("approve the login in the IBKR Mobile app on your phone when it asks")
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "ab") as out:
         kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
             else {"start_new_session": True}
         proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kwargs)
-    deadline = time.monotonic() + env_float("IB_START_TIMEOUT", 180)
+    deadline = time.monotonic() + env_float("IB_START_TIMEOUT", 300 if mode() == "live" else 180)
     while time.monotonic() < deadline:
         if port_open(h, p):
             time.sleep(env_float("IB_SETTLE_SECONDS", 15))  # API accepts sockets before login finishes
@@ -116,7 +141,7 @@ def start_gateway(ini: Path, log_file: Path) -> dict:
 # --------------------------------------------------------------------------- connection
 
 def connect():
-    """Read-only API session, used by `live.py check` to prove the paper login works."""
+    """Read-only API session, used by `live.py check` to prove the login works."""
     from ib_async import IB, StartupFetch
 
     ib = IB()
@@ -131,9 +156,12 @@ def connect():
 
 
 def check_paper(accounts: list[str]) -> None:
-    """Refuse to run against a live account unless IB_REQUIRE_PAPER=false."""
+    """Refuse to run against a live account unless live mode was chosen (always read-only) or
+    IB_REQUIRE_PAPER=false."""
     if not accounts:
         raise IBKRError("connected, but IBKR reported no accounts (login not finished?)")
+    if mode() == "live":
+        return
     live = [a for a in accounts if not a.upper().startswith(PAPER_PREFIXES)]
     if live and env_bool("IB_REQUIRE_PAPER", True):
         raise IBKRError(f"account(s) {', '.join(live)} are not paper accounts - refusing to continue")

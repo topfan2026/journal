@@ -24,7 +24,7 @@ import live_status
 from config import BOT_DIR, ENV_FILE, save_env
 
 COLORS = {"live": "#d93025", "setup": "#e37400", "waiting": "#1a73e8", "failed": "#a50e0e",
-          "off": "#5f6368", "muted": "#9aa0a6"}
+          "off": "#5f6368", "muted": "#9aa0a6", "data": "#1e8e3e"}
 DARK = {"bg": "#0d1117", "panel": "#161b22", "field": "#0d1117", "border": "#30363d", "fg": "#e6edf3",
         "muted": "#8b949e", "accent": "#1f6feb", "select": "#1f6feb"}
 ICONS = {"ok": ("✓", "#188038"), "working": ("●", "#e37400"), "failed": ("✗", "#d93025"),
@@ -53,12 +53,19 @@ TABS: dict[str, list[Field]] = {
               help="Windows: wakes a sleeping PC 10 minutes before setup (not one that was shut down)"),
     ],
     "IB Gateway": [
+        Field("IB_TRADING_MODE", "Account to log in", "choice", default="paper", choices=["paper", "live"],
+              help="live = real-time data for the website scanner (always read-only: no orders). "
+                   "Approve the login in IBKR Mobile"),
         Field("IB_USERNAME", "Paper username"),
         Field("IB_PASSWORD", "Paper password", "secret"),
+        Field("IB_LIVE_USERNAME", "Live username", help="used when the account is live"),
+        Field("IB_LIVE_PASSWORD", "Live password", "secret"),
+        Field("IB_LIVE_PORT", "Live API port", default="4001",
+              help="set the website connector's IBKR_PORT to this too (Gateway live = 4001)"),
         Field("IBC_PATH", "IBC folder", "dir", help="unzipped IBC from github.com/IbcAlpha/IBC/releases"),
         Field("TWS_MAJOR_VRSN", "Gateway version", help="e.g. 1030 for 10.30 (Gateway: Help > About)"),
         Field("TWS_PATH", "Gateway install folder", "dir", help="usually C:/Jts or ~/Jts"),
-        Field("IB_PORT", "API port", default="4002", help="must match the port aialgopro connects to"),
+        Field("IB_PORT", "Paper API port", default="4002", help="must match the port aialgopro connects to"),
         Field("IB_REQUIRE_PAPER", "Refuse non-paper accounts", "bool", default="true"),
         Field("IB_READ_ONLY", "Read-only API (blocks orders)", "bool", default="false"),
     ],
@@ -321,7 +328,9 @@ class App:
         self.sched_btn.pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="● Go live now", command=self.go_live_now).pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="■ End today's stream", command=self.end_today).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left")
+        ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left", padx=(0, 6))
+        self.data_btn = ttk.Button(actions, text="▶ Website data only", command=self.toggle_data, width=22)
+        self.data_btn.pack(side="left")
 
         from pipeline_view import PipelineView
         self.pipe = PipelineView(tab, height=320)
@@ -457,6 +466,22 @@ class App:
         self.b_title.configure(text=title)
         self.b_sub.configure(text=sub)
         self.b_clock.configure(text=clock)
+        data_proc = getattr(self, "data_proc", None)
+        data_on = data_proc is not None and data_proc.poll() is None
+        if hasattr(self, "data_btn") and not (data_on and self.data_btn.cget("text") == "Stopping…"):
+            self.data_btn.configure(text="■ Stop website data" if data_on else "▶ Website data only")
+        data = st.get("data") or {}
+        if data_on and not active and phase != "live":
+            kind = "data"
+            title = "Website data: ON" if data.get("state") == "on" else (
+                "Website data: problem - retrying" if data.get("state") == "failed" else "Website data: starting…")
+            sub = data.get("detail", "")
+            color = COLORS["failed"] if data.get("state") == "failed" else COLORS[kind]
+            for w in (self.banner, self.b_title, self.b_sub, self.b_clock):
+                w.configure(bg=color)
+            self.b_title.configure(text=title)
+            self.b_sub.configure(text=sub)
+            self.b_clock.configure(text="")
         if datetime.now().timestamp() >= getattr(self, "_button_hold_until", 0):
             self.sched_btn.configure(text="■ Stop scheduler" if running and not self._stopping()
                                      else "▶ Start scheduler")
@@ -560,6 +585,22 @@ class App:
         from tkinter import messagebox
         if messagebox.askyesno("Go live now", "Start streaming to YouTube now?"):
             self.spawn("live.py", "run")
+
+    def toggle_data(self):
+        """Website data only: IB Gateway (+ the scanner site's connector/tunnel), nothing else."""
+        from tkinter import messagebox
+        proc = getattr(self, "data_proc", None)
+        if proc is not None and proc.poll() is None:
+            self.data_btn.configure(text="Stopping…")
+            threading.Thread(target=stop_gracefully, args=(proc, 20), daemon=True).start()
+            return
+        mode = self.vars["IB_TRADING_MODE"].get() if "IB_TRADING_MODE" in self.vars else "paper"
+        if not messagebox.askyesno("Website data only",
+                                   f"Start IB Gateway ({mode}) for the website scanner, without OBS or YouTube?"
+                                   + ("\n\nLive account: read-only. Approve the login in IBKR Mobile on your phone."
+                                      if mode == "live" else "")):
+            return
+        self.data_proc = self.spawn("live.py", "data")
 
     def end_today(self):
         from tkinter import messagebox
@@ -892,6 +933,12 @@ class App:
                                        "Stop it and quit?\n(Tick autostart to keep it running without the app.)"):
                 return
             stop_gracefully(self.daemon)
+        data_proc = getattr(self, "data_proc", None)
+        if data_proc is not None and data_proc.poll() is None:
+            if not messagebox.askyesno("Quit", "Website data (IB Gateway) is being kept up from this window. "
+                                       "Stop watching it and quit?\n(IB Gateway itself stays logged in.)"):
+                return
+            stop_gracefully(data_proc, 20)
         self.root.destroy()
 
 

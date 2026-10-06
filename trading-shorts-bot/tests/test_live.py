@@ -87,6 +87,48 @@ def test_paper_guard(monkeypatch):
     ibkr.check_paper(["U1234567"])
 
 
+def test_live_mode_is_read_only_with_its_own_login_and_port(tmp_path, monkeypatch):
+    monkeypatch.setenv("IB_USERNAME", "paperuser")
+    monkeypatch.setenv("IB_PASSWORD", "p1")
+    monkeypatch.setenv("IB_TRADING_MODE", "live")
+    monkeypatch.setenv("IB_LIVE_USERNAME", "realuser")
+    monkeypatch.setenv("IB_LIVE_PASSWORD", "r1")
+    monkeypatch.setenv("IB_READ_ONLY", "false")  # live is read-only regardless
+    text = ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()
+    assert "TradingMode=live" in text and "IbLoginId=realuser" in text and "ReadOnlyApi=yes" in text
+    assert "OverrideTwsApiPort=4001" in text and ibkr.port() == 4001
+    monkeypatch.setenv("IBC_PATH", "/opt/ibc")
+    monkeypatch.setenv("TWS_MAJOR_VRSN", "1030")
+    assert any(c.lower().endswith("live") for c in ibkr.gateway_command(tmp_path / "c.ini"))
+    ibkr.check_paper(["U1234567"])  # a live account is expected in live mode
+    monkeypatch.delenv("IB_LIVE_USERNAME")
+    assert "IbLoginId=paperuser" in ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()  # falls back
+    monkeypatch.setenv("IB_TRADING_MODE", "paper")
+    assert ibkr.port() == 4002 and not ibkr.read_only()
+
+
+def test_website_data_only_starts_gateway_and_connector(settings, monkeypatch):
+    calls = []
+    up = {"gw": False}
+    monkeypatch.setattr(live.GatewayAgent, "healthy", lambda self: up["gw"])
+    def run(self):
+        calls.append("gateway"); up["gw"] = True
+        return {"port": 4001, "accounts": ["U1"]}
+    monkeypatch.setattr(live.GatewayAgent, "run", run)
+    import local_connector
+    monkeypatch.setattr(local_connector, "enabled", lambda: True)
+    monkeypatch.setattr(local_connector, "healthy", lambda: False)
+    monkeypatch.setattr(local_connector, "ensure", lambda sleep=None: calls.append("connector") or "started")
+    assert live.run_data(settings, sleep=lambda s: None, once=True) == 0
+    assert calls == ["gateway", "connector"]
+    state = live.live_status.read(live.live_root(settings))
+    assert state["data"]["state"] == "on" and state["steps"]["gateway"]["state"] == "ok"
+    monkeypatch.setattr(live.GatewayAgent, "run", lambda self: (_ for _ in ()).throw(ibkr.IBKRError("login refused")))
+    up["gw"] = False
+    assert live.run_data(settings, sleep=lambda s: None, once=True) == 1
+    assert live.live_status.read(live.live_root(settings))["data"]["state"] == "failed"
+
+
 # --------------------------------------------------------------------------- YouTube
 
 class FakeYT:
@@ -627,6 +669,7 @@ def test_background_scheduler_can_be_stopped(settings, monkeypatch):
     # the first wait sees the stop request (as if the app's Stop button was pressed meanwhile)
     monkeypatch.setattr(live.time, "sleep", lambda s: stop_file.touch())
     monkeypatch.setattr(live, "next_start", lambda now: now + timedelta(hours=5))
+    monkeypatch.setattr(live, "missed_show", lambda settings, now: None)  # whatever the time of day the test runs
     assert live.daemon(settings) == 0
     assert not stop_file.exists() and started == []
 

@@ -342,6 +342,17 @@ with what each did, live stats (viewers, privacy, auto-fixes, last health check)
 the broadcast in YouTube Studio counts too). Closing OBS or the scanner by hand is treated as a
 crash and fixed, so use the button to end a stream.
 
+### Website data only (real-time data for the scanner site)
+
+**▶ Website data only** (Status tab) starts just IB Gateway, plus the scanner site's connector and
+tunnel when they're set, and keeps them up (checked every 30 s) until **■ Stop website data**. It
+does not start OBS, YouTube or a browser. IB Gateway stays logged in when you stop it.
+
+For real-time data choose **IB Gateway > Account to log in: live** and fill in the live username and
+password. A live login is always **read-only** (no order can be sent), uses port 4001 (set the website
+connector's `IBKR_PORT` to the same) and asks for approval in the IBKR Mobile app. The daily stream
+uses the same account setting.
+
 ### Commands (same as the buttons)
 
 ```bash
@@ -352,6 +363,7 @@ python live.py run --dry-run # everything except streaming
 python live.py check         # Gateway login, OBS, YouTube, scanner site
 python live.py site-login    # sign in to the scanner site once
 python live.py site-test     # run only the scanner steps, window stays open 60s
+python live.py data          # website data only: IB Gateway (+ connector), kept running
 ```
 
 ### Notes
