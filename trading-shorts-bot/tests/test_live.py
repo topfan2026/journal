@@ -1047,3 +1047,17 @@ def test_website_data_runs_the_steps_up_to_the_ibkr_connection():
     assert ("click", "Connect read-only") in connect and ("click", "Close") in connect
     assert not any("stream mode" in a.lower() or v in ("hide",) or a.lower() == "full screen" for v, a in connect)
     assert scanner_site.connect_steps([("goto", "https://x"), ("click", "Go")]) == [("goto", "https://x"), ("click", "Go")]
+
+
+def test_wake_for_website_data_schedule(monkeypatch):
+    import wake
+    monkeypatch.setenv("DATA_START", "05:30")
+    monkeypatch.setenv("DATA_DAYS", "mon-fri")
+    now = datetime(2026, 10, 6, 20, 0, tzinfo=timezone.utc)  # a Tuesday evening
+    start = live.next_start(now, "DATA_START", "DATA_DAYS")
+    assert (start.weekday(), start.hour, start.minute) == (2, 5, 30)  # Wednesday 05:30
+    at, days = wake.wake_plan(start, 0, live.live_days("DATA_DAYS"))
+    assert (start - at).total_seconds() == 600  # 10 minutes before the data start
+    xml = wake.task_xml(at, days, python="py.exe", description="Wakes the PC from sleep before the Website data schedule (Live Stream Bot).")
+    assert "Website data schedule" in xml and "<WakeToRun>true</WakeToRun>" in xml
+    assert wake.DATA_TASK != wake.TASK

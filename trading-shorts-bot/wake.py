@@ -22,6 +22,7 @@ from xml.sax.saxutils import escape
 log = logging.getLogger(__name__)
 
 TASK = "LiveStreamBot Wake"
+DATA_TASK = "LiveStreamBot Wake (website data)"  # wakes the PC for the Website data schedule
 BOT_DIR = Path(__file__).resolve().parent
 HOLD_MIN = 30  # stay awake this long after waking: the scheduler's setup starts within it
 DAY_TAGS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -46,14 +47,15 @@ def pythonw() -> str:
     return str(quiet if quiet.exists() else exe)
 
 
-def task_xml(at: datetime, weekdays: set[int], python: str | None = None, bot_dir: Path = BOT_DIR) -> str:
+def task_xml(at: datetime, weekdays: set[int], python: str | None = None, bot_dir: Path = BOT_DIR,
+             description: str = "Wakes the PC from sleep before the daily live stream (Live Stream Bot).") -> str:
     python = escape(python or pythonw())
     script = escape(str(bot_dir / "power.py"))
     days = "".join(f"<{DAY_TAGS[d]} />" for d in sorted(weekdays))
     boundary = at.replace(tzinfo=None, second=0, microsecond=0).isoformat()
     return f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Wakes the PC from sleep before the daily live stream (Live Stream Bot).</Description></RegistrationInfo>
+  <RegistrationInfo><Description>{escape(description)}</Description></RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
       <StartBoundary>{boundary}</StartBoundary>
@@ -86,30 +88,32 @@ def allow_wake_timers() -> bool:
     return ok and _run(["powercfg", "/SETACTIVE", "SCHEME_CURRENT"]).returncode == 0
 
 
-def install(start: datetime, prep_min: float, weekdays: set[int]) -> str:
+def install(start: datetime, prep_min: float, weekdays: set[int], task: str = TASK, what: str = "stream days") -> str:
     if os.name != "nt":
         return "waking from sleep is only set up on Windows"
     at, days = wake_plan(start, prep_min, weekdays)
-    path = Path(tempfile.gettempdir()) / "livestreambot-wake.xml"
-    path.write_text(task_xml(at, days), encoding="utf-16")
+    path = Path(tempfile.gettempdir()) / f"livestreambot-wake-{abs(hash(task)) % 10000}.xml"
+    description = ("Wakes the PC from sleep before the Website data schedule (Live Stream Bot)." if task == DATA_TASK
+                   else "Wakes the PC from sleep before the daily live stream (Live Stream Bot).")
+    path.write_text(task_xml(at, days, description=description), encoding="utf-16")
     try:
-        proc = _run(["schtasks", "/Create", "/F", "/TN", TASK, "/XML", str(path)])
+        proc = _run(["schtasks", "/Create", "/F", "/TN", task, "/XML", str(path)])
     finally:
         path.unlink(missing_ok=True)
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout).strip() or "schtasks failed")
     timers = allow_wake_timers()
     when = at.strftime("%H:%M")
-    return (f"the PC will wake from sleep at {when} on stream days"
+    return (f"the PC will wake from sleep at {when} on {what}"
             + ("" if timers else " - also turn on Power Options > Sleep > Allow wake timers"))
 
 
-def uninstall() -> str:
+def uninstall(task: str = TASK) -> str:
     if os.name != "nt":
         return "nothing to remove"
-    _run(["schtasks", "/Delete", "/F", "/TN", TASK])
-    return "wake-up removed"
+    _run(["schtasks", "/Delete", "/F", "/TN", task])
+    return "website data wake-up removed" if task == DATA_TASK else "wake-up removed"
 
 
-def installed() -> bool:
-    return os.name == "nt" and _run(["schtasks", "/Query", "/TN", TASK]).returncode == 0
+def installed(task: str = TASK) -> bool:
+    return os.name == "nt" and _run(["schtasks", "/Query", "/TN", task]).returncode == 0

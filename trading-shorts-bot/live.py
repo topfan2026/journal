@@ -69,11 +69,11 @@ def live_days(key: str = "LIVE_DAYS") -> set[int]:
     return out
 
 
-def next_start(now: datetime) -> datetime:
-    h, m = parse_hhmm(env("LIVE_START", "06:00") or "06:00")
-    days = live_days()
+def next_start(now: datetime, start_key: str = "LIVE_START", days_key: str = "LIVE_DAYS") -> datetime:
+    h, m = parse_hhmm(env(start_key, "06:00") or "06:00")
+    days = live_days(days_key)
     if not days:
-        raise ConfigError("LIVE_DAYS selects no days")
+        raise ConfigError(f"{days_key} selects no days")
     for add in range(8):
         cand = (now + timedelta(days=add)).replace(hour=h, minute=m, second=0, microsecond=0)
         if cand > now and cand.weekday() in days:

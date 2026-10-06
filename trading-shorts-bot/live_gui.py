@@ -50,7 +50,7 @@ TABS: dict[str, list[Field]] = {
         Field("LIVE_TZ", "Time zone", default="", help="empty = this computer's time zone, or e.g. America/New_York"),
         Field("LIVE_PREP_MIN", "Start setup this many minutes early", default="10"),
         Field("LIVE_WAKE", "Wake the PC from sleep for the stream", "bool", default="false",
-              help="Windows: wakes a sleeping PC 10 minutes before setup (not one that was shut down)"),
+              help="Windows: wakes a sleeping PC 10 minutes before setup, and before Website data starts (not one that was shut down)"),
     ],
     "IB Gateway": [
         Field("IB_USERNAME", "Paper username"),
@@ -709,8 +709,17 @@ class App:
                 start = live.next_start(datetime.now(live.tz()))
                 prep = float(values.get("LIVE_PREP_MIN") or 10)
                 self.write(wake.install(start, prep, live.live_days()) + "\n")
-            elif wake.installed():
-                self.write(wake.uninstall() + "\n")
+                # Website data on a schedule: wake for its start time too (10 minutes before).
+                if values.get("DATA_SCHEDULE") == "true":
+                    data_start = live.next_start(datetime.now(live.tz()), "DATA_START", "DATA_DAYS")
+                    self.write(wake.install(data_start, 0, live.live_days("DATA_DAYS"), task=wake.DATA_TASK,
+                                            what="website data days") + "\n")
+                elif wake.installed(wake.DATA_TASK):
+                    self.write(wake.uninstall(wake.DATA_TASK) + "\n")
+            else:
+                for task in (wake.TASK, wake.DATA_TASK):
+                    if wake.installed(task):
+                        self.write(wake.uninstall(task) + "\n")
         except Exception as e:
             self.write(f"couldn't set up waking the PC: {e}\n")
         self.write_next()
