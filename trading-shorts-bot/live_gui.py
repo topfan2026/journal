@@ -60,6 +60,13 @@ TABS: dict[str, list[Field]] = {
         Field("TWS_PATH", "Gateway install folder", "dir", help="usually C:/Jts or ~/Jts"),
         Field("IB_PORT", "API port", default="4002", help="must match the port aialgopro connects to"),
         Field("IB_REQUIRE_PAPER", "Refuse non-paper accounts", "bool", default="true"),
+        Field("DATA_SCHEDULE", "Website data on a schedule", "bool", default="false",
+              help="runs IB Gateway (+ the site's connector) between the times below; the scheduler must be on"),
+        Field("DATA_DAYS", "Website data days", "days", default="mon-fri"),
+        Field("DATA_START", "Website data start (HH:MM)", default="06:00"),
+        Field("DATA_END", "Website data stop (HH:MM)", default="13:00"),
+        Field("DATA_STOP_AT_END", "Close IB Gateway at the stop time", "bool", default="true",
+              help="not while a stream is on"),
         Field("IB_READ_ONLY", "Read-only API (blocks orders)", "bool", default="false"),
     ],
     "Scanner site": [
@@ -168,6 +175,14 @@ def validate(values: dict[str, str]) -> list[str]:
                 problems.append(f"{key}: use HH:MM, e.g. 06:00")
     if not days_to_list(values.get("LIVE_DAYS", "")):
         problems.append("pick at least one day")
+    if str(values.get("DATA_SCHEDULE", "")).lower() in ("1", "true", "yes", "on"):
+        for key in ("DATA_START", "DATA_END"):
+            try:
+                live.parse_hhmm(values.get(key) or "")
+            except Exception:
+                problems.append(f"Website data {'start' if key == 'DATA_START' else 'stop'}: use HH:MM, e.g. 06:00")
+        if not days_to_list(values.get("DATA_DAYS", "")):
+            problems.append("Website data: pick at least one day")
     for key in ("LIVE_DURATION_MIN", "LIVE_PREP_MIN", "IB_PORT", "OBS_WS_PORT", "SCANNER_WARMUP_SECONDS",
                 "LIVE_PUBLIC_AFTER_MIN"):
         if values.get(key) and not values[key].strip().isdigit():
@@ -212,7 +227,7 @@ class App:
         root.geometry("960x960")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
-        self.day_vars: dict[str, object] = {}
+        self.day_vars: dict[str, dict[str, object]] = {}  # days field key -> day -> checkbox var
         self.daemon: subprocess.Popen | None = None
         self.jobs: list[subprocess.Popen] = []
         self.running: list[tuple[tuple[str, ...], subprocess.Popen]] = []
@@ -464,9 +479,15 @@ class App:
         if hasattr(self, "data_btn") and not (data_on and self.data_btn.cget("text") == "Stopping…"):
             self.data_btn.configure(text="■ Stop website data" if data_on else "▶ Website data only")
         data = st.get("data") or {}
-        if data_on and not active and phase != "live":
+        try:
+            data_age = (datetime.now(timezone.utc) - datetime.fromisoformat(data["updated"])).total_seconds()
+        except Exception:
+            data_age = 1e9
+        scheduled_on = bool(data.get("scheduled")) and data.get("state") in ("on", "failed") and data_age < 120
+        if (data_on or scheduled_on) and not active and phase != "live":
             kind = "data"
-            title = "Website data: ON" if data.get("state") == "on" else (
+            title = ("Website data: ON (scheduled)" if scheduled_on and not data_on else "Website data: ON") \
+                if data.get("state") == "on" else (
                 "Website data: problem - retrying" if data.get("state") == "failed" else "Website data: starting…")
             sub = data.get("detail", "")
             color = COLORS["failed"] if data.get("state") == "failed" else COLORS[kind]
@@ -611,7 +632,7 @@ class App:
             row_frame.grid(row=0, column=0, sticky="w")
             for i, d in enumerate(DAY_NAMES):
                 var = tk.BooleanVar(value=d in chosen)
-                self.day_vars[d] = var
+                self.day_vars.setdefault(f.key, {})[d] = var
                 ttk.Checkbutton(row_frame, text=d.title(), variable=var).grid(row=0, column=i, padx=(0, 12))
             return
         if f.kind == "bool":
@@ -643,7 +664,8 @@ class App:
         for key, var in self.vars.items():
             v = var.get()
             out[key] = ("true" if v else "false") if isinstance(v, bool) else str(v).strip()
-        out["LIVE_DAYS"] = list_to_days([d for d, v in self.day_vars.items() if v.get()])
+        for key, day_vars in self.day_vars.items():
+            out[key] = list_to_days([d for d, v in day_vars.items() if v.get()])
         return out
 
     def save(self) -> bool:

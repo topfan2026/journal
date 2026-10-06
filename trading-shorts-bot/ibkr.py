@@ -46,6 +46,27 @@ def port_open(h: str, p: int, timeout: float = 1.0) -> bool:
         return False
 
 
+def command_port() -> int:
+    return int(env_float("IBC_COMMAND_PORT", 7462))
+
+
+def stop_gateway() -> bool:
+    """Ask IBC to close IB Gateway (its command server, started by the bot's IBC config). False if
+    Gateway wasn't started by the bot, or isn't running."""
+    try:
+        with socket.create_connection(("127.0.0.1", command_port()), timeout=5) as s:
+            s.sendall(b"STOP\n")
+            s.settimeout(5)
+            try:
+                s.recv(256)
+            except OSError:
+                pass
+        return True
+    except OSError:
+        log.info("IB Gateway's IBC command port %s isn't open - close Gateway from its window", command_port())
+        return False
+
+
 # --------------------------------------------------------------------------- gateway
 
 def write_ibc_ini(path: Path) -> Path:
@@ -60,6 +81,9 @@ def write_ibc_ini(path: Path) -> Path:
         "AcceptNonBrokerageAccountWarning": "yes",
         "AcceptIncomingConnectionAction": "accept",
         "ExistingSessionDetectedAction": env("IB_EXISTING_SESSION", "primary"),
+        # Lets the bot close Gateway tidily (STOP) at the end of the Website data schedule; this PC only.
+        "CommandServerPort": str(command_port()),
+        "BindAddress": "127.0.0.1",
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")

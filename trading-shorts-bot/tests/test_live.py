@@ -963,3 +963,65 @@ def test_stream_layout_choice(monkeypatch):
     assert scanner_site.expand("{SCANNER_LAYOUT}") == "YouTube"
     old = "select Stream Mode\nwait 5\n  select YouTube \nwait 10\n"
     assert scanner_site.use_layout_setting(old) == "select Stream Mode\nwait 5\n  select {SCANNER_LAYOUT}\nwait 10\n"
+
+
+# --------------------------------------------------------------------------- website data schedule
+
+def test_data_window(monkeypatch):
+    monkeypatch.setenv("DATA_SCHEDULE", "true")
+    monkeypatch.setenv("DATA_START", "06:00")
+    monkeypatch.setenv("DATA_END", "13:00")
+    monkeypatch.setenv("DATA_DAYS", "mon-fri")
+    mon = datetime(2026, 10, 5)
+    assert live.in_data_window(mon.replace(hour=6))
+    assert live.in_data_window(mon.replace(hour=12, minute=59))
+    assert not live.in_data_window(mon.replace(hour=13))
+    assert not live.in_data_window(mon.replace(hour=5, minute=59))
+    assert not live.in_data_window(datetime(2026, 10, 10, 9))  # Saturday
+    monkeypatch.setenv("DATA_START", "22:00")
+    monkeypatch.setenv("DATA_END", "02:00")  # overnight
+    assert live.in_data_window(datetime(2026, 10, 9, 23))  # Friday night
+    assert live.in_data_window(datetime(2026, 10, 10, 1))  # ...into Saturday
+    assert not live.in_data_window(datetime(2026, 10, 11, 1))  # Sunday 01:00 belongs to Saturday
+    monkeypatch.setenv("DATA_SCHEDULE", "false")
+    assert not live.in_data_window(datetime(2026, 10, 9, 23))
+
+
+def test_data_loop_starts_in_window_and_closes_gateway_after(settings, monkeypatch):
+    import local_connector
+    windows = iter([True, False])
+    monkeypatch.setattr(live, "in_data_window", lambda now: next(windows))
+    monkeypatch.setattr(live, "reload_env", lambda: None)
+    up = {"gw": False}
+    calls = []
+    monkeypatch.setattr(live.GatewayAgent, "healthy", lambda self: up["gw"])
+    monkeypatch.setattr(live.GatewayAgent, "run", lambda self: calls.append("start") or up.update(gw=True) or {"port": 4002})
+    monkeypatch.setattr(local_connector, "enabled", lambda: False)
+    monkeypatch.setattr(ibkr, "stop_gateway", lambda: calls.append("stop") or True)
+    import threading
+    live.data_loop(settings, threading.Event(), sleep=lambda s: None, rounds=2)
+    assert calls == ["start", "stop"]
+    assert live.live_status.read(live.live_root(settings))["data"]["state"] == "off"
+
+
+def test_gateway_stops_through_ibc_command_server(tmp_path, monkeypatch):
+    import socket
+    import threading
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    monkeypatch.setenv("IBC_COMMAND_PORT", str(server.getsockname()[1]))
+    got = []
+    def serve():
+        conn, _ = server.accept()
+        got.append(conn.recv(64))
+        conn.sendall(b"OK\n")
+        conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    assert ibkr.stop_gateway() is True
+    server.close()
+    assert got == [b"STOP\n"]
+    monkeypatch.setenv("IB_USERNAME", "u")
+    monkeypatch.setenv("IB_PASSWORD", "p")
+    text = ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()
+    assert f"CommandServerPort={ibkr.command_port()}" in text and "BindAddress=127.0.0.1" in text

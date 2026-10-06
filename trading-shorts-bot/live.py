@@ -57,8 +57,8 @@ def parse_hhmm(value: str) -> tuple[int, int]:
     return int(h), int(m)
 
 
-def live_days() -> set[int]:
-    raw = (env("LIVE_DAYS", "mon-fri") or "mon-fri").lower().replace(" ", "")
+def live_days(key: str = "LIVE_DAYS") -> set[int]:
+    raw = (env(key, "mon-fri") or "mon-fri").lower().replace(" ", "")
     out: set[int] = set()
     for part in raw.split(","):
         if "-" in part:
@@ -91,6 +91,28 @@ def end_time(start: datetime) -> datetime:
         # Started at or after today's end time (e.g. "Go live now" in the afternoon): run for
         # LIVE_DURATION_MIN instead of until tomorrow's end time, which would overlap the next show.
     return start + timedelta(minutes=env_float("LIVE_DURATION_MIN", 240))
+
+
+def data_scheduled() -> bool:
+    return env_bool("DATA_SCHEDULE", False)
+
+
+def in_data_window(now: datetime) -> bool:
+    """Is `now` inside the Website data schedule (DATA_DAYS, DATA_START to DATA_END)?
+    A stop time earlier than the start means the window runs past midnight."""
+    if not data_scheduled():
+        return False
+    sh, sm = parse_hhmm(env("DATA_START", "06:00") or "06:00")
+    eh, em = parse_hhmm(env("DATA_END", "13:00") or "13:00")
+    start, end = sh * 60 + sm, eh * 60 + em
+    minute = now.hour * 60 + now.minute
+    days = live_days("DATA_DAYS")
+    if start < end:
+        return now.weekday() in days and start <= minute < end
+    # overnight: the part after midnight belongs to the previous day's window
+    if minute >= start:
+        return now.weekday() in days
+    return minute < end and (now.weekday() - 1) % 7 in days
 
 
 # --------------------------------------------------------------------------- session state
@@ -716,6 +738,7 @@ def daemon(settings: Settings) -> int:
     import threading
     import market_radar
     threading.Thread(target=market_radar.radar_loop, args=(threading.Event(),), daemon=True).start()
+    threading.Thread(target=data_loop, args=(settings, threading.Event()), daemon=True).start()
     log.info("daily live stream: %s at %s (%s)", env("LIVE_DAYS", "mon-fri"), env("LIVE_START", "06:00"),
              env("LIVE_TZ") or "this computer's time zone")
     done: list[datetime] = []  # shows already handled: never plan the same one twice
@@ -853,6 +876,48 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
         log.info("[data] stopped (IB Gateway is left running; close its window to log out)")
         status("off", "stopped")
         return 0
+
+
+def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = None) -> None:
+    """Scheduler side of Website data only: keeps IB Gateway (+ the site's connector/tunnel) up inside the
+    DATA_START-DATA_END window, and at the end closes IB Gateway (DATA_STOP_AT_END) unless a stream is on."""
+    import local_connector
+
+    sleep = sleep or stop_event.wait
+    root = live_root(settings)
+    gateway = GatewayAgent(settings)
+    was_on = False
+    n = 0
+    while not stop_event.is_set() and (rounds is None or n < rounds):
+        n += 1
+        try:
+            reload_env()
+            now = datetime.now(tz())
+            if in_data_window(now):
+                until = env("DATA_END", "13:00")
+                if not gateway.healthy():
+                    log.info("[data] scheduled website data: starting IB Gateway (paper)")
+                    live_status.step(root, "gateway", "working", "starting (website data)")
+                    gateway.run()
+                live_status.step(root, "gateway", "ok", f"port {ibkr.port()} · website data")
+                if local_connector.enabled() and not local_connector.healthy():
+                    log.info("[connector] %s", local_connector.ensure())
+                live_status.write(root, data={"state": "on", "scheduled": True, "detail": f"IB Gateway paper until {until}",
+                                              "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+                was_on = True
+            elif was_on:
+                was_on = False
+                phase = live_status.read(root).get("phase")
+                if env_bool("DATA_STOP_AT_END", True) and phase not in ("setup", "ready", "live", "ending", "test"):
+                    log.info("[data] website data window over - closing IB Gateway")
+                    ibkr.stop_gateway()
+                live_status.write(root, data={"state": "off", "scheduled": True, "detail": "schedule ended",
+                                              "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        except Exception as e:
+            log.error("[data] %s - trying again in a minute", e)
+            live_status.write(root, data={"state": "failed", "scheduled": True, "detail": str(e)[:200],
+                                          "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        sleep(30)
 
 
 def stop(settings: Settings) -> int:

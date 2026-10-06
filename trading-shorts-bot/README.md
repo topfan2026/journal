@@ -352,6 +352,11 @@ It uses the same IB Gateway **paper** login as the stream (no phone approval). T
 gets the same real-time data as your live account once market-data sharing is on (IBKR Client Portal >
 Settings > Paper Trading Account > Share real-time market data subscriptions with paper account).
 
+To run it on a schedule instead, tick **IB Gateway > Website data on a schedule** and pick the days,
+start and stop times. The scheduler (▶ Start scheduler) then starts IB Gateway at the start time,
+keeps it up, and at the stop time closes it (unless a stream is on; untick "Close IB Gateway at the
+stop time" to leave it running). Gateway is closed through IBC's command server on 127.0.0.1:7462.
+
 ### Commands (same as the buttons)
 
 ```bash
