@@ -99,8 +99,18 @@ def test_website_data_only_starts_gateway_and_connector(settings, monkeypatch):
     monkeypatch.setattr(local_connector, "enabled", lambda: True)
     monkeypatch.setattr(local_connector, "healthy", lambda: False)
     monkeypatch.setattr(local_connector, "ensure", lambda sleep=None: calls.append("connector") or "started")
+    monkeypatch.setattr(live.WebsiteDataSite, "__init__", lambda self, settings: None)
+    monkeypatch.setattr(live.WebsiteDataSite, "ensure", lambda self, reconnect=False: calls.append(f"site reconnect={reconnect}") or "website connected")
+    monkeypatch.setattr(live.WebsiteDataSite, "close", lambda self: calls.append("site closed"))
     assert live.run_data(settings, sleep=lambda s: None, once=True) == 0
-    assert calls == ["gateway", "connector"]
+    assert calls == ["gateway", "connector", "site reconnect=True"]
+    assert "website connected" in live.live_status.read(live.live_root(settings))["data"]["detail"]
+    # during a stream the browser belongs to the stream
+    calls.clear()
+    live.live_status.write(live.live_root(settings), phase="live")
+    assert live.run_data(settings, sleep=lambda s: None, once=True) == 0
+    assert calls == ["connector", "site closed"]
+    live.live_status.write(live.live_root(settings), phase="ended")
     state = live.live_status.read(live.live_root(settings))
     assert state["data"]["state"] == "on" and state["steps"]["gateway"]["state"] == "ok"
     monkeypatch.setattr(live.GatewayAgent, "run", lambda self: (_ for _ in ()).throw(ibkr.IBKRError("login refused")))
@@ -998,9 +1008,12 @@ def test_data_loop_starts_in_window_and_closes_gateway_after(settings, monkeypat
     monkeypatch.setattr(live.GatewayAgent, "run", lambda self: calls.append("start") or up.update(gw=True) or {"port": 4002})
     monkeypatch.setattr(local_connector, "enabled", lambda: False)
     monkeypatch.setattr(ibkr, "stop_gateway", lambda: calls.append("stop") or True)
+    monkeypatch.setattr(live.WebsiteDataSite, "__init__", lambda self, settings: None)
+    monkeypatch.setattr(live.WebsiteDataSite, "ensure", lambda self, reconnect=False: calls.append("site") or "website connected")
+    monkeypatch.setattr(live.WebsiteDataSite, "close", lambda self: calls.append("site closed"))
     import threading
     live.data_loop(settings, threading.Event(), sleep=lambda s: None, rounds=2)
-    assert calls == ["start", "stop"]
+    assert calls == ["start", "site", "site closed", "stop"]
     assert live.live_status.read(live.live_root(settings))["data"]["state"] == "off"
 
 
@@ -1025,3 +1038,12 @@ def test_gateway_stops_through_ibc_command_server(tmp_path, monkeypatch):
     monkeypatch.setenv("IB_PASSWORD", "p")
     text = ibkr.write_ibc_ini(tmp_path / "c.ini").read_text()
     assert f"CommandServerPort={ibkr.command_port()}" in text and "BindAddress=127.0.0.1" in text
+
+
+def test_website_data_runs_the_steps_up_to_the_ibkr_connection():
+    import scanner_site
+    steps = scanner_site.parse_steps(scanner_site.DEFAULT_STEPS)
+    connect = scanner_site.connect_steps(steps)
+    assert ("click", "Connect read-only") in connect and ("click", "Close") in connect
+    assert not any("stream mode" in a.lower() or v in ("hide",) or a.lower() == "full screen" for v, a in connect)
+    assert scanner_site.connect_steps([("goto", "https://x"), ("click", "Go")]) == [("goto", "https://x"), ("click", "Go")]

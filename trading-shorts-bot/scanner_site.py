@@ -409,6 +409,16 @@ def use_layout_setting(text: str) -> str:
     return re.sub(r"(?mi)^(\s*)select YouTube\s*$", r"\1select {SCANNER_LAYOUT}", text)
 
 
+def connect_steps(steps: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The steps up to the IBKR connection: everything before Stream Mode / full screen.
+    Used by Website data only, which signs in and connects but doesn't set up the stream view."""
+    for i, (verb, arg) in enumerate(steps):
+        text = arg.strip().lower()
+        if "stream mode" in text or verb in ("fullscreen", "hide") or text == "full screen":
+            return steps[:i]
+    return steps
+
+
 def load_steps() -> list[tuple[str, str]]:
     path = steps_file()
     return parse_steps(use_layout_setting(path.read_text(encoding="utf-8"))) if path.exists() else []
@@ -542,8 +552,10 @@ class ScannerSite:
         return env("SCANNER_URL", DEFAULT_URL) or DEFAULT_URL
 
     # ------------------------------------------------------------------ scanner
-    def start_scanner(self) -> dict:
+    def start_scanner(self, connect_only: bool = False) -> dict:
         steps = load_steps()
+        if connect_only:
+            steps = connect_steps(steps)
         if steps:
             idx = 0
             while idx < len(steps):

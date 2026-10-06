@@ -60,6 +60,8 @@ TABS: dict[str, list[Field]] = {
         Field("TWS_PATH", "Gateway install folder", "dir", help="usually C:/Jts or ~/Jts"),
         Field("IB_PORT", "API port", default="4002", help="must match the port aialgopro connects to"),
         Field("IB_REQUIRE_PAPER", "Refuse non-paper accounts", "bool", default="true"),
+        Field("DATA_OPEN_SITE", "Website data: open the website and connect to IBKR", "bool", default="true",
+              help="runs the Scanner site steps up to the IBKR connection (not Stream Mode) in the bot's browser"),
         Field("DATA_SCHEDULE", "Website data on a schedule", "bool", default="false",
               help="runs IB Gateway (+ the site's connector) between the times below; the scheduler must be on"),
         Field("DATA_DAYS", "Website data days", "days", default="mon-fri"),
@@ -609,7 +611,7 @@ class App:
             threading.Thread(target=stop_gracefully, args=(proc, 20), daemon=True).start()
             return
         if not messagebox.askyesno("Website data only",
-                                   "Start IB Gateway (paper) for the website scanner, without OBS or YouTube?"):
+                                   "Start IB Gateway (paper), open the website and connect it to IBKR - without OBS or YouTube?"):
             return
         self.data_proc = self.spawn("live.py", "data")
 

@@ -244,6 +244,42 @@ class BrowserAgent:
         self.site.close()
 
 
+class WebsiteDataSite:
+    """Website data only, browser part: opens the scanner website in the bot's browser (already signed in
+    from 'Sign in to scanner site') and runs the Scanner site steps up to the IBKR connection -- not
+    Stream Mode or full screen. Reopens and reconnects if the window is closed or the connector restarted."""
+
+    def __init__(self, settings: Settings):
+        from scanner_site import ScannerSite
+        self.site = ScannerSite(live_root(settings) / "browser-profile")
+
+    @staticmethod
+    def wanted() -> bool:
+        from scanner_site import use_app
+        return not use_app() and env_bool("DATA_OPEN_SITE", True)
+
+    def ensure(self, reconnect: bool = False) -> str:
+        if not self.wanted():
+            return ""
+        if self.site.alive() and not reconnect:
+            return "website connected"
+        if not self.site.alive():
+            self.site.close()
+            self.site.open()
+        log.info("[data] opening the website and connecting it to IBKR")
+        self.site.start_scanner(connect_only=True)
+        return "website connected"
+
+    def close(self) -> None:
+        try:
+            self.site.close()
+        except Exception:
+            pass
+
+
+STREAM_PHASES = ("setup", "ready", "live", "ending", "test")
+
+
 class YouTubeAgent:
     name = "youtube"
 
@@ -840,12 +876,16 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
 
     root = live_root(settings)
     gateway = GatewayAgent(settings)
+    website = WebsiteDataSite(settings)
     what = f"IB Gateway paper on port {ibkr.port()}"
 
     def status(state: str, detail: str) -> None:
         live_status.write(root, data={"state": state, "detail": detail, "port": ibkr.port(),
                                       "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
 
+    if scheduler_running() and in_data_window(datetime.now(tz())):
+        log.info("[data] the scheduler is already running website data right now (its schedule) - nothing to do")
+        return 0
     log.info("[data] website data only: %s%s", what, " + scanner connector" if local_connector.enabled() else "")
     status("starting", what)
     try:
@@ -857,9 +897,16 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
                     live_status.step(root, "gateway", "ok", _summary(result) or f"port {ibkr.port()}")
                 else:
                     live_status.step(root, "gateway", "ok", f"port {ibkr.port()}")
+                restarted = False
                 if local_connector.enabled() and not local_connector.healthy():
                     log.info("[connector] %s", local_connector.ensure(sleep=sleep))
-                status("on", what)
+                    restarted = True
+                if live_status.read(root).get("phase") in STREAM_PHASES:
+                    website.close()  # a stream is using the browser; take it back when the stream is over
+                    status("on", what + " · website paused for the stream")
+                else:
+                    site = website.ensure(reconnect=restarted)
+                    status("on", what + (f" · {site}" if site else ""))
             except Exception as e:  # keep trying: the point of this mode is to stay up
                 log.error("[data] %s - trying again in 60 s", e)
                 live_status.step(root, "gateway", "failed", str(e)[:120])
@@ -874,6 +921,7 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
                 sleep(5)
     except KeyboardInterrupt:
         log.info("[data] stopped (IB Gateway is left running; close its window to log out)")
+        website.close()
         status("off", "stopped")
         return 0
 
@@ -886,6 +934,7 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
     sleep = sleep or stop_event.wait
     root = live_root(settings)
     gateway = GatewayAgent(settings)
+    website = WebsiteDataSite(settings)
     was_on = False
     n = 0
     while not stop_event.is_set() and (rounds is None or n < rounds):
@@ -900,15 +949,25 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
                     live_status.step(root, "gateway", "working", "starting (website data)")
                     gateway.run()
                 live_status.step(root, "gateway", "ok", f"port {ibkr.port()} · website data")
+                restarted = False
                 if local_connector.enabled() and not local_connector.healthy():
                     log.info("[connector] %s", local_connector.ensure())
-                live_status.write(root, data={"state": "on", "scheduled": True, "detail": f"IB Gateway paper until {until}",
+                    restarted = True
+                detail = f"IB Gateway paper until {until}"
+                if live_status.read(root).get("phase") in STREAM_PHASES:
+                    website.close()  # the stream has the browser; reconnect after it
+                else:
+                    site = website.ensure(reconnect=restarted)
+                    detail += f" · {site}" if site else ""
+                live_status.write(root, data={"state": "on", "scheduled": True, "detail": detail,
                                               "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
                 was_on = True
             elif was_on:
                 was_on = False
                 phase = live_status.read(root).get("phase")
-                if env_bool("DATA_STOP_AT_END", True) and phase not in ("setup", "ready", "live", "ending", "test"):
+                if phase not in STREAM_PHASES:
+                    website.close()
+                if env_bool("DATA_STOP_AT_END", True) and phase not in STREAM_PHASES:
                     log.info("[data] website data window over - closing IB Gateway")
                     ibkr.stop_gateway()
                 live_status.write(root, data={"state": "off", "scheduled": True, "detail": "schedule ended",

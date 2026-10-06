@@ -344,9 +344,12 @@ crash and fixed, so use the button to end a stream.
 
 ### Website data only (IB Gateway for the scanner site)
 
-**▶ Website data only** (Status tab) starts just IB Gateway, plus the scanner site's connector and
-tunnel when they're set, and keeps them up (checked every 30 s) until **■ Stop website data**. It
-does not start OBS, YouTube or a browser. IB Gateway stays logged in when you stop it.
+**▶ Website data only** (Status tab) starts IB Gateway (paper), the scanner site's connector and
+tunnel when they're set, then opens the website in the bot's browser and runs your Scanner site steps
+up to the IBKR connection (everything before Stream Mode / full screen). It keeps all of that up
+(checked every 30 s) until **■ Stop website data**. No OBS or YouTube; while a stream runs, the
+stream has the browser. IB Gateway stays logged in when you stop it. Untick "Website data: open the
+website and connect to IBKR" to run only Gateway + connector.
 
 It uses the same IB Gateway **paper** login as the stream (no phone approval). The paper account
 gets the same real-time data as your live account once market-data sharing is on (IBKR Client Portal >
