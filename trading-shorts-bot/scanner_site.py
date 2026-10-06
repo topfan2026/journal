@@ -576,7 +576,14 @@ class ScannerSite:
                         idx = skip_block(steps, i - 1) + 1
                     continue
                 try:
-                    self.step(verb, arg)
+                    try:
+                        self.step(verb, arg)
+                    except Exception:
+                        # A step that fails because the site is asking to sign in: sign in, then try it again.
+                        if not self.sign_in_if_needed():
+                            raise
+                        self.step(verb, arg)
+                    self.sign_in_if_needed()  # the step may have landed on the sign-in page
                 except Exception as e:
                     if "has been closed" in str(e):
                         raise SiteError(f"scanner step {i} stopped: the browser window was closed "
@@ -592,6 +599,56 @@ class ScannerSite:
         self.page.bring_to_front()
         log.info("browser: scanner running at %s (%s)", self.page.url, self.page.title())
         return {"url": self.page.url, "title": self.page.title(), "clicked": clicked}
+
+    # ------------------------------------------------------------------ sign-in
+    PASSWORD_BOX = "input[type=password], input#auth-password"
+    LOGIN_BOX = "input#auth-email, input[type=email], input[autocomplete=username], input[autocomplete=email]"
+
+    def sign_in_if_needed(self) -> bool:
+        """If the page is showing a sign-in form, sign in and press its button.
+
+        Uses SCANNER_EMAIL / SCANNER_PASSWORD (Scanner site tab) when set; otherwise the browser's own
+        autofill -- Chrome only hands autofilled values to the page after a real click, so the bot clicks
+        into the box first. Returns True when it signed in, False when no sign-in form is showing."""
+        page = self.page
+        password = page.locator(self.PASSWORD_BOX).first
+        try:
+            if not password.is_visible():
+                return False
+        except Exception:
+            return False
+        login = page.locator(self.LOGIN_BOX).first
+        email, secret = env("SCANNER_EMAIL"), env("SCANNER_PASSWORD")
+        log.info("browser: the site is asking to sign in - signing in%s",
+                 "" if email and secret else " with the browser's saved login")
+        if email and secret:
+            if login.count() and login.is_visible():
+                self.replace_text(login, email)
+            self.replace_text(password, secret)
+        else:
+            # Release Chrome's autofill: values aren't visible to the page until the user interacts.
+            (login if login.count() and login.is_visible() else password).click()
+            page.wait_for_timeout(800)
+            if not password.input_value():
+                raise SiteError("the scanner site wants you to sign in, but there's no saved login: fill in "
+                                "'Site email' and 'Site password' in the Scanner site tab (or use 'Sign in to "
+                                "scanner site' once)")
+        form = password.locator("xpath=ancestor::form[1]")
+        submit = form.locator("button[type=submit], button:not([type]), input[type=submit]").first \
+            if form.count() else page.locator("button[type=submit]").first
+        if submit.count():
+            submit.click(timeout=self.timeout * 1000)
+        else:
+            password.press("Enter")
+        try:
+            password.wait_for(state="hidden", timeout=env_float("SCANNER_SIGNIN_WAIT", 30) * 1000)
+        except Exception:
+            alert = page.locator("[role=alert]").first
+            why = alert.inner_text().strip() if alert.count() and alert.is_visible() else "the form is still showing"
+            raise SiteError(f"signing in to the scanner site didn't work: {why}")
+        log.info("browser: signed in")
+        page.wait_for_timeout(1500)
+        return True
 
     # ------------------------------------------------------------------ steps
     @property

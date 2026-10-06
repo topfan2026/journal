@@ -342,6 +342,12 @@ with what each did, live stats (viewers, privacy, auto-fixes, last health check)
 the broadcast in YouTube Studio counts too). Closing OBS or the scanner by hand is treated as a
 crash and fixed, so use the button to end a stream.
 
+### Signing in to the scanner site
+
+If the site shows its sign-in form (signed out, session expired), the bot signs in by itself and
+presses the button: with **Scanner site > Site email / Site password** when set, otherwise with the
+browser's saved (autofill) login. A wrong login stops with the site's own message.
+
 ### Website data only (IB Gateway for the scanner site)
 
 **▶ Website data only** (Status tab) starts IB Gateway (paper), the scanner site's connector and
