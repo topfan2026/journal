@@ -366,11 +366,31 @@ start and stop times. The scheduler (▶ Start scheduler) then starts IB Gateway
 keeps it up, and at the stop time closes it (unless a stream is on; untick "Close IB Gateway at the
 stop time" to leave it running). Gateway is closed through IBC's command server on 127.0.0.1:7462.
 
+### TikTok LIVE (on its own, or with YouTube)
+
+Pick where the **scheduled** stream goes in the TikTok tab (**Scheduled stream goes to**):
+`youtube` (the default), `tiktok` on its own (no YouTube broadcast is created), or `both`.
+**♪ TikTok live now** (Status tab) starts a TikTok-only LIVE straight away, whatever the schedule
+is set to; **● Go live now** follows the setting.
+
+Two ways to reach TikTok (**Reach TikTok with**):
+
+- `studio` (default, works for any account that can go LIVE): the bot opens **TikTok LIVE Studio**
+  and pops up a reminder; you click **Go LIVE** in it (LIVE Studio has no remote control). Point its
+  source at the "LIVE BOT - Scanner" window once. Closing LIVE Studio at the end time ends the LIVE.
+  With `tiktok` alone, OBS isn't used at all.
+- `rtmp`: OBS streams straight to TikTok with the **Server URL** and **Stream key** from TikTok LIVE
+  Center, fully automatic. TikTok only gives stream keys to some accounts and may give a new key for
+  each LIVE, so paste the current one before you go live. OBS sends to one place at a time, so `rtmp`
+  works with `tiktok` and not with `both` (the app refuses that combination). OBS's own (YouTube)
+  stream settings are put back when the TikTok stream ends.
+
 ### Commands (same as the buttons)
 
 ```bash
 python live.py daemon        # wait and go live on schedule (what autostart runs)
-python live.py run           # go live now
+python live.py run           # go live now (to STREAM_TO)
+python live.py run --to tiktok  # TikTok on its own now (or --to youtube / --to both)
 python live.py stop          # end today's stream
 python live.py run --dry-run # everything except streaming
 python live.py check         # Gateway login, OBS, YouTube, scanner site

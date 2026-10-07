@@ -205,6 +205,16 @@ class OBS:
         data = self.req("GetSourceScreenshot", {"sourceName": scene, "imageFormat": "png", "imageWidth": 96})
         return frame_is_black(data.get("imageData", ""))
 
+    def get_stream(self) -> dict:
+        """OBS's current stream service settings, to put back after streaming somewhere else."""
+        data = self.req("GetStreamServiceSettings")
+        return {"type": data.get("streamServiceType", ""), "settings": data.get("streamServiceSettings") or {}}
+
+    def restore_stream(self, saved: dict) -> None:
+        if saved.get("type"):
+            self.req("SetStreamServiceSettings", {"streamServiceType": saved["type"],
+                                                  "streamServiceSettings": saved.get("settings") or {}})
+
     def set_stream(self, server: str, key: str) -> None:
         self.req("SetStreamServiceSettings", {"streamServiceType": "rtmp_custom",
                                               "streamServiceSettings": {"server": server, "key": key}})

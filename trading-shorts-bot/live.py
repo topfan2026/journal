@@ -1,7 +1,8 @@
-"""Daily live stream: IB Gateway -> scanner website -> OBS -> YouTube Live.
+"""Daily live stream: IB Gateway -> scanner website -> OBS -> YouTube Live and/or TikTok LIVE.
 
     python live.py daemon        wait, and go live every LIVE_DAYS at LIVE_START (default 06:00)
     python live.py run           go live now, stay live until LIVE_END / LIVE_DURATION_MIN, then end
+                                 --to youtube|tiktok|both  overrides STREAM_TO for this run only
     python live.py stop          end today's stream (from another terminal)
     python live.py check         check Gateway login, OBS, YouTube and the site's start button
     python live.py site-login    open the bot's browser once so you can sign in to the scanner site
@@ -462,10 +463,13 @@ def _summary(result) -> str:
 
 
 class LiveShow:
-    def __init__(self, settings: Settings, start: datetime | None = None, armed: datetime | None = None):
+    def __init__(self, settings: Settings, start: datetime | None = None, armed: datetime | None = None,
+                 to: str | None = None):
         """armed: when this show was set off; a stop recorded after it ends the show for good
-        (the scheduler passes the setup time, so its retries respect End today's stream)."""
+        (the scheduler passes the setup time, so its retries respect End today's stream).
+        to: youtube | tiktok | both for this show only (default: the saved STREAM_TO)."""
         self.settings = settings
+        self.to = to
         self.start = start or datetime.now(tz())
         self.armed = armed or datetime.now(tz())
         self.session = Session(live_root(settings) / self.start.strftime("%Y-%m-%d"))
@@ -473,6 +477,7 @@ class LiveShow:
         self.use_api = env_bool("YOUTUBE_LIVE_API", True)
         self.youtube, self.yt_result = None, {}
         self.fixes = 0
+        self.obs_saved: dict | None = None  # OBS's own stream settings while it streams to TikTok
 
     def stop_requested(self) -> bool:
         if self.session.stop_file.exists():
@@ -523,12 +528,30 @@ class LiveShow:
                  " | DRY RUN" if s.dry_run else "")
 
         import power
+        import tiktok_studio as tt
+        try:
+            dest = tt.destination(self.to)
+            tt.check_destination(dest)
+        except ConfigError as e:
+            log.error("stream destination: %s", e)
+            self.status(phase="failed", message="The stream failed - see the log", error=str(e)[:300])
+            return 1
+        studio = tt.uses_studio(dest)
+        self.status(to=dest)
+        # OBS sends the picture unless the only destination is TikTok through LIVE Studio (which captures the window itself).
+        obs_rtmp = tt.to_tiktok(dest) and not studio
+        use_obs = tt.to_youtube(dest) or obs_rtmp
+        log.info("streaming to %s%s", {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}[dest],
+                 "" if not tt.to_tiktok(dest) else " (TikTok by LIVE Studio)" if studio else " (TikTok by stream key in OBS)")
         power.stay_awake(screen_on=True)  # a sleeping PC or a blanked/locked screen breaks the stream
         gateway, browser, obs = GatewayAgent(s), BrowserAgent(s), OBSAgent()
-        youtube = YouTubeAgent(s, session, self.start) if self.use_api and not s.dry_run else None
+        youtube = YouTubeAgent(s, session, self.start) if tt.to_youtube(dest) and self.use_api and not s.dry_run else None
         yt_result: dict = {}
         if not youtube:
-            live_status.step(self.root, "youtube", "off", "dry run" if s.dry_run else "stream key set in OBS")
+            live_status.step(self.root, "youtube", "off", "not streaming to YouTube" if not tt.to_youtube(dest)
+                             else "dry run" if s.dry_run else "stream key set in OBS")
+        if not use_obs:
+            live_status.step(self.root, "obs", "off", "TikTok LIVE Studio sends the stream")
         failed = False
         try:
             session.set("gateway", self.step("gateway", gateway.run))
@@ -536,26 +559,36 @@ class LiveShow:
             if youtube:
                 yt_result = self.step("youtube", youtube.run)
                 self.status(url=yt_result.get("url", ""), privacy=getattr(youtube, "start_privacy", ""))
-            session.set("obs", self.step("obs", obs.run, yt_result.get("stream"), start_streaming=False))
+            if use_obs:
+                stream = yt_result.get("stream")
+                if obs_rtmp and not s.dry_run:
+                    stream = tt.rtmp_target()
+                session.set("obs", self.step("obs", self.setup_obs, obs, stream, obs_rtmp and not s.dry_run))
             if not s.dry_run:
                 if self.start > datetime.now(tz()):
                     log.info("ready - going live at %s", self.start.strftime("%H:%M"))
                     self.status(phase="ready", message=f"Ready - going live at {self.start.strftime('%H:%M')}")
                     self.wait_until(self.start, browser)
                 live_status.step(self.root, "live", "working", "starting the stream")
-                obs.obs.start()
+                if use_obs:
+                    obs.obs.start()
             if youtube:
                 session.set("live", {"state": youtube.go_live(yt_result), "url": yt_result["url"]})
                 log.info("=== LIVE: %s", yt_result["url"])
+            elif not s.dry_run and use_obs:
+                session.set("live", {"state": "live", "url": "", "to": dest})
+                log.info("=== LIVE (%s)", "TikTok, stream key in OBS" if obs_rtmp else "stream key set in OBS")
             elif not s.dry_run:
-                session.set("live", {"state": "live", "url": ""})
-                log.info("=== LIVE (stream key set in OBS)")
+                session.set("live", {"state": "live", "url": "", "to": dest})
+                log.info("=== READY FOR TIKTOK: press Go LIVE in TikTok LIVE Studio")
             if not s.dry_run:
-                live_status.step(self.root, "live", "ok", "on air")
-                self.status(phase="live", message="Live", live_since=datetime.now(timezone.utc).isoformat())
-                self.start_tiktok()
+                live_status.step(self.root, "live", "ok", "on air" if use_obs else "waiting for Go LIVE in TikTok LIVE Studio")
+                self.status(phase="live", message="Live" if use_obs else "Live on TikTok (LIVE Studio)",
+                            live_since=datetime.now(timezone.utc).isoformat())
+                if studio:
+                    self.start_tiktok(tt.REMINDER if youtube or tt.to_youtube(dest) else tt.REMINDER_ALONE)
             self.youtube, self.yt_result = youtube, yt_result
-            self.watch(end, gateway, browser, obs, streaming=not s.dry_run)
+            self.watch(end, gateway, browser, obs, streaming=not s.dry_run and use_obs)
             return 0
         except StopRequested:
             log.info("stop requested - ending today's stream")
@@ -572,7 +605,7 @@ class LiveShow:
             return 1
         finally:
             self.status(phase="ending", message="Ending the stream")
-            self.shutdown(youtube, yt_result, obs, browser)
+            self.shutdown(youtube, yt_result, obs, browser, studio=studio)
             power.allow_screen_off()
             if failed:
                 self.status(phase="failed", message="The stream failed - see the log")
@@ -662,20 +695,28 @@ class LiveShow:
             browser.run()
             obs.black = 0
 
+    def setup_obs(self, obs, stream: dict | None, to_tiktok: bool) -> dict:
+        """Set OBS up; when it streams to TikTok, keep its own (YouTube) settings to put back at the end."""
+        if to_tiktok:
+            from obs_control import OBS
+            self.obs_saved = OBS.connect(start=True).get_stream()
+            log.info("[obs] streaming to TikTok by stream key (OBS's own stream settings are put back at the end)")
+        return obs.run(stream, start_streaming=False)
+
     @staticmethod
-    def start_tiktok() -> None:
+    def start_tiktok(message: str | None = None) -> None:
         import tiktok_studio
-        if not tiktok_studio.enabled():
+        if message is None and not tiktok_studio.enabled():
             return
         try:
             log.info("[tiktok] %s", tiktok_studio.open_studio())
-            tiktok_studio.remind()
+            tiktok_studio.remind(message or tiktok_studio.REMINDER)
         except Exception as e:
             log.warning("[tiktok] couldn't open TikTok LIVE Studio: %s", e)
 
-    def shutdown(self, youtube, yt_result, obs, browser) -> None:
+    def shutdown(self, youtube, yt_result, obs, browser, studio: bool = False) -> None:
         import tiktok_studio
-        if tiktok_studio.enabled() and env_bool("TIKTOK_STUDIO_CLOSE_AT_END", True) and not self.settings.dry_run:
+        if studio and env_bool("TIKTOK_STUDIO_CLOSE_AT_END", True) and not self.settings.dry_run:
             try:
                 log.info("[tiktok] %s", tiktok_studio.close_studio())
             except Exception as e:
@@ -686,6 +727,12 @@ class LiveShow:
                 log.info("[obs] stream stopped")
             except Exception as e:
                 log.warning("[obs] stop failed: %s", e)
+            if self.obs_saved:
+                try:
+                    obs.obs.restore_stream(self.obs_saved)
+                    log.info("[obs] stream settings put back (the next YouTube stream goes to YouTube)")
+                except Exception as e:
+                    log.warning("[obs] couldn't put the stream settings back: %s", e)
         if youtube and yt_result.get("broadcast_id"):
             try:
                 youtube.end(yt_result)
@@ -1004,9 +1051,24 @@ def check(settings: Settings) -> int:
             bad += 1
             log.error("[%s] NOT READY: %s", name, e)
 
+    import tiktok_studio as tt
+
+    def destination():
+        dest = tt.destination()
+        tt.check_destination(dest)
+        if tt.uses_studio(dest):
+            exe = tt.exe_path()
+            if exe is None or not exe.exists():
+                raise ConfigError("TikTok LIVE Studio isn't set - pick it in the TikTok tab")
+        return {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}[dest]
+    step("stream goes to", destination)
     step("gateway", lambda: GatewayAgent(settings).run())
     step("obs", lambda: __import__("obs_control").OBS.connect(start=True).version())
-    if env_bool("YOUTUBE_LIVE_API", True):
+    try:
+        to_youtube = tt.to_youtube(tt.destination())
+    except ConfigError:
+        to_youtube = True
+    if env_bool("YOUTUBE_LIVE_API", True) and to_youtube:
         step("youtube", lambda: __import__("youtube_live").check())
 
     def site():
@@ -1036,6 +1098,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login", "site-test", "data"])
     ap.add_argument("--dry-run", action="store_true", default=None)
+    ap.add_argument("--to", choices=["youtube", "tiktok", "both"], default=None,
+                    help="run: where this stream goes (default: STREAM_TO)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     try:
@@ -1052,7 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "daemon":
             return daemon(settings)
         if args.command == "run":
-            return LiveShow(settings).run()
+            return LiveShow(settings, to=args.to).run()
         if args.command == "stop":
             return stop(settings)
         if args.command == "data":

@@ -101,8 +101,13 @@ TABS: dict[str, list[Field]] = {
         Field("OBS_SCENE", "Scene to stream", help="the scene with a Window Capture of the scanner browser"),
     ],
     "TikTok": [
-        Field("TIKTOK_STUDIO", "Use TikTok LIVE Studio", "bool", default="false",
-              help="opens it at go-live time; you click Go LIVE in it"),
+        Field("STREAM_TO", "Scheduled stream goes to", "choice", default="youtube", choices=["youtube", "tiktok", "both"],
+              help="youtube or tiktok on its own, or both at once; 'TikTok live now' always goes to TikTok only"),
+        Field("TIKTOK_METHOD", "Reach TikTok with", "choice", default="studio", choices=["studio", "rtmp"],
+              help="studio: TikTok LIVE Studio (you click Go LIVE) · rtmp: OBS + stream key from TikTok LIVE Center"),
+        Field("TIKTOK_RTMP_SERVER", "TikTok server URL (rtmp)", help="rtmp only: Server URL from TikTok LIVE Center"),
+        Field("TIKTOK_STREAM_KEY", "TikTok stream key (rtmp)", "secret",
+              help="rtmp only: TikTok may give a new key for each LIVE - paste the current one"),
         Field("TIKTOK_STUDIO_PATH", "TikTok LIVE Studio program", "file", help="use Find it, or Browse to the .exe"),
         Field("TIKTOK_STUDIO_REMIND", "Pop up a reminder to press Go LIVE", "bool", default="true"),
         Field("TIKTOK_STUDIO_CLOSE_AT_END", "Close it at the end time (ends the TikTok LIVE)", "bool", default="true"),
@@ -166,6 +171,11 @@ def current_values() -> dict[str, str]:
         for f in fields:
             # A key present in .env wins even when empty (e.g. LIVE_END cleared on purpose).
             out[f.key] = (stored.get(f.key) or "") if f.key in stored else (os.environ.get(f.key) or f.default)
+    if "STREAM_TO" not in stored and not os.environ.get("STREAM_TO"):
+        # Before the destination choice, "Use TikTok LIVE Studio" meant YouTube and TikTok together.
+        legacy = stored.get("TIKTOK_STUDIO") if "TIKTOK_STUDIO" in stored else os.environ.get("TIKTOK_STUDIO", "")
+        if str(legacy).strip().lower() in ("1", "true", "yes", "on"):
+            out["STREAM_TO"] = "both"
     return out
 
 
@@ -198,6 +208,15 @@ def validate(values: dict[str, str]) -> list[str]:
             ZoneInfo(values["LIVE_TZ"])
         except Exception:
             problems.append(f"unknown time zone {values['LIVE_TZ']!r}")
+    dest, method = (values.get("STREAM_TO") or "youtube").lower(), (values.get("TIKTOK_METHOD") or "studio").lower()
+    if dest == "both" and method == "rtmp":
+        problems.append("TikTok: OBS streams to one place at a time - for YouTube and TikTok together, reach TikTok with studio")
+    if method == "rtmp" and dest in ("tiktok", "both"):
+        server = (values.get("TIKTOK_RTMP_SERVER") or "").strip().lower()
+        if not server.startswith(("rtmp://", "rtmps://")):
+            problems.append("TikTok server URL: paste the rtmp:// address from TikTok LIVE Center")
+        if not (values.get("TIKTOK_STREAM_KEY") or "").strip():
+            problems.append("TikTok stream key: paste it from TikTok LIVE Center")
     return problems
 
 
@@ -340,6 +359,7 @@ class App:
         self.sched_btn = ttk.Button(actions, text="▶ Start scheduler", command=self.toggle_scheduler, width=20)
         self.sched_btn.pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="● Go live now", command=self.go_live_now).pack(side="left", padx=(0, 6))
+        ttk.Button(actions, text="♪ TikTok live now", command=self.tiktok_live_now).pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="■ End today's stream", command=self.end_today).pack(side="left", padx=(0, 6))
         ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left", padx=(0, 6))
         self.data_btn = ttk.Button(actions, text="▶ Website data only", command=self.toggle_data, width=22)
@@ -522,12 +542,18 @@ class App:
             self._set_row(name, v.get("state", "waiting"), v.get("detail", ""))
 
         import tiktok_studio
-        if not tiktok_studio.enabled():
+        live_to = st.get("to") if phase in ("setup", "ready", "live") else None
+        try:
+            dest = live_to or tiktok_studio.destination()
+            studio = tiktok_studio.uses_studio(dest)
+        except Exception:
+            dest, studio = "youtube", False
+        if not tiktok_studio.to_tiktok(dest):
             self._set_row("tiktok", "off", "off")
         elif phase == "live":
-            self._set_row("tiktok", "working", "press Go LIVE in Studio")
+            self._set_row("tiktok", "working" if studio else "ok", "press Go LIVE in Studio" if studio else "OBS streams to TikTok")
         else:
-            self._set_row("tiktok", "waiting", "opens when live")
+            self._set_row("tiktok", "waiting", "opens when live" if studio else "OBS streams when live")
         if not running and not active:
             for name in live_status.STEPS:  # nothing is happening: show the chain idle
                 if self._pipe_states[name][0] != "failed":
@@ -602,8 +628,19 @@ class App:
 
     def go_live_now(self):
         from tkinter import messagebox
-        if messagebox.askyesno("Go live now", "Start streaming to YouTube now?"):
+        where = {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}.get(
+            (self.vars["STREAM_TO"].get() if "STREAM_TO" in self.vars else "youtube").lower(), "YouTube")
+        if messagebox.askyesno("Go live now", f"Start streaming to {where} now?\n\n(Set where it goes in the TikTok tab.)"):
             self.spawn("live.py", "run")
+
+    def tiktok_live_now(self):
+        """TikTok on its own, whatever the scheduled stream is set to: no YouTube broadcast."""
+        from tkinter import messagebox
+        method = (self.vars["TIKTOK_METHOD"].get() if "TIKTOK_METHOD" in self.vars else "studio").lower()
+        how = ("OBS streams to TikTok with your stream key." if method == "rtmp"
+               else "TikTok LIVE Studio opens - you click Go LIVE in it.")
+        if messagebox.askyesno("TikTok live now", f"Start a TikTok LIVE on its own now (no YouTube)?\n\n{how}"):
+            self.spawn("live.py", "run", "--to", "tiktok")
 
     def toggle_data(self):
         """Website data only: IB Gateway (+ the scanner site's connector/tunnel), nothing else."""

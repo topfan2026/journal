@@ -1061,3 +1061,94 @@ def test_wake_for_website_data_schedule(monkeypatch):
     xml = wake.task_xml(at, days, python="py.exe", description="Wakes the PC from sleep before the Website data schedule (Live Stream Bot).")
     assert "Website data schedule" in xml and "<WakeToRun>true</WakeToRun>" in xml
     assert wake.DATA_TASK != wake.TASK
+
+
+def test_stream_destination_choice(monkeypatch):
+    import tiktok_studio as tt
+    from config import ConfigError
+    for key in ("STREAM_TO", "TIKTOK_STUDIO", "TIKTOK_METHOD", "TIKTOK_RTMP_SERVER", "TIKTOK_STREAM_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    assert tt.destination() == "youtube"
+    monkeypatch.setenv("TIKTOK_STUDIO", "true")  # the older setting: YouTube and TikTok together
+    assert tt.destination() == "both" and tt.enabled()
+    monkeypatch.setenv("STREAM_TO", "tiktok")
+    assert tt.destination() == "tiktok" and tt.to_tiktok("tiktok") and not tt.to_youtube("tiktok")
+    assert tt.destination("youtube") == "youtube"  # the button / --to wins for that run
+    monkeypatch.setenv("STREAM_TO", "nowhere")
+    with pytest.raises(ConfigError):
+        tt.destination()
+    monkeypatch.setenv("TIKTOK_METHOD", "rtmp")
+    with pytest.raises(ConfigError, match="one place at a time"):
+        tt.check_destination("both")
+    with pytest.raises(ConfigError, match="TIKTOK_RTMP_SERVER"):
+        tt.check_destination("tiktok")
+    monkeypatch.setenv("TIKTOK_RTMP_SERVER", "rtmp://push.tiktok.example/live/")
+    monkeypatch.setenv("TIKTOK_STREAM_KEY", " abc ")
+    tt.check_destination("tiktok")
+    assert tt.rtmp_target() == {"server": "rtmp://push.tiktok.example/live/", "key": "abc"}
+    tt.check_destination("youtube")  # YouTube alone never needs TikTok settings
+
+
+def test_tiktok_alone_with_live_studio(settings, fake_agents, monkeypatch):
+    import tiktok_studio as tt
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_DURATION_MIN", "0")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    monkeypatch.setenv("TIKTOK_METHOD", "studio")
+    monkeypatch.setattr(tt, "open_studio", lambda: fake_agents.append("studio_open") or "opened")
+    monkeypatch.setattr(tt, "remind", lambda message=tt.REMINDER: fake_agents.append(("remind", message)))
+    monkeypatch.setattr(tt, "close_studio", lambda: fake_agents.append("studio_close") or "closed")
+    start = datetime.now(live.tz()) - timedelta(seconds=1)
+    assert live.LiveShow(settings, start=start, to="tiktok").run() == 0
+    # No YouTube broadcast and no OBS stream: LIVE Studio captures the window and sends it to TikTok.
+    assert "youtube" not in fake_agents and "obs_start" not in fake_agents
+    assert not any(isinstance(e, tuple) and e[0] == "obs_setup" for e in fake_agents)
+    assert ("remind", tt.REMINDER_ALONE) in fake_agents
+    assert fake_agents.index("studio_open") < fake_agents.index("studio_close")
+    assert live_status.read(live.live_root(settings))["to"] == "tiktok"
+
+
+def test_tiktok_alone_by_stream_key_restores_obs(settings, fake_agents, monkeypatch):
+    import obs_control
+    import tiktok_studio as tt
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_DURATION_MIN", "0")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    monkeypatch.setenv("TIKTOK_METHOD", "rtmp")
+    monkeypatch.setenv("TIKTOK_RTMP_SERVER", "rtmp://push.tiktok.example/live/")
+    monkeypatch.setenv("TIKTOK_STREAM_KEY", "TT")
+    monkeypatch.setattr(tt, "open_studio", lambda: fake_agents.append("studio_open") or "x")
+    saved = {"type": "rtmp_custom", "settings": {"server": "rtmp://youtube", "key": "YT"}}
+
+    class Probe:
+        def get_stream(self): return saved
+    monkeypatch.setattr(obs_control.OBS, "connect", classmethod(lambda cls, start=True: Probe()))
+    restored = []
+    orig_run = live.OBSAgent.run
+
+    def run(agent, stream, start_streaming):
+        result = orig_run(agent, stream, start_streaming)
+        agent.obs.restore_stream = lambda s: restored.append(s)
+        return result
+    monkeypatch.setattr(live.OBSAgent, "run", run)
+    assert live.LiveShow(settings, start=datetime.now(live.tz()) - timedelta(seconds=1), to="tiktok").run() == 0
+    assert ("obs_setup", "TT") in fake_agents and "obs_start" in fake_agents
+    assert "youtube" not in fake_agents and "studio_open" not in fake_agents
+    assert restored == [saved]  # the next YouTube stream goes to YouTube again
+
+
+def test_both_by_stream_key_is_refused_before_starting(settings, fake_agents, monkeypatch):
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("TIKTOK_METHOD", "rtmp")
+    assert live.LiveShow(settings, start=datetime.now(live.tz()), to="both").run() == 1
+    assert fake_agents == []  # nothing was started
+
+
+def test_gui_validates_tiktok_settings():
+    import live_gui
+    base = {"LIVE_START": "06:00", "LIVE_DAYS": "mon"}
+    assert live_gui.validate({**base, "STREAM_TO": "both", "TIKTOK_METHOD": "studio"}) == []
+    assert any("one place" in p for p in live_gui.validate({**base, "STREAM_TO": "both", "TIKTOK_METHOD": "rtmp",
+                                                             "TIKTOK_RTMP_SERVER": "rtmp://x", "TIKTOK_STREAM_KEY": "k"}))
+    problems = live_gui.validate({**base, "STREAM_TO": "tiktok", "TIKTOK_METHOD": "rtmp"})
+    assert any("server URL" in p for p in problems) and any("stream key" in p for p in problems)
