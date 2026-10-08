@@ -4,7 +4,6 @@
     Scheduler  ─────▶  IB Gateway           YouTube broadcast ─┐
     Wake timer         Scanner      ─────▶  OBS  ──────────────┴▶ YouTube Live
                                     ───────────────────────────▶ TikTok LIVE
-                       Autopilot (simulated traders on the website)
 
 Each node is grey (idle), orange and pulsing (working), green (ok) or red (failed); dots flow
 along a connection while the node it feeds is working or running.
@@ -25,15 +24,14 @@ GROUPS = [("Trigger", 0.02, 0.22), ("Market data", 0.27, 0.48), ("Broadcast", 0.
 NODES = {
     "scheduler": ("Scheduler", "⏱", 0, 0.26),
     "wake": ("Wake timer", "☾", 0, 0.74),
-    "gateway": ("IB Gateway", "⇄", 1, 0.14),
-    "scanner": ("Scanner", "▦", 1, 0.5),
-    "autopilot": ("Autopilot", "⚙", 1, 0.86),
+    "gateway": ("IB Gateway", "⇄", 1, 0.26),
+    "scanner": ("Scanner", "▦", 1, 0.74),
     "youtube": ("YouTube broadcast", "✎", 2, 0.26),
     "obs": ("OBS", "◉", 2, 0.74),
     "live": ("YouTube Live", "▶", 3, 0.26),
     "tiktok": ("TikTok LIVE", "♪", 3, 0.74),
 }
-EDGES = [("wake", "scheduler"), ("scheduler", "gateway"), ("gateway", "scanner"), ("scanner", "autopilot"), ("scanner", "youtube"),
+EDGES = [("wake", "scheduler"), ("scheduler", "gateway"), ("gateway", "scanner"), ("scanner", "youtube"),
          ("scanner", "obs"), ("youtube", "obs"), ("obs", "live"), ("scanner", "tiktok")]
 R = 24
 

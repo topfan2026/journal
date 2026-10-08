@@ -381,9 +381,9 @@ saved with your account, so the bot's browser uses it too. Simulated trades only
 
 ### Autopilot on the Status tab
 
-The diagram has an **Autopilot** box under Scanner: grey when the Autopilot window isn't open, orange while it
-waits for 9:30 New York, green while trading, red when "Run every market day" is off or IBKR isn't connected.
-Below it, **Autopilot today** lists the day's simulated trades from Bot Trader, scanner trading and
+The **AUTOPILOT** card (first in the row under the diagram) says TRADING (green), WAITING (orange, before 9:30
+New York or while the window opens), PROBLEM (red: "Run every market day" off or IBKR not connected) or – when
+the Autopilot window isn't open. Below it, **Autopilot today** lists the day's simulated trades from Bot Trader, scanner trading and
 Opportunities (time, symbol, side, win/loss/open, entry, exit, P&L) with the day's closed total. The bot reads
 this from the Autopilot window every check (the website publishes it as `window.__aialgoAutopilot`).
 

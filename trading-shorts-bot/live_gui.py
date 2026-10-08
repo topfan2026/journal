@@ -255,7 +255,9 @@ class App:
         apply_dark_theme(root)
         root.title(APP_NAME)
         set_app_icon(root)
-        root.geometry("960x960")
+        # Fit the screen (a 1366x768 laptop too): the buttons are at the top, so a shorter window only shortens the tabs.
+        width, height = min(1120, root.winfo_screenwidth() - 40), min(960, root.winfo_screenheight() - 90)
+        root.geometry(f"{width}x{height}")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
         self.day_vars: dict[str, dict[str, object]] = {}  # days field key -> day -> checkbox var
@@ -265,8 +267,15 @@ class App:
         self.lines: queue.Queue[str] = queue.Queue()
 
         values = current_values()
+        # The buttons and the autostart switch sit at the top and the log at the bottom, both packed before the
+        # tabs, so they always keep their space; the tabs get what is left (a tall Status tab can never push the
+        # buttons off the window).
+        top = ttk.Frame(root)
+        top.pack(side="top", fill="x", pady=(8, 0))
+        bottom = ttk.Frame(root)
+        bottom.pack(side="bottom", fill="x")
         nb = ttk.Notebook(root)
-        nb.pack(fill="x", padx=10, pady=(10, 4))
+        nb.pack(side="top", fill="both", expand=True, padx=10, pady=(6, 0))
         self._build_status_tab(nb)
         for tab, fields in TABS.items():
             frame = ttk.Frame(nb, padding=12)
@@ -322,12 +331,12 @@ class App:
              ("Desktop shortcut", self.desktop_shortcut, "shortcut")],
         ]
         for buttons in rows:
-            bar = ttk.Frame(root, padding=(10, 2))
+            bar = ttk.Frame(top, padding=(10, 2))
             bar.pack(fill="x")
             for text, cmd, key in buttons:
                 make_button(bar, text, cmd, key).pack(side="left", padx=(0, 6))
 
-        auto = ttk.Frame(root, padding=(10, 0))
+        auto = ttk.Frame(top, padding=(10, 0))
         auto.pack(fill="x")
         self.auto_var = tk.BooleanVar(value=self._autostart_installed())
         ttk.Checkbutton(auto, text="Start the scheduler automatically when I log in",
@@ -335,9 +344,9 @@ class App:
         self.status = tk.StringVar()
         ttk.Label(auto, textvariable=self.status, foreground="#3fb950").pack(side="right")
 
-        self.log = tk.Text(root, height=7, wrap="word", state="disabled", background="#010409", relief="flat",
+        self.log = tk.Text(bottom, height=4 if root.winfo_screenheight() < 1000 else 6, wrap="word", state="disabled", background="#010409", relief="flat",
                            foreground="#e8edf5", insertbackground="#e8edf5", font=("Consolas", 10))
-        self.log.pack(fill="both", expand=True, padx=10, pady=10)
+        self.log.pack(fill="x", padx=10, pady=10)
         self.update_status()
         self._refresh_wake()
         self.refresh_dashboard()
@@ -348,10 +357,29 @@ class App:
     # ------------------------------------------------------------------ status tab
     def _build_status_tab(self, nb):
         tk, ttk = self.tk, self.ttk
-        tab = ttk.Frame(nb, padding=10)
+        # The Status tab scrolls (mouse wheel or the bar on the right) when the window is shorter than its content.
+        outer = ttk.Frame(nb)
+        nb.add(outer, text="  Status  ")
+        canvas = tk.Canvas(outer, bg=DARK["bg"], highlightthickness=0)
+        bar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        tab = ttk.Frame(canvas, padding=10)
+        inner = canvas.create_window((0, 0), window=tab, anchor="nw")
+        tab.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(inner, width=e.width))
+
+        def wheel(event):
+            over = canvas.winfo_containing(event.x_root, event.y_root)
+            if over is None or not str(over).startswith(str(canvas)):
+                return  # the log and the settings tabs scroll themselves
+            if canvas.winfo_ismapped() and canvas.bbox("all") and canvas.bbox("all")[3] > canvas.winfo_height():
+                canvas.yview_scroll(-1 if (event.delta > 0 or getattr(event, "num", 0) == 4) else 1, "units")
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            canvas.bind_all(seq, wheel, add="+")
         tab.columnconfigure(0, weight=1)
         tab.columnconfigure(1, weight=1)
-        nb.add(tab, text="  Status  ")
 
         self.banner = tk.Frame(tab, bg=COLORS["off"], padx=16, pady=12)
         self.banner.grid(row=0, column=0, columnspan=2, sticky="ew")
@@ -365,24 +393,25 @@ class App:
 
         actions = ttk.Frame(tab)
         actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 6))
-        self.sched_btn = make_button(actions, "Start scheduler", self.toggle_scheduler, "scheduler_start", width=20)
+        self.sched_btn = make_button(actions, "Start scheduler", self.toggle_scheduler, "scheduler_start", width=16)
         self.sched_btn.pack(side="left", padx=(0, 6))
         make_button(actions, "Go live now", self.go_live_now, "go_live").pack(side="left", padx=(0, 6))
         make_button(actions, "TikTok live now", self.tiktok_live_now, "tiktok_live").pack(side="left", padx=(0, 6))
         make_button(actions, "End today's stream", self.end_today, "end_stream").pack(side="left", padx=(0, 6))
         make_button(actions, "Open on YouTube", self.open_youtube, "open_youtube").pack(side="left", padx=(0, 6))
-        self.data_btn = make_button(actions, "Website data only", self.toggle_data, "data_start", width=22)
+        self.data_btn = make_button(actions, "Website data only", self.toggle_data, "data_start", width=17)
         self.data_btn.pack(side="left")
 
         from pipeline_view import PipelineView
-        self.pipe = PipelineView(tab, height=360)
+        self.pipe = PipelineView(tab, height=320)
         self.pipe.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         cards = ttk.Frame(tab)
         cards.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         self.stats = {}
-        for i, (key, label) in enumerate([("live_for", "LIVE FOR"), ("viewers", "WATCHING"), ("privacy", "PRIVACY"),
-                                          ("fixes", "AUTO-FIXES"), ("last_check", "LAST CHECK"), ("ends", "ENDS AT")]):
+        for i, (key, label) in enumerate([("autopilot", "AUTOPILOT"), ("live_for", "LIVE FOR"), ("viewers", "WATCHING"),
+                                          ("privacy", "PRIVACY"), ("fixes", "AUTO-FIXES"), ("last_check", "LAST CHECK"),
+                                          ("ends", "ENDS AT")]):
             cards.columnconfigure(i, weight=1, uniform="card")
             card = tk.Frame(cards, bg=DARK["panel"], padx=10, pady=6, highlightthickness=1,
                             highlightbackground=DARK["border"])
@@ -394,20 +423,23 @@ class App:
         self.problem = ttk.Label(tab, text="", foreground="#f85149")
         self.problem.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        trades = ttk.LabelFrame(tab, text=" Autopilot today (simulated trades) ", padding=6)
-        trades.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        # Today's Autopilot trades and the last 7 streams share one space (tabs), to keep the Status tab short.
+        tables = ttk.Notebook(tab)
+        tables.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        trades = ttk.Frame(tables, padding=6)
+        tables.add(trades, text=" Autopilot today (simulated trades) ")
         self.ap_summary = ttk.Label(trades, text="")
         self.ap_summary.pack(anchor="w")
         cols = (("time", "Time", 70), ("source", "Trader", 110), ("symbol", "Symbol", 80), ("side", "Side", 60),
                 ("result", "Result", 70), ("entry", "Entry", 80), ("exit", "Exit", 80), ("pnl", "P&L", 90))
-        self.ap_trades = ttk.Treeview(trades, columns=[c[0] for c in cols], show="headings", height=5)
+        self.ap_trades = ttk.Treeview(trades, columns=[c[0] for c in cols], show="headings", height=4)
         for col, text, width in cols:
             self.ap_trades.heading(col, text=text)
             self.ap_trades.column(col, width=width, anchor="w")
         self.ap_trades.pack(fill="x")
 
-        hist = ttk.LabelFrame(tab, text=" Last 7 days (double-click to open on YouTube) ", padding=6)
-        hist.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        hist = ttk.Frame(tables, padding=6)
+        tables.add(hist, text=" Last 7 streams (double-click to open on YouTube) ")
         self.hist = ttk.Treeview(hist, columns=("date", "result", "minutes", "public"), show="headings", height=4)
         for col, text, width in (("date", "Day", 130), ("result", "Result", 300), ("minutes", "Live (min)", 90),
                                  ("public", "Went public", 90)):
@@ -558,8 +590,10 @@ class App:
         else:
             self._set_row("wake", "off", "off")
         ap = st.get("autopilot") or {}
-        self._set_row("autopilot", *autopilot_row(ap))
-        self.ap_summary.configure(text=autopilot_summary(ap))
+        ap_state, ap_detail = autopilot_row(ap)
+        self.stats["autopilot"].configure(text=AUTOPILOT_WORD[ap_state], fg=AUTOPILOT_COLOR[ap_state])
+        self.ap_detail = ap_detail
+        self.ap_summary.configure(text=f"Autopilot: {ap_detail}. " + autopilot_summary(ap))
         rows = trade_rows(ap)
         if rows != getattr(self, "_ap_rows", None):
             self._ap_rows = rows
@@ -1204,6 +1238,10 @@ def _fresh(ap: dict, now: datetime | None = None, minutes: float = 3) -> bool:
 
 def _money(n) -> str:
     return "" if n is None else f"{'-' if n < 0 else '+'}${abs(n):,.2f}"
+
+
+AUTOPILOT_WORD = {"ok": "TRADING", "waiting": "WAITING", "failed": "PROBLEM", "off": "–"}
+AUTOPILOT_COLOR = {"ok": "#3fb950", "waiting": "#f0883e", "failed": "#f85149", "off": "#e6edf3"}
 
 
 def autopilot_row(ap: dict, now: datetime | None = None) -> tuple[str, str]:
