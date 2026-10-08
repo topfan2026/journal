@@ -379,6 +379,14 @@ To run it every day: in the IB Gateway tab, tick **Website data on a schedule**,
 the PC to wake for it). Then, once, open the Autopilot page and tick **Run every market day**; that setting is
 saved with your account, so the bot's browser uses it too. Simulated trades only: no real orders.
 
+### Autopilot on the Status tab
+
+The diagram has an **Autopilot** box under Scanner: grey when the Autopilot window isn't open, orange while it
+waits for 9:30 New York, green while trading, red when "Run every market day" is off or IBKR isn't connected.
+Below it, **Autopilot today** lists the day's simulated trades from Bot Trader, scanner trading and
+Opportunities (time, symbol, side, win/loss/open, entry, exit, P&L) with the day's closed total. The bot reads
+this from the Autopilot window every check (the website publishes it as `window.__aialgoAutopilot`).
+
 ### Changing settings while it runs
 
 Save in the app while a stream is running and it picks up, within one check (about 30 s): the **end time**

@@ -596,6 +596,18 @@ class ScannerSite:
             log.warning("browser: couldn't open the Autopilot window: %s", e)
             return ""
 
+    def autopilot_status(self) -> dict | None:
+        """What the Autopilot window says about itself (state, each trader, today's trades); None when the
+        window isn't open or the page is too old to say. Never raises."""
+        try:
+            if self.trading_page is None or self.trading_page.is_closed():
+                return None
+            snap = self.trading_page.evaluate("() => window.__aialgoAutopilot || null")
+            return snap if isinstance(snap, dict) else None
+        except Exception as e:  # noqa: BLE001
+            log.debug("autopilot status: %s", e)
+            return None
+
     def reload_autopilot(self) -> str:
         """Reload the Autopilot window (after live data came back), so its traders reconnect. Its books are kept
         in the browser, so open simulated positions carry on. Never raises."""

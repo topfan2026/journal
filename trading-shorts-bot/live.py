@@ -242,6 +242,9 @@ class BrowserAgent:
     def reload_autopilot(self) -> str:
         return self.site.reload_autopilot() if self.site.alive() else ""
 
+    def autopilot_status(self) -> dict | None:
+        return self.site.autopilot_status() if self.site.alive() else None
+
     def wait(self, seconds: float) -> None:
         if self.site.alive():
             self.site.wait(seconds)
@@ -281,11 +284,25 @@ class WebsiteDataSite:
             self.site.reload_autopilot()
         return "website connected"
 
+    def autopilot_status(self) -> dict | None:
+        return self.site.autopilot_status() if self.wanted() and self.site.alive() else None
+
     def close(self) -> None:
         try:
             self.site.close()
         except Exception:
             pass
+
+
+def report_autopilot(root: Path, site) -> None:
+    """Copy the Autopilot window's own summary (state, traders, today's trades) to the status file for the
+    app's Status tab. Never raises: it's only a display."""
+    try:
+        snap = site.autopilot_status()
+    except Exception:  # noqa: BLE001
+        snap = None
+    read = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    live_status.write(root, autopilot={**snap, "window": True, "read": read} if snap else {"window": False, "read": read})
 
 
 STREAM_PHASES = ("setup", "ready", "live", "ending", "test")
@@ -744,6 +761,7 @@ class LiveShow:
                         self.fixed("scanner", "restored the minimised window")
                     if browser.ensure_autopilot() == "autopilot opened":
                         self.fixed("scanner", "reopened the Autopilot window")
+                    report_autopilot(self.root, browser)
                     self.check_picture(browser, obs)
                     if self.youtube is not None:
                         if self.youtube.check_go_public(self.yt_result, picture_ok=obs.healthy() and obs.black == 0):
@@ -1072,6 +1090,7 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
                         last_check = time.monotonic()
                         problem = data_round(guard, gateway, website, root)
                     status("failed" if problem else "on", problem or what + (f" · {site}" if site else ""))
+                    report_autopilot(root, website)
             except Exception as e:  # keep trying: the point of this mode is to stay up
                 log.error("[data] %s - trying again in 60 s", e)
                 live_status.step(root, "gateway", "failed", str(e)[:120])
@@ -1129,6 +1148,7 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
                     if data_guard.required() and time.monotonic() - last_check >= env_float("DATA_CHECK_SECONDS", 60):
                         last_check = time.monotonic()
                         detail = data_round(guard, gateway, website, root) or detail
+                    report_autopilot(root, website)
                 live_status.write(root, data={"state": "failed" if guard.state != data_guard.OK else "on",
                                               "scheduled": True, "detail": detail,
                                               "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})

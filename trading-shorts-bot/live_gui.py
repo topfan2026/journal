@@ -375,7 +375,7 @@ class App:
         self.data_btn.pack(side="left")
 
         from pipeline_view import PipelineView
-        self.pipe = PipelineView(tab, height=320)
+        self.pipe = PipelineView(tab, height=360)
         self.pipe.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         cards = ttk.Frame(tab)
@@ -394,8 +394,20 @@ class App:
         self.problem = ttk.Label(tab, text="", foreground="#f85149")
         self.problem.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
+        trades = ttk.LabelFrame(tab, text=" Autopilot today (simulated trades) ", padding=6)
+        trades.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.ap_summary = ttk.Label(trades, text="")
+        self.ap_summary.pack(anchor="w")
+        cols = (("time", "Time", 70), ("source", "Trader", 110), ("symbol", "Symbol", 80), ("side", "Side", 60),
+                ("result", "Result", 70), ("entry", "Entry", 80), ("exit", "Exit", 80), ("pnl", "P&L", 90))
+        self.ap_trades = ttk.Treeview(trades, columns=[c[0] for c in cols], show="headings", height=5)
+        for col, text, width in cols:
+            self.ap_trades.heading(col, text=text)
+            self.ap_trades.column(col, width=width, anchor="w")
+        self.ap_trades.pack(fill="x")
+
         hist = ttk.LabelFrame(tab, text=" Last 7 days (double-click to open on YouTube) ", padding=6)
-        hist.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        hist.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.hist = ttk.Treeview(hist, columns=("date", "result", "minutes", "public"), show="headings", height=4)
         for col, text, width in (("date", "Day", 130), ("result", "Result", 300), ("minutes", "Live (min)", 90),
                                  ("public", "Went public", 90)):
@@ -545,6 +557,15 @@ class App:
                           f"wakes PC {at}" if self.wake_installed else "Save to set it up")
         else:
             self._set_row("wake", "off", "off")
+        ap = st.get("autopilot") or {}
+        self._set_row("autopilot", *autopilot_row(ap))
+        self.ap_summary.configure(text=autopilot_summary(ap))
+        rows = trade_rows(ap)
+        if rows != getattr(self, "_ap_rows", None):
+            self._ap_rows = rows
+            self.ap_trades.delete(*self.ap_trades.get_children())
+            for row in rows:
+                self.ap_trades.insert("", "end", values=row)
         steps = st.get("steps", {})
         for name in live_status.STEPS:
             v = steps.get(name, {})
@@ -1170,6 +1191,71 @@ def icon(name: str):
         except Exception:
             _ICONS[name] = None
     return _ICONS[name]
+
+
+
+def _fresh(ap: dict, now: datetime | None = None, minutes: float = 3) -> bool:
+    try:
+        read = datetime.fromisoformat(ap["read"])
+    except Exception:
+        return False
+    return ((now or datetime.now(read.tzinfo)) - read).total_seconds() < minutes * 60
+
+
+def _money(n) -> str:
+    return "" if n is None else f"{'-' if n < 0 else '+'}${abs(n):,.2f}"
+
+
+def autopilot_row(ap: dict, now: datetime | None = None) -> tuple[str, str]:
+    """The Autopilot node on the Status tab: (state, detail) from the Autopilot window's own summary."""
+    if not ap or not _fresh(ap, now):
+        return "off", "not running"
+    if not ap.get("window"):
+        return "waiting", "window not open"
+    if not ap.get("enabled"):
+        return "failed", "'Run every market day' off"
+    if not ap.get("connected"):
+        return "failed", "IBKR not connected"
+    if not ap.get("trading"):
+        return "waiting", "waits for 9:30 NY"
+    trades = ap.get("trades") or []
+    opened = sum(1 for t in trades if t.get("status") == "open")
+    return "ok", f"trading · {opened} open · {len(trades) - opened} closed"
+
+
+def autopilot_summary(ap: dict, now: datetime | None = None) -> str:
+    if not ap or not _fresh(ap, now) or not ap.get("window"):
+        return "Autopilot isn't open on this PC (it opens in the Website data window or with the stream)."
+    trades = ap.get("trades") or []
+    closed = [t for t in trades if t.get("status") != "open" and t.get("pnl") is not None]
+    total = sum(t["pnl"] for t in closed)
+    wins = sum(1 for t in closed if t["pnl"] > 0)
+    bt = ap.get("botTrader") or {}
+    parts = [ap.get("state") or "", f"closed today {_money(total) if closed else '$0.00'}"
+             + (f" ({wins}/{len(closed)} won)" if closed else "")]
+    if bt.get("halt"):
+        parts.append(f"Bot Trader halted: {bt['halt']}")
+    if ap.get("alerts"):
+        parts.append(f"{ap['alerts']} Monitor alert(s)")
+    return " · ".join(p for p in parts if p)
+
+
+def trade_rows(ap: dict, now: datetime | None = None) -> list[tuple]:
+    """Today's simulated trades for the table: newest first, times in New York."""
+    if not ap or not _fresh(ap, now):
+        return []
+    from zoneinfo import ZoneInfo
+    ny = ZoneInfo("America/New_York")
+    out = []
+    for t in ap.get("trades") or []:
+        try:
+            at = datetime.fromtimestamp(t["at"] / 1000, ny).strftime("%H:%M")
+        except Exception:
+            at = ""
+        price = lambda v: "" if v is None else f"{v:,.2f}"  # noqa: E731
+        out.append((at, t.get("source", ""), t.get("symbol", ""), t.get("side", ""), t.get("status", ""),
+                    price(t.get("entry")), price(t.get("exit")), _money(t.get("pnl"))))
+    return out
 
 
 def make_button(parent, text: str, command, key: str, **kw):

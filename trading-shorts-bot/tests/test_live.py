@@ -1317,3 +1317,42 @@ def test_new_end_time_saved_while_live_applies_to_the_running_stream(settings, f
 def live_status_read(settings):
     import live_status
     return live_status.read(live.live_root(settings))
+
+
+def test_autopilot_status_on_the_status_tab():
+    now = datetime(2026, 10, 8, 17, 0, tzinfo=timezone.utc)
+    read = (now - timedelta(seconds=30)).isoformat()
+    trades = [
+        {"source": "Bot Trader", "symbol": "NVDA", "side": "long", "status": "open", "entry": 240.0, "exit": None,
+         "pnl": 12.5, "at": int((now - timedelta(minutes=5)).timestamp() * 1000)},
+        {"source": "Scanner", "symbol": "AMD", "side": "short", "status": "loss", "entry": 150.0, "exit": 151.0,
+         "pnl": -10.0, "at": int(datetime(2026, 10, 8, 14, 30, tzinfo=timezone.utc).timestamp() * 1000)},
+        {"source": "Opportunities", "symbol": "TSLA", "side": "short", "status": "win", "entry": 250.0, "exit": 240.0,
+         "pnl": 1000.0, "at": 0},
+    ]
+    ap = {"window": True, "read": read, "enabled": True, "connected": True, "trading": True, "state": "Trading",
+          "botTrader": {"halt": None}, "alerts": 1, "trades": trades}
+    assert live_gui.autopilot_row(ap, now) == ("ok", "trading · 1 open · 2 closed")
+    assert live_gui.autopilot_summary(ap, now) == "Trading · closed today +$990.00 (1/2 won) · 1 Monitor alert(s)"
+    rows = live_gui.trade_rows(ap, now)
+    assert rows[1] == ("10:30", "Scanner", "AMD", "short", "loss", "150.00", "151.00", "-$10.00")
+    assert rows[0][-1] == "+$12.50" and rows[0][6] == ""
+
+    assert live_gui.autopilot_row({**ap, "trading": False}, now) == ("waiting", "waits for 9:30 NY")
+    assert live_gui.autopilot_row({**ap, "enabled": False}, now)[0] == "failed"
+    assert live_gui.autopilot_row({"window": False, "read": read}, now) == ("waiting", "window not open")
+    stale = {**ap, "read": (now - timedelta(minutes=10)).isoformat()}
+    assert live_gui.autopilot_row(stale, now) == ("off", "not running") and live_gui.trade_rows(stale, now) == []
+
+
+def test_report_autopilot_copies_the_window_summary(tmp_path):
+    import live_status
+
+    class Site:
+        def __init__(self, snap): self.snap = snap
+        def autopilot_status(self): return self.snap
+    live.report_autopilot(tmp_path, Site({"state": "Trading", "trades": []}))
+    ap = live_status.read(tmp_path)["autopilot"]
+    assert ap["window"] is True and ap["state"] == "Trading" and ap["read"]
+    live.report_autopilot(tmp_path, Site(None))
+    assert live_status.read(tmp_path)["autopilot"]["window"] is False
