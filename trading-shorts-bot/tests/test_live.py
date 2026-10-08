@@ -1199,3 +1199,4 @@ def test_aialgobot_icon_and_shortcut():
     ps = live_gui.shortcut_ps(Path("C:/Bots/O'Neil bot"), Path("C:/Users/me/Desktop"))
     assert "AiAlgobot.lnk" in ps and "pythonw.exe" in ps and "app.ico" in ps
     assert "O''Neil" in ps  # quotes in a folder name can't break the command
+    assert ps.startswith("Remove-Item") and "app.ico,0" in ps and "ie4uinit.exe" in ps

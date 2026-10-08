@@ -887,6 +887,9 @@ class App:
         if os.name != "nt":
             self.write("Desktop shortcut is for Windows\n")
             return
+        if not ICON_ICO.exists():
+            self.write("the icon file is missing - click Update bot first, then try again\n")
+            return
         desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
         try:
             out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
@@ -895,7 +898,9 @@ class App:
                 desktop = Path(out.stdout.strip())  # OneDrive can move the Desktop folder
             subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", shortcut_ps(BOT_DIR, desktop)],
                            check=True, capture_output=True, text=True, timeout=30)
-            self.write(f"made a desktop shortcut: {desktop / (APP_NAME + '.lnk')}\n")
+            self.write(f"made a desktop shortcut: {desktop / (APP_NAME + '.lnk')}\n"
+                       "If it still shows the old picture: delete any other bot shortcut on the desktop, "
+                       "then sign out of Windows and back in (that clears Windows' icon cache).\n")
         except Exception as e:
             self.write(f"couldn't make the desktop shortcut: {e}\n")
 
@@ -1103,10 +1108,15 @@ def shortcut_ps(bot_dir: Path, desktop: Path) -> str:
     """PowerShell that makes a desktop shortcut starting the app without a console window."""
     pythonw = bot_dir / ".venv" / "Scripts" / "pythonw.exe"
     q = lambda p: str(p).replace("'", "''")
-    return ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut('" + q(desktop / f"{APP_NAME}.lnk") + "'); "
+    lnk = q(desktop / f"{APP_NAME}.lnk")
+    # Replace an older copy (Windows keeps showing a cached icon for a shortcut it already knows).
+    return (f"Remove-Item -LiteralPath '{lnk}' -Force -ErrorAction SilentlyContinue; "
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('" + lnk + "'); "
             f"$s.TargetPath = '{q(pythonw)}'; $s.Arguments = '\"{q(bot_dir / 'live_gui.py')}\"'; "
-            f"$s.WorkingDirectory = '{q(bot_dir)}'; $s.IconLocation = '{q(bot_dir / 'assets' / 'app.ico')}'; "
-            f"$s.Description = '{APP_NAME} - live stream and trading bot'; $s.Save()")
+            f"$s.WorkingDirectory = '{q(bot_dir)}'; $s.IconLocation = '{q(bot_dir / 'assets' / 'app.ico')},0'; "
+            f"$s.Description = '{APP_NAME} - live stream and trading bot'; $s.Save(); "
+            # Ask Explorer to redraw icons now instead of showing the cached one.
+            "Start-Process -FilePath ie4uinit.exe -ArgumentList '-show' -ErrorAction SilentlyContinue")
 
 
 def main() -> None:
