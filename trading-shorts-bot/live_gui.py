@@ -229,7 +229,7 @@ def read_steps(app: bool | None = None) -> str:
     return use_layout_setting(path.read_text(encoding="utf-8")) if path.exists() else default_steps(app)
 
 
-BROWSER_COMMANDS = {"run", "daemon", "check", "site-test", "site-login"}
+BROWSER_COMMANDS = {"run", "daemon", "check", "check-autopilot", "site-test", "site-login"}
 
 
 def uses_browser(args) -> bool:
@@ -313,7 +313,8 @@ class App:
         rows = [
             [("Save settings", self.save),
              ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
-             ("Check setup", lambda: self.spawn("live.py", "check")),
+             ("Check setup (stream)", lambda: self.spawn("live.py", "check")),
+             ("Check Autopilot setup", lambda: self.spawn("live.py", "check-autopilot")),
              ("Update bot", self.update_bot),
              ("Desktop shortcut", self.desktop_shortcut)],
         ]

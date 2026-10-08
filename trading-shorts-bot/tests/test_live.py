@@ -1216,3 +1216,29 @@ def test_gateway_version_follows_an_update(tmp_path, monkeypatch):
     monkeypatch.delenv("IBC_START_CMD", raising=False)
     if os.name != "nt":
         assert ibkr.gateway_command(tmp_path / "config.ini")[1] == "1051"
+
+
+def test_check_autopilot_skips_obs_and_youtube(settings, monkeypatch):
+    import scanner_site as ss
+    seen = []
+
+    class Gateway:
+        def __init__(self, s): pass
+        def run(self): seen.append("gateway"); return {"port": 4002}
+
+    class Site:
+        def __init__(self, profile): pass
+        def open(self): seen.append("open")
+        def start_scanner(self, connect_only=False): seen.append(("scanner", connect_only))
+        def ensure_autopilot(self): seen.append("autopilot"); return "autopilot opened"
+        def wait(self, s): pass
+        def close(self): seen.append("close")
+
+    monkeypatch.setattr(live, "GatewayAgent", Gateway)
+    monkeypatch.setattr(ss, "ScannerSite", Site)
+    monkeypatch.setattr(ss, "app_path", lambda: None)
+    monkeypatch.delenv("AUTOPILOT_WINDOW", raising=False)
+    import obs_control
+    monkeypatch.setattr(obs_control.OBS, "connect", classmethod(lambda cls, start=True: (_ for _ in ()).throw(AssertionError("OBS must not start"))))
+    assert live.check_autopilot(settings) == 0
+    assert seen == ["gateway", "open", ("scanner", True), "autopilot", "close"]

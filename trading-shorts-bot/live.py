@@ -1087,6 +1087,45 @@ def check(settings: Settings) -> int:
     return 1 if bad else 0
 
 
+def check_autopilot(settings: Settings) -> int:
+    """Only what Autopilot needs: IB Gateway (paper), the website signed in and connected, and the
+    Autopilot window. No OBS, YouTube or TikTok."""
+    bad = 0
+
+    def step(name, fn):
+        nonlocal bad
+        try:
+            log.info("[%s] OK: %s", name, fn())
+        except Exception as e:
+            bad += 1
+            log.error("[%s] NOT READY: %s", name, e)
+
+    step("gateway", lambda: GatewayAgent(settings).run())
+
+    def site():
+        from scanner_site import ScannerSite, SiteError, autopilot_wanted
+        if not autopilot_wanted():
+            raise ConfigError("'Also open Autopilot' is off in the IB Gateway tab")
+        agent = ScannerSite(live_root(settings) / "browser-profile")
+        try:
+            agent.open()
+            agent.start_scanner(connect_only=True)
+            opened = agent.ensure_autopilot()
+            if not opened or "didn't" in opened:
+                raise SiteError("the Autopilot window didn't open")
+            log.info("leaving it open for 20s so you can see the Autopilot window")
+            agent.wait(20)
+            return "website connected · Autopilot window open (tick 'Run every market day' in it once)"
+        finally:
+            agent.close()
+    step("website + autopilot", site)
+    if bad:
+        log.error("%d part(s) not ready", bad)
+    else:
+        log.info("Autopilot is ready: set the Website data schedule (09:00-16:15) and it runs every market day")
+    return 1 if bad else 0
+
+
 def _graceful_signals() -> None:
     """SIGTERM / Ctrl+Break (sent by the GUI's Stop button) end the stream cleanly like Ctrl+C."""
     import signal
@@ -1102,7 +1141,7 @@ def main(argv: list[str] | None = None) -> int:
     from watcher import setup_logging
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "site-login", "site-test", "data"])
+    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "check-autopilot", "site-login", "site-test", "data"])
     ap.add_argument("--dry-run", action="store_true", default=None)
     ap.add_argument("--to", choices=["youtube", "tiktok", "both"], default=None,
                     help="run: where this stream goes (default: STREAM_TO)")
@@ -1144,6 +1183,8 @@ def main(argv: list[str] | None = None) -> int:
             from scanner_site import site_login
             site_login(live_root(settings) / "browser-profile")
             return 0
+        if args.command == "check-autopilot":
+            return check_autopilot(settings)
         return check(settings)
     except (ConfigError, KeyboardInterrupt) as e:
         if isinstance(e, ConfigError):
