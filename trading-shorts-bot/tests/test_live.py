@@ -1152,3 +1152,39 @@ def test_gui_validates_tiktok_settings():
                                                              "TIKTOK_RTMP_SERVER": "rtmp://x", "TIKTOK_STREAM_KEY": "k"}))
     problems = live_gui.validate({**base, "STREAM_TO": "tiktok", "TIKTOK_METHOD": "rtmp"})
     assert any("server URL" in p for p in problems) and any("stream key" in p for p in problems)
+
+
+def test_autopilot_window(monkeypatch):
+    import scanner_site as ss
+    monkeypatch.delenv("AUTOPILOT_WINDOW", raising=False)
+    monkeypatch.setattr(ss, "app_path", lambda: None)
+    assert ss.autopilot_url("https://aialgopro.com/#/scanner") == "https://aialgopro.com/?bot=trading#/autopilot"
+    assert ss.autopilot_url("https://aialgopro.com/?x=1") == "https://aialgopro.com/?bot=trading#/autopilot"
+    assert "LIVE BOT - Trading" in ss.title_js("LIVE BOT - Scanner") and "__TRADING__" not in ss.title_js("x")
+
+    class Page:
+        def __init__(self, url): self.url, self.closed, self.front = url, False, 0
+        def is_closed(self): return self.closed
+        def bring_to_front(self): self.front += 1
+
+    class Context:
+        def __init__(self, main): self.pages, self.sent = [main], []
+        def new_cdp_session(self, page):
+            ctx = self
+            class Cdp:
+                def send(self, method, params):
+                    ctx.sent.append((method, params))
+                    ctx.pages.append(Page(params["url"]))
+            return Cdp()
+
+    from pathlib import Path
+    site = ss.ScannerSite(Path("/tmp/x"))
+    site.page = Page("https://aialgopro.com/#/scanner")
+    site.context = Context(site.page)
+    assert site.ensure_autopilot() == "autopilot opened"
+    assert site.context.sent[0][1]["newWindow"] is True and site.page.front == 1  # the scanner stays in front
+    assert site.ensure_autopilot() == "autopilot open" and len(site.context.sent) == 1
+    site.trading_page.closed = True
+    assert site.ensure_autopilot() == "autopilot opened" and len(site.context.sent) == 2  # reopened
+    monkeypatch.setenv("AUTOPILOT_WINDOW", "false")
+    assert site.ensure_autopilot() == ""

@@ -93,7 +93,8 @@ hide A row is tinted
 
 # Pins the page title, whatever the site sets it to.
 TITLE_JS = """(() => {
-  const title = __TITLE__;
+  // The Autopilot window (opened with ?bot=trading) gets its own title, so OBS never captures it.
+  const title = location.search.includes('bot=trading') ? __TRADING__ : __TITLE__;
   const fix = () => { if (document.title !== title) document.title = title; };
   const watch = () => {
     fix();
@@ -292,6 +293,22 @@ def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
 
+TRADING_TITLE = "LIVE BOT - Trading"
+
+
+def title_js(title: str) -> str:
+    return TITLE_JS.replace("__TITLE__", json.dumps(title)).replace("__TRADING__", json.dumps(TRADING_TITLE))
+
+
+def autopilot_wanted() -> bool:
+    """Open the site's Autopilot page (it runs the simulated traders 9:30-16:00 New York) next to the scanner."""
+    return env_bool("AUTOPILOT_WINDOW", True) and not app_path()
+
+
+def autopilot_url(base: str) -> str:
+    return base.split("#", 1)[0].split("?", 1)[0].rstrip("/") + "/?bot=trading#/autopilot"
+
+
 def steps_file(app: bool | None = None) -> Path:
     """Website steps and desktop-app steps are kept in separate files, so switching keeps both."""
     app = use_app() if app is None else app
@@ -428,6 +445,7 @@ class ScannerSite:
     def __init__(self, profile_dir: Path):
         self.profile_dir = profile_dir
         self._pw = self.context = self.page = None
+        self.trading_page = None
         self.want_fullscreen = False
 
     # ------------------------------------------------------------------ browser
@@ -445,7 +463,10 @@ class ScannerSite:
             time.sleep(2)
         self._pw = sync_playwright().start()
         kwargs = dict(
-            headless=False, no_viewport=True, args=["--start-maximized"],
+            headless=False, no_viewport=True,
+            # The Autopilot window is often behind the scanner: keep Chrome from slowing its timers down.
+            args=["--start-maximized", "--disable-background-timer-throttling",
+                  "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding"],
             # No "controlled by automated test software" / "--no-sandbox" bars on the stream.
             # (Chrome's sandbox can't run as root on Linux, so it stays off there.)
             chromium_sandbox=env_bool("BROWSER_SANDBOX", os.name == "nt" or sys.platform == "darwin"),
@@ -469,7 +490,7 @@ class ScannerSite:
         # "Window title must match" always finds it and never grabs your everyday browser instead.
         title = window_title()
         if title:
-            self.context.add_init_script(TITLE_JS.replace("__TITLE__", json.dumps(title)))
+            self.context.add_init_script(title_js(title))
         for page in self.context.pages:
             self._keep_dialogs(page)
         self.context.on("page", self._keep_dialogs)
@@ -518,8 +539,8 @@ class ScannerSite:
         self.context.on("page", self._keep_dialogs)
         title = window_title()
         if title:  # for reloads, and right now for the window that is already open
-            self.context.add_init_script(TITLE_JS.replace("__TITLE__", json.dumps(title)))
-            self.page.evaluate(TITLE_JS.replace("__TITLE__", json.dumps(title)))
+            self.context.add_init_script(title_js(title))
+            self.page.evaluate(title_js(title))
         if env_bool("SCANNER_APP_MAXIMIZE", True):
             time.sleep(0.5)  # let the pinned title reach the window first
             if not self.maximize_window():
@@ -545,7 +566,35 @@ class ScannerSite:
         if app is not None:
             close_app(app_path(), proc=app)
             self._app = None
-        self._pw = self.context = self.page = None
+        self._pw = self.context = self.page = self.trading_page = None
+
+    # ------------------------------------------------------------------ autopilot window
+    def ensure_autopilot(self) -> str:
+        """The Autopilot page in its own window ("LIVE BOT - Trading"), opened once and reopened if closed.
+        The scanner window stays in front, so the stream never shows it. Never raises: the stream matters more."""
+        if not autopilot_wanted() or self.context is None or self.page is None:
+            return ""
+        try:
+            if self.trading_page is not None and not self.trading_page.is_closed():
+                return "autopilot open"
+            url = autopilot_url(self.page.url if self.page.url.startswith("http") else self.url)
+            cdp = self.context.new_cdp_session(self.page)
+            cdp.send("Target.createTarget", {"url": url, "newWindow": True, "background": True})
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                found = [p for p in self.context.pages if "bot=trading" in p.url]
+                if found:
+                    self.trading_page = found[-1]
+                    break
+                time.sleep(0.25)
+            self.page.bring_to_front()
+            if self.trading_page is None:
+                return "autopilot window didn't open"
+            log.info("browser: Autopilot open in its own window (%s)", url)
+            return "autopilot opened"
+        except Exception as e:  # noqa: BLE001
+            log.warning("browser: couldn't open the Autopilot window: %s", e)
+            return ""
 
     @property
     def url(self) -> str:
@@ -596,6 +645,7 @@ class ScannerSite:
             clicked = f"{len(steps)} steps"
         else:
             clicked = self._legacy_start()
+        self.ensure_autopilot()
         self.page.bring_to_front()
         log.info("browser: scanner running at %s (%s)", self.page.url, self.page.title())
         return {"url": self.page.url, "title": self.page.title(), "clicked": clicked}

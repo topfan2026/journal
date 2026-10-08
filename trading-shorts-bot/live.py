@@ -103,8 +103,8 @@ def in_data_window(now: datetime) -> bool:
     A stop time earlier than the start means the window runs past midnight."""
     if not data_scheduled():
         return False
-    sh, sm = parse_hhmm(env("DATA_START", "06:00") or "06:00")
-    eh, em = parse_hhmm(env("DATA_END", "13:00") or "13:00")
+    sh, sm = parse_hhmm(env("DATA_START", "09:00") or "09:00")
+    eh, em = parse_hhmm(env("DATA_END", "16:15") or "16:15")
     start, end = sh * 60 + sm, eh * 60 + em
     minute = now.hour * 60 + now.minute
     days = live_days("DATA_DAYS")
@@ -235,6 +235,9 @@ class BrowserAgent:
             log.debug("restore failed: %s", e)
         return False
 
+    def ensure_autopilot(self) -> str:
+        return self.site.ensure_autopilot() if self.site.alive() else ""
+
     def wait(self, seconds: float) -> None:
         if self.site.alive():
             self.site.wait(seconds)
@@ -263,7 +266,8 @@ class WebsiteDataSite:
         if not self.wanted():
             return ""
         if self.site.alive() and not reconnect:
-            return "website connected"
+            extra = self.site.ensure_autopilot()  # reopened if someone closed it
+            return "website connected" + (" · autopilot" if extra else "")
         if not self.site.alive():
             self.site.close()
             self.site.open()
@@ -650,6 +654,8 @@ class LiveShow:
                 if streaming:
                     if browser.restore():
                         self.fixed("scanner", "restored the minimised window")
+                    if browser.ensure_autopilot() == "autopilot opened":
+                        self.fixed("scanner", "reopened the Autopilot window")
                     self.check_picture(browser, obs)
                     if self.youtube is not None:
                         if self.youtube.check_go_public(self.yt_result, picture_ok=obs.healthy() and obs.black == 0):
@@ -990,7 +996,7 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
             reload_env()
             now = datetime.now(tz())
             if in_data_window(now):
-                until = env("DATA_END", "13:00")
+                until = env("DATA_END", "16:15")
                 if not gateway.healthy():
                     log.info("[data] scheduled website data: starting IB Gateway (paper)")
                     live_status.step(root, "gateway", "working", "starting (website data)")

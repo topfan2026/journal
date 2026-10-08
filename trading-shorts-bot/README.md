@@ -366,6 +366,19 @@ start and stop times. The scheduler (▶ Start scheduler) then starts IB Gateway
 keeps it up, and at the stop time closes it (unless a stream is on; untick "Close IB Gateway at the
 stop time" to leave it running). Gateway is closed through IBC's command server on 127.0.0.1:7462.
 
+### Autopilot: the simulated traders every market day
+
+The site's **Autopilot & Results** page runs Bot Trader, scanner trading and Opportunities auto-trade by
+themselves from 9:30 to 16:00 New York while it is open, and shows every result. The bot opens it in a second
+window titled "LIVE BOT - Trading" whenever it opens the site (Website data and streams), keeps the scanner
+window in front so the stream never shows it, reopens it if it is closed, and stops Chrome from slowing it
+down in the background. Untick **Also open Autopilot** (IB Gateway tab) to turn this off.
+
+To run it every day: in the IB Gateway tab, tick **Website data on a schedule**, set the days, start
+**09:00** and stop **16:15** (your time zone; the stop must be after 16:00 New York), and Save (it also sets
+the PC to wake for it). Then, once, open the Autopilot page and tick **Run every market day**; that setting is
+saved with your account, so the bot's browser uses it too. Simulated trades only: no real orders.
+
 ### TikTok LIVE (on its own, or with YouTube)
 
 Pick where the **scheduled** stream goes in the TikTok tab (**Scheduled stream goes to**):
