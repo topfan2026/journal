@@ -596,6 +596,19 @@ class ScannerSite:
             log.warning("browser: couldn't open the Autopilot window: %s", e)
             return ""
 
+    def reload_autopilot(self) -> str:
+        """Reload the Autopilot window (after live data came back), so its traders reconnect. Its books are kept
+        in the browser, so open simulated positions carry on. Never raises."""
+        try:
+            if self.trading_page is not None and not self.trading_page.is_closed():
+                self.trading_page.reload(wait_until="domcontentloaded")
+                self.page.bring_to_front()
+                log.info("browser: reloaded the Autopilot window")
+                return "autopilot reloaded"
+        except Exception as e:  # noqa: BLE001
+            log.warning("browser: couldn't reload the Autopilot window: %s", e)
+        return ""
+
     @property
     def url(self) -> str:
         return env("SCANNER_URL", DEFAULT_URL) or DEFAULT_URL

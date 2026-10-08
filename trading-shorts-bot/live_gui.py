@@ -52,6 +52,9 @@ TABS: dict[str, list[Field]] = {
         Field("LIVE_PREP_MIN", "Start setup this many minutes early", default="10"),
         Field("LIVE_WAKE", "Wake the PC from sleep for the stream", "bool", default="false",
               help="Windows: wakes a sleeping PC 10 minutes before setup, and before Website data starts (not one that was shut down)"),
+        Field("LIVE_REQUIRE_DATA", "Only go live with live market data", "bool", default="true",
+              help="Checks the internet and that IB Gateway returns recent prices: holds the stream until they do, "
+                   "and reconnects the website, the connector, then IB Gateway when they stop (also for Autopilot)"),
     ],
     "IB Gateway": [
         Field("IB_USERNAME", "Paper username"),

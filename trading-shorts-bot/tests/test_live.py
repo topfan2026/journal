@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import ibkr
+import data_guard
 import live
 import live_gui
 import live_status
@@ -233,6 +234,7 @@ def fake_agents(monkeypatch):
             return {"url": "https://aialgopro.com"}
         def healthy(self): return True
         def wait(self, seconds): pass
+        def reload_autopilot(self): return ""
         def close(self): events.append("browser_close")
 
     class FakeOBS:
@@ -1255,3 +1257,37 @@ def test_every_button_has_an_icon_and_a_tip():
     used += [k for line in source.splitlines() if "set_button(" in line for k in re.findall(r'"([a-z_]+)" if', line) + re.findall(r'else "([a-z_]+)"\)', line)]
     assert len(used) >= 15
     assert [k for k in used if k not in live_gui.BUTTONS] == []
+
+
+def test_stream_waits_for_live_data_before_going_live(settings, fake_agents, monkeypatch):
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_REQUIRE_DATA", "true")
+    monkeypatch.setenv("DATA_WAIT_SECONDS", "0")
+    monkeypatch.setenv("LIVE_DURATION_MIN", "1")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    monkeypatch.setenv("LIVE_CHECK_SECONDS", "0")
+    answers = iter([(False, "IBKR returned no prices"), (False, "IBKR returned no prices")])
+    monkeypatch.setattr(live.ibkr, "market_data_check", lambda: next(answers, (True, "SPY 500")))
+    monkeypatch.setattr(data_guard, "internet_up", lambda: True)
+    monkeypatch.setattr(live, "ensure_connector", lambda: fake_agents.append("connector"))
+    show = live.LiveShow(settings, start=datetime.now(live.tz()) - timedelta(seconds=59))
+    show.guard = data_guard.DataGuard(net=lambda: True, prices=live.ibkr.market_data_check)
+    show.stop_requested = lambda: "obs_start" in fake_agents
+    assert show.run() == 0
+    # Two failed checks: reconnect the site, then the connector; prices back: the scanner is reconnected,
+    # and only then YouTube and OBS go live.
+    start = fake_agents.index("youtube")
+    assert fake_agents[:start] == ["gateway", "browser", "browser", "connector", "browser", "browser"]
+    assert fake_agents.index("obs_start") > start
+
+
+def test_no_live_data_never_goes_live(settings, fake_agents, monkeypatch):
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_REQUIRE_DATA", "true")
+    monkeypatch.setenv("LIVE_DURATION_MIN", "0")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    show = live.LiveShow(settings, start=datetime.now(live.tz()) - timedelta(seconds=1))
+    show.guard = data_guard.DataGuard(net=lambda: False, prices=lambda: (True, ""))
+    assert show.run() == 1
+    assert "youtube" not in fake_agents and "obs_start" not in fake_agents and "go_live" not in fake_agents
+    assert "no live market data" in show.session.state["error"]["error"]

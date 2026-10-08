@@ -379,6 +379,21 @@ To run it every day: in the IB Gateway tab, tick **Website data on a schedule**,
 the PC to wake for it). Then, once, open the Autopilot page and tick **Run every market day**; that setting is
 saved with your account, so the bot's browser uses it too. Simulated trades only: no real orders.
 
+### Live data guard (internet outages)
+
+A running IB Gateway can keep its port open after the internet drops while it no longer gets anything from
+IBKR, which used to leave the stream live on an empty scanner and Autopilot running without prices.
+With **Only go live with live market data** (Schedule tab, on by default; `LIVE_REQUIRE_DATA`):
+
+- Before going live the bot checks the internet and asks IB Gateway for recent SPY 1-minute bars (from 4:05 to
+  19:55 New York on weekdays the newest must be at most `DATA_STALE_MIN`, 30, minutes old). Until that
+  passes, YouTube and OBS are not started; the status says "Waiting for live market data".
+- While live, and during the Website data / Autopilot window, it checks every `DATA_CHECK_SECONDS` (60). With
+  no data it reconnects the website, then starts the connector/tunnel if they stopped, then restarts IB
+  Gateway (at most every `DATA_GATEWAY_RESTART_MIN`, 5, minutes). With no internet it waits.
+- When prices come back it reconnects the scanner and reloads the Autopilot window (its simulated books carry on).
+- **Check setup** and **Check Autopilot setup** include a "live data" step.
+
 ### TikTok LIVE (on its own, or with YouTube)
 
 Pick where the **scheduled** stream goes in the TikTok tab (**Scheduled stream goes to**):

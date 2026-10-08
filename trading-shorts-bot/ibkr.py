@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import env, env_bool, env_float, require_env
@@ -183,3 +184,65 @@ def check_paper(accounts: list[str]) -> None:
     live = [a for a in accounts if not a.upper().startswith(PAPER_PREFIXES)]
     if live and env_bool("IB_REQUIRE_PAPER", True):
         raise IBKRError(f"account(s) {', '.join(live)} are not paper accounts - refusing to continue")
+
+
+# IBKR error codes: lost connection to IBKR's servers / market data farms, and "no permission" (can't judge).
+LOST_CODES = {1100, 2103, 2105, 2110, 2157}
+NO_PERMISSION_CODES = {162, 354, 10089, 10167, 10168}
+
+
+def market_data_check(symbol: str | None = None, timeout: float | None = None, now: datetime | None = None) -> tuple[bool, str]:
+    """Does IB Gateway actually return recent prices? A running Gateway whose port is open can still have lost
+    its connection to IBKR (after an internet outage), which leaves the scanner and Autopilot with no data.
+    Asks for the last day of 1-minute bars of SPY (any session) and, from 4:05 to 19:55 New York on weekdays,
+    wants the newest bar to be at most DATA_STALE_MIN (30) minutes old. True when it can't judge (no data
+    permission), so a missing subscription never holds the stream back."""
+    from ib_async import IB, StartupFetch, Stock
+
+    symbol = symbol or env("DATA_CHECK_SYMBOL", "SPY") or "SPY"
+    timeout = env_float("DATA_CHECK_TIMEOUT", 20) if timeout is None else timeout
+    ib = IB()
+    codes: list[int] = []
+    ib.errorEvent += lambda _req, code, _msg, *_rest: codes.append(int(code))
+    try:
+        ib.connect(host(), port(), clientId=int(env_float("IB_CHECK_CLIENT_ID", 18)), readonly=True,
+                   timeout=env_float("IB_CONNECT_TIMEOUT", 20), fetchFields=StartupFetch(0))
+    except Exception as e:  # noqa: BLE001
+        return False, f"can't reach IB Gateway ({e or type(e).__name__})"
+    try:
+        bars = ib.reqHistoricalData(Stock(symbol, "SMART", "USD"), endDateTime="", durationStr="1 D",
+                                    barSizeSetting="1 min", whatToShow="TRADES", useRTH=False, formatDate=2,
+                                    timeout=timeout)
+    except Exception as e:  # noqa: BLE001
+        bars = []
+        log.debug("market data check failed: %s", e)
+    finally:
+        ib.disconnect()
+    if not bars:
+        if NO_PERMISSION_CODES & set(codes):
+            return True, "can't verify prices (no market data permission for the check) - assuming OK"
+        if LOST_CODES & set(codes):
+            return False, "IB Gateway has lost its connection to IBKR"
+        return False, "IBKR returned no prices"
+    last = bars[-1]
+    when = last.date if isinstance(last.date, datetime) else None
+    ok, message = fresh(when, now)
+    return ok, message.format(symbol=symbol, price=last.close)
+
+
+def fresh(when: datetime | None, now: datetime | None = None) -> tuple[bool, str]:
+    """Whether the newest bar is recent enough for the time of day (only judged in the extended session)."""
+    from zoneinfo import ZoneInfo
+
+    ny = ZoneInfo("America/New_York")
+    now = (now or datetime.now(timezone.utc)).astimezone(ny)
+    if when is None:
+        return True, "{symbol} {price}"
+    when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+    age = (now - when.astimezone(ny)).total_seconds() / 60
+    minutes = now.hour * 60 + now.minute
+    in_session = now.weekday() < 5 and 4 * 60 + 5 <= minutes <= 19 * 60 + 55
+    stamp = when.astimezone(ny).strftime("%H:%M")
+    if in_session and age > env_float("DATA_STALE_MIN", 30):
+        return False, f"prices are stale: newest {{symbol}} bar is from {stamp} New York ({age:.0f} min old)"
+    return True, f"{{symbol}} {{price}} at {stamp} New York"

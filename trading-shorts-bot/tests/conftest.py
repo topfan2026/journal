@@ -29,3 +29,9 @@ def make_clip():
         subprocess.run(cmd, check=True)
         return path
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _no_live_data_check(monkeypatch):
+    """The live-data guard talks to IB Gateway and the internet; tests that want it turn it back on."""
+    monkeypatch.setenv("LIVE_REQUIRE_DATA", "false")

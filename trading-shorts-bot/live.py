@@ -31,6 +31,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import data_guard
 import ibkr
 import live_status
 from config import ConfigError, Settings, env, env_bool, env_float, reload_env
@@ -238,6 +239,9 @@ class BrowserAgent:
     def ensure_autopilot(self) -> str:
         return self.site.ensure_autopilot() if self.site.alive() else ""
 
+    def reload_autopilot(self) -> str:
+        return self.site.reload_autopilot() if self.site.alive() else ""
+
     def wait(self, seconds: float) -> None:
         if self.site.alive():
             self.site.wait(seconds)
@@ -273,6 +277,8 @@ class WebsiteDataSite:
             self.site.open()
         log.info("[data] opening the website and connecting it to IBKR")
         self.site.start_scanner(connect_only=True)
+        if reconnect:
+            self.site.reload_autopilot()
         return "website connected"
 
     def close(self) -> None:
@@ -466,6 +472,22 @@ def _summary(result) -> str:
     return ""
 
 
+def restart_gateway(gateway) -> None:
+    """Close IB Gateway (through IBC) and start it again: after an internet outage it can keep its port open
+    while it no longer gets anything from IBKR."""
+    if ibkr.stop_gateway():
+        deadline = time.monotonic() + 60
+        while ibkr.port_open(ibkr.host(), ibkr.port()) and time.monotonic() < deadline:
+            time.sleep(2)
+    gateway.run()
+
+
+def ensure_connector() -> None:
+    import local_connector
+    if local_connector.enabled():
+        log.info("[connector] %s", local_connector.ensure())
+
+
 class LiveShow:
     def __init__(self, settings: Settings, start: datetime | None = None, armed: datetime | None = None,
                  to: str | None = None):
@@ -482,6 +504,8 @@ class LiveShow:
         self.youtube, self.yt_result = None, {}
         self.fixes = 0
         self.obs_saved: dict | None = None  # OBS's own stream settings while it streams to TikTok
+        self.guard = data_guard.DataGuard()
+        self.last_data_check = 0.0
 
     def stop_requested(self) -> bool:
         if self.session.stop_file.exists():
@@ -515,6 +539,43 @@ class LiveShow:
                 return
             self.check_stop()
             browser.wait(min(5, left))
+
+    def data_ok(self, gateway, browser) -> bool:
+        """One live-data check (internet, then recent prices from IB Gateway) and, if it fails, one step of
+        the fix. When data comes back after a gap the website is reconnected, so the scanner and Autopilot
+        pick the prices up again instead of sitting on a dead connection."""
+        self.last_data_check = time.monotonic()
+        before = self.guard.state
+        state = self.guard.check()
+        if state == data_guard.OK:
+            if before != data_guard.OK:
+                log.warning("[data] live prices are back (%s) - reconnecting the scanner", self.guard.detail)
+                browser.run()
+                browser.reload_autopilot()
+                self.fixed("scanner", "live data back, reconnected")
+            return True
+        log.warning("[data] no live data: %s (%.0f min)", self.guard.detail, self.guard.minutes_bad())
+        live_status.step(self.root, "scanner", "failed", f"no live data: {self.guard.detail}"[:200])
+        did = self.guard.recover(restart_gateway=lambda: restart_gateway(gateway),
+                                 restart_connector=ensure_connector, reconnect_site=browser.run)
+        if did:
+            log.warning("[data] %s", did)
+            self.fixes += 1
+        return False
+
+    def await_data(self, gateway, browser, until: datetime) -> bool:
+        """Hold the stream until there are live prices (fixing what it can), or until `until`."""
+        if not data_guard.required():
+            return True
+        every = env_float("DATA_WAIT_SECONDS", 30)
+        while True:
+            self.check_stop()
+            if self.data_ok(gateway, browser):
+                return True
+            if datetime.now(tz()) >= until:
+                return False
+            self.status(message=f"Waiting for live market data: {self.guard.detail}")
+            browser.wait(every)
 
     def run(self) -> int:
         s, session = self.settings, self.session
@@ -560,6 +621,11 @@ class LiveShow:
         try:
             session.set("gateway", self.step("gateway", gateway.run))
             session.set("browser", self.step("scanner", browser.run))
+            if not s.dry_run and not self.await_data(gateway, browser, end):
+                log.error("no live market data before the end time - not going live today")
+                session.set("error", {"error": f"no live market data: {self.guard.detail}"})
+                self.status(error=f"Didn't go live: no live market data ({self.guard.detail})"[:300])
+                return 1
             if youtube:
                 yt_result = self.step("youtube", youtube.run)
                 self.status(url=yt_result.get("url", ""), privacy=getattr(youtube, "start_privacy", ""))
@@ -573,6 +639,10 @@ class LiveShow:
                     log.info("ready - going live at %s", self.start.strftime("%H:%M"))
                     self.status(phase="ready", message=f"Ready - going live at {self.start.strftime('%H:%M')}")
                     self.wait_until(self.start, browser)
+                if not self.await_data(gateway, browser, end):
+                    log.error("no live market data before the end time - not going live today")
+                    self.status(error=f"Didn't go live: no live market data ({self.guard.detail})"[:300])
+                    return 1
                 live_status.step(self.root, "live", "working", "starting the stream")
                 if use_obs:
                     obs.obs.start()
@@ -647,6 +717,8 @@ class LiveShow:
                     log.warning("[watchdog] scanner window closed - reopening")
                     self.fixed("scanner", "reopened")
                     browser.run()
+                elif data_guard.required() and time.monotonic() - self.last_data_check >= env_float("DATA_CHECK_SECONDS", 60):
+                    self.data_ok(gateway, browser)  # the window can be open with no prices in it
                 if streaming and not obs.healthy():
                     log.warning("[watchdog] OBS stopped streaming - restarting")
                     self.fixed("obs", "restarted streaming")
@@ -921,6 +993,24 @@ def run_show(settings: Settings, start: datetime, armed: datetime, scheduler_sto
             sleep(min(5, max(0.01, (retry_at - datetime.now(tz())).total_seconds())))
 
 
+def data_round(guard, gateway, website, root: Path) -> str:
+    """Website data / Autopilot: one live-data check, and one step of the fix when prices are missing.
+    Returns a short note for the status line ('' when all is well)."""
+    before = guard.state
+    if guard.check() == data_guard.OK:
+        if before != data_guard.OK:
+            log.warning("[data] live prices are back (%s) - reconnecting the website and Autopilot", guard.detail)
+            website.ensure(reconnect=True)
+        return ""
+    log.warning("[data] no live data: %s (%.0f min)", guard.detail, guard.minutes_bad())
+    did = guard.recover(restart_gateway=lambda: restart_gateway(gateway), restart_connector=ensure_connector,
+                        reconnect_site=lambda: website.ensure(reconnect=True))
+    if did:
+        log.warning("[data] %s", did)
+    live_status.step(root, "gateway", "failed", f"no live data: {guard.detail}"[:120])
+    return f"no live data: {guard.detail}" + (f" ({did})" if did else " - waiting")
+
+
 def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
     """Website data only: IB Gateway (paper) plus the scanner site's
     connector and tunnel, kept running until stopped -- no OBS, YouTube or browser.
@@ -931,6 +1021,8 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
     gateway = GatewayAgent(settings)
     website = WebsiteDataSite(settings)
     what = f"IB Gateway paper on port {ibkr.port()}"
+    guard = data_guard.DataGuard()
+    last_check = -1e9
 
     def status(state: str, detail: str) -> None:
         live_status.write(root, data={"state": state, "detail": detail, "port": ibkr.port(),
@@ -959,7 +1051,11 @@ def run_data(settings: Settings, sleep=time.sleep, once: bool = False) -> int:
                     status("on", what + " · website paused for the stream")
                 else:
                     site = website.ensure(reconnect=restarted)
-                    status("on", what + (f" · {site}" if site else ""))
+                    problem = ""
+                    if data_guard.required() and time.monotonic() - last_check >= env_float("DATA_CHECK_SECONDS", 60):
+                        last_check = time.monotonic()
+                        problem = data_round(guard, gateway, website, root)
+                    status("failed" if problem else "on", problem or what + (f" · {site}" if site else ""))
             except Exception as e:  # keep trying: the point of this mode is to stay up
                 log.error("[data] %s - trying again in 60 s", e)
                 live_status.step(root, "gateway", "failed", str(e)[:120])
@@ -988,6 +1084,8 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
     root = live_root(settings)
     gateway = GatewayAgent(settings)
     website = WebsiteDataSite(settings)
+    guard = data_guard.DataGuard()
+    last_check = -1e9
     was_on = False
     n = 0
     while not stop_event.is_set() and (rounds is None or n < rounds):
@@ -1012,7 +1110,11 @@ def data_loop(settings: Settings, stop_event, sleep=None, rounds: int | None = N
                 else:
                     site = website.ensure(reconnect=restarted)
                     detail += f" · {site}" if site else ""
-                live_status.write(root, data={"state": "on", "scheduled": True, "detail": detail,
+                    if data_guard.required() and time.monotonic() - last_check >= env_float("DATA_CHECK_SECONDS", 60):
+                        last_check = time.monotonic()
+                        detail = data_round(guard, gateway, website, root) or detail
+                live_status.write(root, data={"state": "failed" if guard.state != data_guard.OK else "on",
+                                              "scheduled": True, "detail": detail,
                                               "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")})
                 was_on = True
             elif was_on:
@@ -1046,6 +1148,15 @@ def stop(settings: Settings) -> int:
     return 0
 
 
+def require_live_data() -> str:
+    if not data_guard.required():
+        return "not checked (LIVE_REQUIRE_DATA is off)"
+    ok, detail = ibkr.market_data_check()
+    if not ok:
+        raise ibkr.IBKRError(f"{detail} - check the internet and that IB Gateway is logged in")
+    return detail
+
+
 def check(settings: Settings) -> int:
     bad = 0
 
@@ -1069,6 +1180,7 @@ def check(settings: Settings) -> int:
         return {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}[dest]
     step("stream goes to", destination)
     step("gateway", lambda: GatewayAgent(settings).run())
+    step("live data", require_live_data)
     step("obs", lambda: __import__("obs_control").OBS.connect(start=True).version())
     try:
         to_youtube = tt.to_youtube(tt.destination())
@@ -1101,6 +1213,7 @@ def check_autopilot(settings: Settings) -> int:
             log.error("[%s] NOT READY: %s", name, e)
 
     step("gateway", lambda: GatewayAgent(settings).run())
+    step("live data", require_live_data)
 
     def site():
         from scanner_site import ScannerSite, SiteError, autopilot_wanted
