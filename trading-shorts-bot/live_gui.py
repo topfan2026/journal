@@ -740,6 +740,11 @@ class App:
                 save_env(key, value)
         self.update_status()
         self.write(f"saved settings to {ENV_FILE}\n")
+        root = getattr(self, "live_root", None)
+        phase = live_status.read(root).get("phase") if root is not None else None
+        if phase in ("setup", "ready", "live"):
+            self.write("the running stream picks up the new end time and check settings within about 30 s; "
+                       "the destination, title and privacy apply from the next stream\n")
         self.sync_wake(values)
         self._refresh_wake()
         return True

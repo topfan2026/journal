@@ -379,6 +379,14 @@ To run it every day: in the IB Gateway tab, tick **Website data on a schedule**,
 the PC to wake for it). Then, once, open the Autopilot page and tick **Run every market day**; that setting is
 saved with your account, so the bot's browser uses it too. Simulated trades only: no real orders.
 
+### Changing settings while it runs
+
+Save in the app while a stream is running and it picks up, within one check (about 30 s): the **end time**
+(End at / Duration; an end time already passed ends the stream at that check), the live-data and check
+settings, and the Autopilot window. The scheduler takes a new **start time** or days for the next stream,
+and Website data a new schedule, the same way. The destination (YouTube/TikTok), title, description and
+privacy are set when the broadcast is created, so they apply from the next stream.
+
 ### Live data guard (internet outages)
 
 A running IB Gateway can keep its port open after the internet drops while it no longer gets anything from

@@ -1291,3 +1291,29 @@ def test_no_live_data_never_goes_live(settings, fake_agents, monkeypatch):
     assert show.run() == 1
     assert "youtube" not in fake_agents and "obs_start" not in fake_agents and "go_live" not in fake_agents
     assert "no live market data" in show.session.state["error"]["error"]
+
+
+def test_new_end_time_saved_while_live_applies_to_the_running_stream(settings, fake_agents, monkeypatch):
+    settings = type(settings).load(root=settings.root, dry_run=False, platforms=settings.platforms)
+    monkeypatch.setenv("LIVE_DURATION_MIN", "240")
+    monkeypatch.delenv("LIVE_END", raising=False)
+    monkeypatch.setenv("LIVE_CHECK_SECONDS", "0")
+    monkeypatch.setattr(live, "reload_env", lambda: None)
+    show = live.LiveShow(settings, start=datetime.now(live.tz()) - timedelta(seconds=1))
+    rounds = []
+
+    def checked(**fields):
+        if "last_check" in fields:
+            rounds.append(1)
+            os.environ["LIVE_DURATION_MIN"] = "0"  # saved in the app while live: end now
+    original = show.status
+    show.status = lambda **f: (checked(**f), original(**f))
+    assert show.run() == 0
+    assert len(rounds) == 1  # one watchdog round, then the new end time ended the stream
+    assert "obs_stop" in fake_agents and "yt_end" in fake_agents
+    assert live_status_read(settings)["show_end"] == show.start.isoformat()
+
+
+def live_status_read(settings):
+    import live_status
+    return live_status.read(live.live_root(settings))

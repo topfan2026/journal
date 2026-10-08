@@ -540,6 +540,21 @@ class LiveShow:
             self.check_stop()
             browser.wait(min(5, left))
 
+    def current_end(self, end: datetime) -> datetime:
+        """The end time with the settings as saved now: a new End at / Duration saved in the app while the
+        stream runs applies to it within one check (an end already passed ends it at that check)."""
+        try:
+            reload_env()
+            new_end = end_time(self.start)
+        except Exception as e:  # a half-typed time: keep the one we have
+            log.warning("ignoring the new end time: %s", e)
+            return end
+        if new_end != end:
+            log.info("end time changed in the settings: %s -> %s", end.strftime("%H:%M"), new_end.strftime("%H:%M"))
+            self.status(show_end=new_end.isoformat())
+            live_status.step(self.root, "live", "ok", f"ends {new_end.strftime('%H:%M')} (changed)")
+        return new_end
+
     def data_ok(self, gateway, browser) -> bool:
         """One live-data check (internet, then recent prices from IB Gateway) and, if it fails, one step of
         the fix. When data comes back after a gap the website is reconnected, so the scanner and Autopilot
@@ -572,6 +587,7 @@ class LiveShow:
             self.check_stop()
             if self.data_ok(gateway, browser):
                 return True
+            until = self.current_end(until)
             if datetime.now(tz()) >= until:
                 return False
             self.status(message=f"Waiting for live market data: {self.guard.detail}")
@@ -695,7 +711,7 @@ class LiveShow:
             return
         stats_every = env_float("LIVE_STATS_SECONDS", 120)
         last_stats = 0.0
-        while datetime.now(tz()) < end:
+        while datetime.now(tz()) < (end := self.current_end(end)):
             if self.stop_requested():
                 log.info("stop requested")
                 return
