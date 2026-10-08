@@ -1188,3 +1188,14 @@ def test_autopilot_window(monkeypatch):
     assert site.ensure_autopilot() == "autopilot opened" and len(site.context.sent) == 2  # reopened
     monkeypatch.setenv("AUTOPILOT_WINDOW", "false")
     assert site.ensure_autopilot() == ""
+
+
+def test_aialgobot_icon_and_shortcut():
+    from pathlib import Path
+    from PIL import Image
+    ico = Image.open(live_gui.ICON_ICO)
+    assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(ico.info["sizes"])
+    assert live_gui.ICON_PNG.exists() and live_gui.APP_NAME == "AiAlgobot"
+    ps = live_gui.shortcut_ps(Path("C:/Bots/O'Neil bot"), Path("C:/Users/me/Desktop"))
+    assert "AiAlgobot.lnk" in ps and "pythonw.exe" in ps and "app.ico" in ps
+    assert "O''Neil" in ps  # quotes in a folder name can't break the command

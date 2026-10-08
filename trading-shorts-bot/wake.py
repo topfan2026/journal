@@ -48,7 +48,7 @@ def pythonw() -> str:
 
 
 def task_xml(at: datetime, weekdays: set[int], python: str | None = None, bot_dir: Path = BOT_DIR,
-             description: str = "Wakes the PC from sleep before the daily live stream (Live Stream Bot).") -> str:
+             description: str = "Wakes the PC from sleep before the daily live stream (AiAlgobot).") -> str:
     python = escape(python or pythonw())
     script = escape(str(bot_dir / "power.py"))
     days = "".join(f"<{DAY_TAGS[d]} />" for d in sorted(weekdays))
@@ -93,8 +93,8 @@ def install(start: datetime, prep_min: float, weekdays: set[int], task: str = TA
         return "waking from sleep is only set up on Windows"
     at, days = wake_plan(start, prep_min, weekdays)
     path = Path(tempfile.gettempdir()) / f"livestreambot-wake-{abs(hash(task)) % 10000}.xml"
-    description = ("Wakes the PC from sleep before the Website data schedule (Live Stream Bot)." if task == DATA_TASK
-                   else "Wakes the PC from sleep before the daily live stream (Live Stream Bot).")
+    description = ("Wakes the PC from sleep before the Website data schedule (AiAlgobot)." if task == DATA_TASK
+                   else "Wakes the PC from sleep before the daily live stream (AiAlgobot).")
     path.write_text(task_xml(at, days, description=description), encoding="utf-16")
     try:
         proc = _run(["schtasks", "/Create", "/F", "/TN", task, "/XML", str(path)])

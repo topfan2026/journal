@@ -17,6 +17,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import dotenv_values
 
@@ -249,7 +250,8 @@ class App:
 
         self.tk, self.ttk, self.root = tk, ttk, root
         apply_dark_theme(root)
-        root.title("Live Stream Bot")
+        root.title(APP_NAME)
+        set_app_icon(root)
         root.geometry("960x960")
         root.minsize(760, 600)
         self.vars: dict[str, object] = {}
@@ -312,7 +314,8 @@ class App:
             [("Save settings", self.save),
              ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
              ("Check setup", lambda: self.spawn("live.py", "check")),
-             ("Update bot", self.update_bot)],
+             ("Update bot", self.update_bot),
+             ("Desktop shortcut", self.desktop_shortcut)],
         ]
         for buttons in rows:
             bar = ttk.Frame(root, padding=(10, 2))
@@ -879,6 +882,23 @@ class App:
         self.write("stopping scheduler (ending any live stream first)…\n")
         self.root.after(1000, self.update_status)
 
+    def desktop_shortcut(self):
+        """An AiAlgobot icon on the desktop that opens this app."""
+        if os.name != "nt":
+            self.write("Desktop shortcut is for Windows\n")
+            return
+        desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
+        try:
+            out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                                  "[Environment]::GetFolderPath('Desktop')"], capture_output=True, text=True, timeout=20)
+            if out.stdout.strip():
+                desktop = Path(out.stdout.strip())  # OneDrive can move the Desktop folder
+            subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", shortcut_ps(BOT_DIR, desktop)],
+                           check=True, capture_output=True, text=True, timeout=30)
+            self.write(f"made a desktop shortcut: {desktop / (APP_NAME + '.lnk')}\n")
+        except Exception as e:
+            self.write(f"couldn't make the desktop shortcut: {e}\n")
+
     def update_bot(self):
         if os.name != "nt":
             self.write("Update bot is for Windows; elsewhere use: git pull\n")
@@ -1060,11 +1080,46 @@ def stop_gracefully(proc: subprocess.Popen, timeout: float = 90) -> None:
     threading.Thread(target=reaper, daemon=True).start()
 
 
+APP_NAME = "AiAlgobot"
+ICON_ICO = BOT_DIR / "assets" / "app.ico"
+ICON_PNG = BOT_DIR / "assets" / "app-256.png"
+
+
+def set_app_icon(root) -> None:
+    """The AiAlgobot icon on the window, and on the taskbar (Windows groups the app under its own id,
+    not python's). Missing files just leave the default icon."""
+    try:
+        if os.name == "nt" and ICON_ICO.exists():
+            root.iconbitmap(default=str(ICON_ICO))
+        elif ICON_PNG.exists():
+            import tkinter as tk
+            root._icon = tk.PhotoImage(file=str(ICON_PNG))  # keep a reference or Tk drops it
+            root.iconphoto(True, root._icon)
+    except Exception:
+        pass
+
+
+def shortcut_ps(bot_dir: Path, desktop: Path) -> str:
+    """PowerShell that makes a desktop shortcut starting the app without a console window."""
+    pythonw = bot_dir / ".venv" / "Scripts" / "pythonw.exe"
+    q = lambda p: str(p).replace("'", "''")
+    return ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut('" + q(desktop / f"{APP_NAME}.lnk") + "'); "
+            f"$s.TargetPath = '{q(pythonw)}'; $s.Arguments = '\"{q(bot_dir / 'live_gui.py')}\"'; "
+            f"$s.WorkingDirectory = '{q(bot_dir)}'; $s.IconLocation = '{q(bot_dir / 'assets' / 'app.ico')}'; "
+            f"$s.Description = '{APP_NAME} - live stream and trading bot'; $s.Save()")
+
+
 def main() -> None:
     try:
         import tkinter as tk
     except ImportError:
         sys.exit("Tkinter is missing - on Linux run: sudo apt install python3-tk")
+    if os.name == "nt":
+        try:  # its own taskbar button and icon instead of python's
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AiAlgoPro.AiAlgobot")
+        except Exception:
+            pass
     root = tk.Tk()
     App(root)
     root.mainloop()

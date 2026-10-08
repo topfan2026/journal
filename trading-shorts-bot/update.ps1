@@ -16,4 +16,4 @@ $src = Get-ChildItem $tmp -Directory | Select-Object -First 1
 Copy-Item (Join-Path $src.FullName "trading-shorts-bot\*") $dest -Recurse -Force
 Remove-Item $zip, $tmp -Recurse -Force
 & (Join-Path $dest ".venv\Scripts\python.exe") -m pip install -q -r (Join-Path $dest "requirements.txt")
-Write-Output "updated - close and reopen the Live Stream Bot app"
+Write-Output "updated - close and reopen the AiAlgobot app"

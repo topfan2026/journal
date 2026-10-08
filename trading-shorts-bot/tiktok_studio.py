@@ -152,7 +152,7 @@ def remind(message: str = REMINDER) -> None:
     def show():
         import ctypes
         MB_OK, MB_ICONINFORMATION, MB_TOPMOST, MB_SETFOREGROUND = 0x0, 0x40, 0x40000, 0x10000
-        ctypes.windll.user32.MessageBoxW(None, message, "Live Stream Bot - TikTok",
+        ctypes.windll.user32.MessageBoxW(None, message, "AiAlgobot - TikTok",
                                          MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND)
     threading.Thread(target=show, daemon=True).start()
 

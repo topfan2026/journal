@@ -77,7 +77,7 @@ def startup_file() -> Path:
 
 
 def windows_startup_cmd(bat: Path) -> str:
-    return f'@echo off\r\nstart "Live Stream Bot scheduler" /min "{bat}"\r\n'
+    return f'@echo off\r\nstart "AiAlgobot scheduler" /min "{bat}"\r\n'
 
 
 def _start_windows_now(launcher: Path) -> bool:
