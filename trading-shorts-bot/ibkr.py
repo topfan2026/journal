@@ -94,6 +94,28 @@ def write_ibc_ini(path: Path) -> Path:
     return path
 
 
+def installed_gateways(tws: Path) -> list[str]:
+    """Gateway versions installed under the Jts folder (ibgateway/1051 -> "1051"), oldest first."""
+    folder = tws / "ibgateway"
+    try:
+        found = [d.name for d in folder.iterdir() if d.is_dir() and d.name.isdigit()]
+    except OSError:
+        return []
+    return sorted(found, key=int)
+
+
+def gateway_version(tws: Path, configured: str) -> str:
+    """The Gateway version to start. IB Gateway updates itself into a new folder (e.g. 10.30 -> 10.51) and
+    the old one may be removed; when the saved version isn't installed any more, use the newest that is."""
+    installed = installed_gateways(tws)
+    if not installed or configured in installed:
+        return configured
+    newest = installed[-1]
+    log.warning("IB Gateway %s isn't installed in %s - using %s, the newest installed "
+                "(set Gateway version to %s in the IB Gateway tab)", configured, tws / "ibgateway", newest, newest)
+    return newest
+
+
 def gateway_command(ini: Path) -> list[str]:
     custom = env("IBC_START_CMD")
     if custom:  # e.g. your own gatewaystart.sh / StartGateway.bat
@@ -102,11 +124,11 @@ def gateway_command(ini: Path) -> list[str]:
     ibc = Path(ibc_path).expanduser()
     if os.name == "nt":
         tws = Path(env("TWS_PATH", "C:/Jts") or "C:/Jts")
-        return [str(ibc / "scripts" / "StartIBC.bat"), version, "/Gateway", f"/TwsPath:{tws}",
+        return [str(ibc / "scripts" / "StartIBC.bat"), gateway_version(tws, version), "/Gateway", f"/TwsPath:{tws}",
                 f"/IbcPath:{ibc}", f"/Config:{ini}", "/Mode:paper"]
     default_tws = "~/Applications" if sys.platform == "darwin" else "~/Jts"
     tws = Path(env("TWS_PATH", default_tws) or default_tws).expanduser()
-    return [str(ibc / "scripts" / "ibcstart.sh"), version, "--gateway", f"--tws-path={tws}",
+    return [str(ibc / "scripts" / "ibcstart.sh"), gateway_version(tws, version), "--gateway", f"--tws-path={tws}",
             f"--ibc-path={ibc}", f"--ibc-ini={ini}", "--mode=paper"]
 
 

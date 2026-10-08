@@ -1200,3 +1200,19 @@ def test_aialgobot_icon_and_shortcut():
     assert "AiAlgobot.lnk" in ps and "pythonw.exe" in ps and "app.ico" in ps
     assert "O''Neil" in ps  # quotes in a folder name can't break the command
     assert ps.startswith("Remove-Item") and "app.ico,0" in ps and "ie4uinit.exe" in ps
+
+
+def test_gateway_version_follows_an_update(tmp_path, monkeypatch):
+    for v in ("1030", "1051"):
+        (tmp_path / "ibgateway" / v).mkdir(parents=True)
+    assert ibkr.installed_gateways(tmp_path) == ["1030", "1051"]
+    assert ibkr.gateway_version(tmp_path, "1030") == "1030"  # still installed: as set
+    (tmp_path / "ibgateway" / "1030").rmdir()  # the old version removed
+    assert ibkr.gateway_version(tmp_path, "1030") == "1051"
+    assert ibkr.gateway_version(tmp_path / "nowhere", "1030") == "1030"  # can't see the folder: as set
+    monkeypatch.setenv("IBC_PATH", "/opt/ibc")
+    monkeypatch.setenv("TWS_MAJOR_VRSN", "1030")
+    monkeypatch.setenv("TWS_PATH", str(tmp_path))
+    monkeypatch.delenv("IBC_START_CMD", raising=False)
+    if os.name != "nt":
+        assert ibkr.gateway_command(tmp_path / "config.ini")[1] == "1051"

@@ -57,7 +57,7 @@ TABS: dict[str, list[Field]] = {
         Field("IB_USERNAME", "Paper username"),
         Field("IB_PASSWORD", "Paper password", "secret"),
         Field("IBC_PATH", "IBC folder", "dir", help="unzipped IBC from github.com/IbcAlpha/IBC/releases"),
-        Field("TWS_MAJOR_VRSN", "Gateway version", help="e.g. 1030 for 10.30 (Gateway: Help > About)"),
+        Field("TWS_MAJOR_VRSN", "Gateway version", help="e.g. 1051 for 10.51 (Gateway: Help > About); if it's no longer installed, the newest installed one is used"),
         Field("TWS_PATH", "Gateway install folder", "dir", help="usually C:/Jts or ~/Jts"),
         Field("IB_PORT", "API port", default="4002", help="must match the port aialgopro connects to"),
         Field("IB_REQUIRE_PAPER", "Refuse non-paper accounts", "bool", default="true"),
