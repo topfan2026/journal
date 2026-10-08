@@ -1242,3 +1242,16 @@ def test_check_autopilot_skips_obs_and_youtube(settings, monkeypatch):
     monkeypatch.setattr(obs_control.OBS, "connect", classmethod(lambda cls, start=True: (_ for _ in ()).throw(AssertionError("OBS must not start"))))
     assert live.check_autopilot(settings) == 0
     assert seen == ["gateway", "open", ("scanner", True), "autopilot", "close"]
+
+
+def test_every_button_has_an_icon_and_a_tip():
+    import re
+    from pathlib import Path
+    for key, (name, tip) in live_gui.BUTTONS.items():
+        assert (live_gui.ICON_DIR / f"{name}.png").exists(), key
+        assert len(tip) > 20, key
+    source = Path(live_gui.__file__).read_text(encoding="utf-8")
+    used = re.findall(r'make_button\((?:[^()]|\([^()]*\))*?,\s*"([a-z_]+)"', source)
+    used += [k for line in source.splitlines() if "set_button(" in line for k in re.findall(r'"([a-z_]+)" if', line) + re.findall(r'else "([a-z_]+)"\)', line)]
+    assert len(used) >= 15
+    assert [k for k in used if k not in live_gui.BUTTONS] == []

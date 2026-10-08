@@ -284,15 +284,15 @@ class App:
                 self.vars["SCANNER_SOURCE"].trace_add("write", lambda *_: self.switch_steps())
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra + 1, column=1, sticky="w", pady=(8, 0))
-                ttk.Button(row_btns, text="Sign in to scanner site (once)…",
-                           command=lambda: self.spawn("live.py", "site-login")).pack(side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Test scanner steps",
-                           command=lambda: self.spawn("live.py", "site-test")).pack(side="left")
+                make_button(row_btns, "Sign in to scanner site (once)…", lambda: self.spawn("live.py", "site-login"),
+                            "site_login").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "Test scanner steps", lambda: self.spawn("live.py", "site-test"),
+                            "site_test").pack(side="left")
             if tab == "TikTok":
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
-                ttk.Button(row_btns, text="Find it", command=self.find_tiktok).pack(side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Open LIVE Studio now", command=self.open_tiktok).pack(side="left")
+                make_button(row_btns, "Find it", self.find_tiktok, "find_tiktok").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "Open LIVE Studio now", self.open_tiktok, "open_tiktok").pack(side="left")
                 ttk.Label(frame, foreground=DARK["muted"], wraplength=560, justify="left", text=(
                     "Set up LIVE Studio once: Add source > Window capture > 'LIVE BOT - Scanner - Google Chrome', "
                     "landscape view, your title. TikTok has no remote control for LIVE Studio, so pressing "
@@ -301,28 +301,28 @@ class App:
             if tab == "Market Radar":
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
-                ttk.Button(row_btns, text="Find my chat ID", command=self.radar_chat_id).pack(side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Preview report",
-                           command=lambda: self.spawn("market_radar.py", "print")).pack(side="left", padx=(0, 6))
-                ttk.Button(row_btns, text="Send to Telegram now",
-                           command=lambda: self.spawn("market_radar.py", "send")).pack(side="left")
+                make_button(row_btns, "Find my chat ID", self.radar_chat_id, "chat_id").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "Preview report", lambda: self.spawn("market_radar.py", "print"),
+                            "radar_preview").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "Send to Telegram now", lambda: self.spawn("market_radar.py", "send"),
+                            "radar_send").pack(side="left")
             if tab == "YouTube":
-                ttk.Button(frame, text="Connect YouTube account…",
-                           command=self.connect_youtube).grid(row=extra, column=1, sticky="w", pady=(10, 0))
+                make_button(frame, "Connect YouTube account…", self.connect_youtube,
+                            "connect_youtube").grid(row=extra, column=1, sticky="w", pady=(10, 0))
 
         rows = [
-            [("Save settings", self.save),
-             ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run")),
-             ("Check setup (stream)", lambda: self.spawn("live.py", "check")),
-             ("Check Autopilot setup", lambda: self.spawn("live.py", "check-autopilot")),
-             ("Update bot", self.update_bot),
-             ("Desktop shortcut", self.desktop_shortcut)],
+            [("Save settings", self.save, "save"),
+             ("Test (no stream)", lambda: self.spawn("live.py", "run", "--dry-run"), "test"),
+             ("Check setup (stream)", lambda: self.spawn("live.py", "check"), "check"),
+             ("Check Autopilot setup", lambda: self.spawn("live.py", "check-autopilot"), "check_autopilot"),
+             ("Update bot", self.update_bot, "update"),
+             ("Desktop shortcut", self.desktop_shortcut, "shortcut")],
         ]
         for buttons in rows:
             bar = ttk.Frame(root, padding=(10, 2))
             bar.pack(fill="x")
-            for text, cmd in buttons:
-                ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=(0, 6))
+            for text, cmd, key in buttons:
+                make_button(bar, text, cmd, key).pack(side="left", padx=(0, 6))
 
         auto = ttk.Frame(root, padding=(10, 0))
         auto.pack(fill="x")
@@ -362,13 +362,13 @@ class App:
 
         actions = ttk.Frame(tab)
         actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 6))
-        self.sched_btn = ttk.Button(actions, text="▶ Start scheduler", command=self.toggle_scheduler, width=20)
+        self.sched_btn = make_button(actions, "Start scheduler", self.toggle_scheduler, "scheduler_start", width=20)
         self.sched_btn.pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="● Go live now", command=self.go_live_now).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="♪ TikTok live now", command=self.tiktok_live_now).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="■ End today's stream", command=self.end_today).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="Open on YouTube", command=self.open_youtube).pack(side="left", padx=(0, 6))
-        self.data_btn = ttk.Button(actions, text="▶ Website data only", command=self.toggle_data, width=22)
+        make_button(actions, "Go live now", self.go_live_now, "go_live").pack(side="left", padx=(0, 6))
+        make_button(actions, "TikTok live now", self.tiktok_live_now, "tiktok_live").pack(side="left", padx=(0, 6))
+        make_button(actions, "End today's stream", self.end_today, "end_stream").pack(side="left", padx=(0, 6))
+        make_button(actions, "Open on YouTube", self.open_youtube, "open_youtube").pack(side="left", padx=(0, 6))
+        self.data_btn = make_button(actions, "Website data only", self.toggle_data, "data_start", width=22)
         self.data_btn.pack(side="left")
 
         from pipeline_view import PipelineView
@@ -507,8 +507,8 @@ class App:
         self.b_clock.configure(text=clock)
         data_proc = getattr(self, "data_proc", None)
         data_on = data_proc is not None and data_proc.poll() is None
-        if hasattr(self, "data_btn") and not (data_on and self.data_btn.cget("text") == "Stopping…"):
-            self.data_btn.configure(text="■ Stop website data" if data_on else "▶ Website data only")
+        if hasattr(self, "data_btn") and not (data_on and "Stopping" in str(self.data_btn.cget("text"))):
+            set_button(self.data_btn, "Stop website data" if data_on else "Website data only", "data_stop" if data_on else "data_start")
         data = st.get("data") or {}
         try:
             data_age = (datetime.now(timezone.utc) - datetime.fromisoformat(data["updated"])).total_seconds()
@@ -528,8 +528,8 @@ class App:
             self.b_sub.configure(text=sub)
             self.b_clock.configure(text="")
         if datetime.now().timestamp() >= getattr(self, "_button_hold_until", 0):
-            self.sched_btn.configure(text="■ Stop scheduler" if running and not self._stopping()
-                                     else "▶ Start scheduler")
+            stop = running and not self._stopping()
+            set_button(self.sched_btn, "Stop scheduler" if stop else "Start scheduler", "scheduler_stop" if stop else "scheduler_start")
         self._pipe_states = {}
 
         self._set_row("scheduler", "ok" if running else "failed",
@@ -695,7 +695,7 @@ class App:
             ttk.Entry(cell, textvariable=var, show="•" if f.kind == "secret" else "").grid(
                 row=0, column=0, sticky="ew")
             if f.kind in ("file", "dir"):
-                ttk.Button(cell, text="Browse…", command=lambda: self.browse(var, f.kind)).grid(
+                make_button(cell, "Browse…", lambda: self.browse(var, f.kind), "browse").grid(
                     row=0, column=1, padx=(6, 0))
         if f.help:
             ttk.Label(cell, text=f.help, foreground=DARK["muted"]).grid(row=1, column=0, columnspan=2, sticky="w")
@@ -1087,6 +1087,100 @@ def stop_gracefully(proc: subprocess.Popen, timeout: float = 90) -> None:
 
 
 APP_NAME = "AiAlgobot"
+ICON_DIR = BOT_DIR / "assets" / "icons"
+
+# What each button does: (icon in assets/icons, the tip shown on hover).
+BUTTONS: dict[str, tuple[str, str]] = {
+    "save": ("save", "Save every setting on all tabs to .env. Also sets up (or removes) the PC wake-up tasks for your schedules."),
+    "test": ("test", "A dry run of the whole stream: IB Gateway, the website and OBS, without going live or creating a broadcast."),
+    "check": ("check", "Checks everything a STREAM needs: IB Gateway login, OBS, YouTube and the website steps. Opens OBS."),
+    "check_autopilot": ("autopilot", "Checks only what Autopilot needs: IB Gateway (paper), the website signed in and connected, and the Autopilot window. No OBS or YouTube."),
+    "update": ("update", "Downloads the latest AiAlgobot and replaces the program files. Your settings, passwords and scanner steps are kept. Stop running tasks first."),
+    "shortcut": ("shortcut", "Puts an AiAlgobot icon on your desktop that opens this app (no console window). Replaces its own older copy."),
+    "scheduler_start": ("play", "Starts the scheduler: it goes live at your stream time, runs the Website data schedule (IB Gateway + website + Autopilot) and sends the Market Radar. Keep it running."),
+    "scheduler_stop": ("stop", "Stops the scheduler. Nothing starts by itself until you start it again."),
+    "go_live": ("live", "Starts the stream now, to where 'Scheduled stream goes to' (TikTok tab) says, and runs it until the end time."),
+    "tiktok_live": ("tiktok", "Starts a TikTok-only LIVE now (no YouTube): LIVE Studio opens and you press Go LIVE, or OBS streams with your TikTok key."),
+    "end_stream": ("stop", "Ends today's stream now (OBS stops, the YouTube broadcast ends) and keeps it from restarting today."),
+    "open_youtube": ("youtube", "Opens today's broadcast on YouTube in your browser."),
+    "data_start": ("globe", "Website data only: IB Gateway (paper), the website signed in and connected, and the Autopilot window. No OBS or YouTube. Runs until you stop it."),
+    "data_stop": ("stop", "Stops Website data: closes the website and Autopilot windows. IB Gateway stays logged in."),
+    "site_login": ("key", "Opens the bot's own browser so you can sign in to aialgopro.com once. It remembers you after that."),
+    "site_test": ("steps", "Runs just the Scanner site steps in the bot's browser and leaves the window open for 60 seconds so you can watch."),
+    "find_tiktok": ("search", "Looks for TikTok LIVE Studio on this PC and fills in its location."),
+    "open_tiktok": ("window", "Opens TikTok LIVE Studio now, to set up its window capture or test it."),
+    "chat_id": ("chat", "After you message your Telegram bot once, finds your chat id and fills it in."),
+    "radar_preview": ("eye", "Builds the Market Radar report and shows it in the log below (nothing is sent)."),
+    "radar_send": ("send", "Builds the Market Radar report and sends it to your Telegram now."),
+    "connect_youtube": ("link", "Opens Google sign-in so the bot can create and end YouTube broadcasts on your channel."),
+    "browse": ("folder", "Pick the file or folder instead of typing it."),
+}
+
+
+class Tooltip:
+    """A small note that appears when the mouse rests on a widget."""
+
+    def __init__(self, widget, text: str, delay_ms: int = 450):
+        self.widget, self.text, self.delay, self.job, self.tip = widget, text, delay_ms, None, None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _=None):
+        self._hide()
+        self.job = self.widget.after(self.delay, self._show)
+
+    def _show(self):
+        import tkinter as tk
+        x = self.widget.winfo_rootx() + 8
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(self.tip, text=self.text, justify="left", wraplength=340, padx=8, pady=5, bg="#0f172a", fg="#e2e8f0",
+                 relief="solid", borderwidth=1, font=("Segoe UI", 9)).pack()
+
+    def _hide(self, _=None):
+        if self.job:
+            self.widget.after_cancel(self.job)
+            self.job = None
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+
+_ICONS: dict[str, object] = {}
+
+
+def icon(name: str):
+    """A button icon from assets/icons (cached; None when the file is missing)."""
+    if name not in _ICONS:
+        path = ICON_DIR / f"{name}.png"
+        try:
+            import tkinter as tk
+            _ICONS[name] = tk.PhotoImage(file=str(path)) if path.exists() else None
+        except Exception:
+            _ICONS[name] = None
+    return _ICONS[name]
+
+
+def make_button(parent, text: str, command, key: str, **kw):
+    """A button with its icon and hover tip."""
+    from tkinter import ttk
+    name, tip = BUTTONS[key]
+    image = icon(name)
+    button = ttk.Button(parent, text=f" {text}" if image else text, command=command,
+                        **({"image": image, "compound": "left"} if image else {}), **kw)
+    button._tip = Tooltip(button, tip)
+    return button
+
+
+def set_button(button, text: str, key: str) -> None:
+    """Change a toggle button's label, icon and tip together (Start/Stop)."""
+    name, tip = BUTTONS[key]
+    image = icon(name)
+    button.configure(text=f" {text}" if image else text, **({"image": image} if image else {}))
+    button._tip.text = tip
 ICON_ICO = BOT_DIR / "assets" / "app.ico"
 ICON_PNG = BOT_DIR / "assets" / "app-256.png"
 
