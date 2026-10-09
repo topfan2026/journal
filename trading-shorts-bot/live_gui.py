@@ -93,7 +93,7 @@ TABS: dict[str, list[Field]] = {
         Field("SCANNER_TUNNEL_CMD", "Website: tunnel command",
               help="e.g. cloudflared tunnel run ibkr (empty = none / you start it)"),
         Field("SCANNER_LAYOUT", "Wall layout on the stream", "choice", default="A+ setups",
-              choices=["A+ setups", "YouTube", "Momentum + charts"],
+              choices=["A+ setups", "YouTube", "STREAM", "Momentum + charts"],
               help="website only: the Layouts choice picked in Stream Mode ({SCANNER_LAYOUT} in the steps)"),
         Field("SCANNER_WARMUP_SECONDS", "Warm-up seconds", default="20"),
         Field("BROWSER_CHANNEL", "Browser", "choice", default="chrome", choices=["chrome", "msedge", "chromium"]),

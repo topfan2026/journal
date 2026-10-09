@@ -855,7 +855,7 @@ class ScannerSite:
             x, y = (int(v) for v in AT_POINT.match(arg).groups())
             page.mouse.click(x, y)
         elif verb in ("click", "select"):
-            self.click_or_select(arg)
+            self.click_or_select(expand(arg))  # {SCANNER_LAYOUT} etc. become their values
         elif verb == "type":
             label, _, text = arg.partition("=")
             self.replace_text(self.find(label.strip(), field=True), expand(text.strip()))
