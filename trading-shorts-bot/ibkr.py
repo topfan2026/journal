@@ -192,6 +192,31 @@ NO_PERMISSION_CODES = {162, 354, 10089, 10167, 10168}
 
 
 def market_data_check(symbol: str | None = None, timeout: float | None = None, now: datetime | None = None) -> tuple[bool, str]:
+    """The price check below, run on its own thread with its own event loop. Once the scanner's browser is
+    open, the main thread already has an event loop running (Playwright), and IB's client refuses to connect
+    inside one ("This event loop is already running"), which made a healthy Gateway look like it had no data."""
+    import asyncio
+    import threading
+
+    out: list[tuple[bool, str]] = []
+
+    def work():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            out.append(_market_data_check(symbol, timeout, now))
+        except Exception as e:  # noqa: BLE001
+            out.append((False, f"price check failed ({e or type(e).__name__})"))
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=work, daemon=True, name="market-data-check")
+    t.start()
+    t.join((timeout if timeout is not None else env_float("DATA_CHECK_TIMEOUT", 20)) + env_float("IB_CONNECT_TIMEOUT", 20) + 15)
+    return out[0] if out else (False, "the price check didn't finish")
+
+
+def _market_data_check(symbol: str | None = None, timeout: float | None = None, now: datetime | None = None) -> tuple[bool, str]:
     """Does IB Gateway actually return recent prices? A running Gateway whose port is open can still have lost
     its connection to IBKR (after an internet outage), which leaves the scanner and Autopilot with no data.
     Asks for the last day of 1-minute bars of SPY (any session) and, from 4:05 to 19:55 New York on weekdays,
