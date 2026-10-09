@@ -281,9 +281,10 @@ class App:
             frame = ttk.Frame(nb, padding=12)
             frame.columnconfigure(1, weight=1)
             nb.add(frame, text=tab)
+            top_rows = 1 if tab == "Scanner site" else 0  # its two buttons sit on top: the tab is taller than the window
             for row, f in enumerate(fields):
-                self._field(frame, row, f, values.get(f.key, ""))
-            extra = len(fields)
+                self._field(frame, row + top_rows, f, values.get(f.key, ""))
+            extra = len(fields) + top_rows
             if tab == "Scanner site":
                 ttk.Label(frame, text="Steps\n(top to bottom)").grid(
                     row=extra, column=0, sticky="nw", padx=(0, 10), pady=(10, 0))
@@ -295,7 +296,7 @@ class App:
                 self.steps.insert("1.0", read_steps(self.steps_for_app))
                 self.vars["SCANNER_SOURCE"].trace_add("write", lambda *_: self.switch_steps())
                 row_btns = ttk.Frame(frame)
-                row_btns.grid(row=extra + 1, column=1, sticky="w", pady=(8, 0))
+                row_btns.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
                 make_button(row_btns, "Sign in to scanner site (once)…", lambda: self.spawn("live.py", "site-login"),
                             "site_login").pack(side="left", padx=(0, 6))
                 make_button(row_btns, "Test scanner steps", lambda: self.spawn("live.py", "site-test"),
