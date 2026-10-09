@@ -1225,7 +1225,8 @@ class CheckRun:
     def finish(self, failed: list[str]) -> None:
         if not self.on:
             return
-        summary = f"{len(failed)} part(s) not ready: {', '.join(failed)}" if failed else "everything it tested is ready"
+        why = "; ".join(f"{n}: {self.parts.get(CHECK_NODES.get(n), {}).get(n, ('', ''))[1]}".rstrip(": ") for n in failed)
+        summary = f"{len(failed)} part(s) not ready - {why}"[:300] if failed else "everything it tested is ready"
         live_status.write(self.root, phase="tested", message=f"{self.title}: {summary}",
                           check={"name": self.title, "ok": not failed, "summary": summary, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
 
