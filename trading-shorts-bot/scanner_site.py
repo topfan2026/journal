@@ -317,12 +317,14 @@ def pick_stream_monitor(screens: list[tuple[int, int, int, int]], want: str = "a
                         ratio: float = 16 / 9) -> tuple[int, int, int, int] | None:
     """The monitor the stream window should go full screen on. The stream is 16:9 (1920x1080), so on a wide or
     ultrawide monitor the picture wouldn't fill the frame: "auto" picks the monitor closest to 16:9 (a 1920x1080
-    one first). "off" leaves it to Chrome; "primary" or "1", "2", ... pick a monitor by number."""
+    one first). "off" leaves it to Chrome; "laptop" (the smallest screen), "primary" or "1", "2", ... pick a monitor by number."""
     want = (want or "auto").strip().lower()
     if not screens or want in ("off", "no", "false", "0"):
         return None
     if want.isdigit() and 1 <= int(want) <= len(screens):
         return screens[int(want) - 1]
+    if want in ("smallest", "laptop"):  # the laptop's own screen is the smallest of the monitors
+        return min(screens, key=lambda m: m[2] * m[3])
     if want == "primary":
         return next((m for m in screens if m[0] == 0 and m[1] == 0), screens[0])
     return min(screens, key=lambda m: (abs(m[2] / m[3] - ratio), abs(m[2] - 1920) + abs(m[3] - 1080)))

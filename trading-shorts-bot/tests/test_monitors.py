@@ -19,3 +19,7 @@ def test_off_primary_and_numbers():
     assert pick_stream_monitor([HD, WIDE], "primary") == WIDE
     assert pick_stream_monitor([WIDE, HD], "2") == HD
     assert pick_stream_monitor([WIDE, HD], "9") == HD  # not a monitor number: falls back to auto
+
+
+def test_laptop_is_the_smallest_screen():
+    assert pick_stream_monitor([WIDE, (3440, 0, 2560, 1080), (-1920, 0, 1920, 1080)], "laptop") == (-1920, 0, 1920, 1080)
