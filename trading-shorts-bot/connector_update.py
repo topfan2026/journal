@@ -62,21 +62,31 @@ def find_connector_app() -> Path | None:
 
 
 def stop_connector() -> None:
-    _powershell("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'ibkr_connector' } "
+    # The pattern is spelled so this command's own text doesn't match it, and our own PID is skipped: otherwise
+    # the PowerShell running this would find itself and stop itself.
+    _powershell("Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'ibkr_conn[e]ctor' } "
                 "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
 
 
-def wait_for_order_flow(port: int, seconds: float = 45) -> tuple[bool, bool]:
-    """(up, knows order flow) - polls the connector until it answers."""
+def _port_open(port: int) -> bool:
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def wait_for_order_flow(port: int, seconds: float = 60) -> tuple[bool, bool]:
+    """(up, knows order flow) - waits for the connector's port to open, then reads its route list. (/health needs
+    your connector secret, so it can't be used to tell whether it is up.)"""
     deadline = time.monotonic() + seconds
     up = False
     while time.monotonic() < deadline:
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3).read()
+        if _port_open(port):
             up = True
             break
-        except Exception:  # noqa: BLE001
-            time.sleep(2)
+        time.sleep(2)
     if not up:
         return False, False
     try:
@@ -117,7 +127,7 @@ def main(argv: list[str]) -> int:
         print("The connector is running but still doesn't list order flow - the file may not be the newest. "
               "Download app.py again and re-run this.")
         return 1
-    print("The connector didn't come back within 45 seconds. Click 'Check setup (stream)' to start it, "
+    print("The connector didn't come back within 60 seconds. Click 'Check setup (stream)' to start it, "
           f"or put the old file back: copy {backup.name} over app.py.")
     return 1
 
