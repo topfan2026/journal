@@ -572,7 +572,9 @@ class ScannerSite:
     def ensure_autopilot(self) -> str:
         """The Autopilot page in its own window ("LIVE BOT - Trading"), opened once and reopened if closed.
         The scanner window stays in front, so the stream never shows it. Never raises: the stream matters more."""
+        self.autopilot_error = ""
         if not autopilot_wanted() or self.context is None or self.page is None:
+            self.autopilot_error = "the website window isn't open"
             return ""
         try:
             if self.trading_page is not None and not self.trading_page.is_closed():
@@ -594,6 +596,7 @@ class ScannerSite:
             return "autopilot opened"
         except Exception as e:  # noqa: BLE001
             log.warning("browser: couldn't open the Autopilot window: %s", e)
+            self.autopilot_error = str(e).splitlines()[0][:100]
             return ""
 
     def autopilot_status(self) -> dict | None:

@@ -1312,7 +1312,7 @@ def check_autopilot(settings: Settings) -> int:
                 now("3/4 opening the Autopilot window…")
                 opened = agent.ensure_autopilot()
                 if not opened or "didn't" in opened:
-                    raise SiteError("the Autopilot window didn't open")
+                    raise SiteError("the Autopilot window didn't open" + (f" ({agent.autopilot_error})" if getattr(agent, "autopilot_error", "") else ""))
                 log.info("leaving it open for 20s so you can see the Autopilot window")
                 for i in range(5):  # its own report fills the AUTOPILOT card and trades table on the Status tab
                     now(f"4/4 reading the Autopilot window ({i + 1}/5)…")
