@@ -293,6 +293,41 @@ def window_title() -> str:
     return env("BROWSER_WINDOW_TITLE", "LIVE BOT - Scanner") or ""
 
 
+def monitors() -> list[tuple[int, int, int, int]]:
+    """Windows only: every monitor as (left, top, width, height) in pixels; [] elsewhere or if Windows won't say."""
+    if os.name != "nt":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+        found: list[tuple[int, int, int, int]] = []
+        proc = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HANDLE, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+        def each(_m, _dc, rect, _l):
+            r = rect.contents
+            found.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
+            return 1
+        ctypes.windll.user32.EnumDisplayMonitors(None, None, proc(each), 0)
+        return found
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def pick_stream_monitor(screens: list[tuple[int, int, int, int]], want: str = "auto",
+                        ratio: float = 16 / 9) -> tuple[int, int, int, int] | None:
+    """The monitor the stream window should go full screen on. The stream is 16:9 (1920x1080), so on a wide or
+    ultrawide monitor the picture wouldn't fill the frame: "auto" picks the monitor closest to 16:9 (a 1920x1080
+    one first). "off" leaves it to Chrome; "primary" or "1", "2", ... pick a monitor by number."""
+    want = (want or "auto").strip().lower()
+    if not screens or want in ("off", "no", "false", "0"):
+        return None
+    if want.isdigit() and 1 <= int(want) <= len(screens):
+        return screens[int(want) - 1]
+    if want == "primary":
+        return next((m for m in screens if m[0] == 0 and m[1] == 0), screens[0])
+    return min(screens, key=lambda m: (abs(m[2] / m[3] - ratio), abs(m[2] - 1920) + abs(m[3] - 1080)))
+
+
 TRADING_TITLE = "LIVE BOT - Trading"
 
 
@@ -789,13 +824,25 @@ class ScannerSite:
             window = cdp.send("Browser.getWindowForTarget")
             if window["bounds"].get("windowState") != "minimized":
                 return False
-            cdp.send("Browser.setWindowBounds", {"windowId": window["windowId"], "bounds": {"windowState": "normal"}})
+            cdp.send("Browser.setWindowBounds", {"windowId": window["windowId"],
+                                                 "bounds": {"windowState": "normal", **self._stream_spot()}})
             if self.want_fullscreen:
                 cdp.send("Browser.setWindowBounds",
                          {"windowId": window["windowId"], "bounds": {"windowState": "fullscreen"}})
             return True
         finally:
             cdp.detach()
+
+    def _stream_spot(self) -> dict:
+        """Where to put the window before it goes full screen: on the monitor that matches the 16:9 stream
+        (Chrome goes full screen on whichever monitor the window is on), so a wide monitor doesn't leave bars."""
+        screens = monitors()
+        target = pick_stream_monitor(screens, env("STREAM_MONITOR", "auto") or "auto")
+        if target is None:
+            return {}
+        if len(screens) > 1 or env("STREAM_MONITOR", "auto") != "auto":
+            log.info("browser: stream window goes on the %dx%d monitor", target[2], target[3])
+        return {"left": target[0] + 100, "top": target[1] + 100, "width": 900, "height": 600}
 
     def browser_fullscreen(self, on: bool = True) -> None:
         """Make the Chrome window itself full screen (like F11) - no site button needed."""
@@ -807,7 +854,7 @@ class ScannerSite:
         try:
             window = cdp.send("Browser.getWindowForTarget")["windowId"]
             if on:  # Chrome only goes full screen from the normal state
-                cdp.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": "normal"}})
+                cdp.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": "normal", **self._stream_spot()}})
             cdp.send("Browser.setWindowBounds",
                      {"windowId": window, "bounds": {"windowState": "fullscreen" if on else "maximized"}})
         finally:
