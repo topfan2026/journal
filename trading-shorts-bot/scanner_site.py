@@ -263,6 +263,52 @@ def _win_maximize(title: str) -> bool:
         return False
 
 
+def _dpi_aware() -> None:
+    """Windows only: read and set window positions in real pixels, so a mix of monitor zoom levels doesn't shift them."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:  # noqa: BLE001
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _win_move(title: str, monitor: tuple[int, int, int, int]) -> bool:
+    """Windows only: put the window whose title starts with *title* inside *monitor* (left, top, width, height).
+    Windows itself moves it, so it works where Chrome ignores its own position request."""
+    if os.name != "nt" or not title:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        _dpi_aware()
+        user32 = ctypes.windll.user32
+        hits: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def visit(hwnd, _):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if buf.value.startswith(title):
+                    hits.append(hwnd)
+            return True
+        user32.EnumWindows(visit, 0)
+        left, top, width, height = monitor
+        for hwnd in hits:
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE: a maximised or full-screen window can't be moved
+            user32.SetWindowPos(hwnd, 0, left + 40, top + 40, min(width - 80, 1280), min(height - 80, 720), 0x0004)
+        return bool(hits)
+    except Exception as e:  # noqa: BLE001
+        log.debug("window move failed: %s", e)
+        return False
+
+
 def _win_restore(title: str) -> bool:
     """Windows only: if the window titled *title* is minimised, maximise it again. True if it was."""
     if os.name != "nt" or not title:
@@ -300,6 +346,7 @@ def monitors() -> list[tuple[int, int, int, int]]:
     try:
         import ctypes
         from ctypes import wintypes
+        _dpi_aware()
         found: list[tuple[int, int, int, int]] = []
         proc = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HANDLE, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
 
@@ -863,6 +910,13 @@ class ScannerSite:
             window = cdp.send("Browser.getWindowForTarget")["windowId"]
             if on:  # Chrome only goes full screen from the normal state
                 cdp.send("Browser.setWindowBounds", {"windowId": window, "bounds": {"windowState": "normal", **self._stream_spot()}})
+                target = pick_stream_monitor(monitors(), env("STREAM_MONITOR", "auto") or "auto")
+                if target:  # and have Windows put it there too: Chrome doesn't always obey
+                    time.sleep(0.5)
+                    moved = _win_move(os_window_title(), target)
+                    log.info("browser: moved the stream window to the %dx%d monitor: %s", target[2], target[3],
+                             "yes" if moved else "couldn't find the window")
+                    time.sleep(0.5)
             cdp.send("Browser.setWindowBounds",
                      {"windowId": window, "bounds": {"windowState": "fullscreen" if on else "maximized"}})
         finally:
