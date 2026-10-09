@@ -1301,15 +1301,20 @@ def check_autopilot(settings: Settings) -> int:
             from scanner_site import ScannerSite, SiteError, autopilot_wanted
             if not autopilot_wanted():
                 raise ConfigError("'Also open Autopilot' is off in the IB Gateway tab")
+            now = lambda text: run.update("website + autopilot", "working", text)  # noqa: E731
             agent = ScannerSite(root / "browser-profile")
             try:
+                now("1/4 opening the website…")
                 agent.open()
+                now("2/4 connecting the scanner to IB Gateway…")
                 agent.start_scanner(connect_only=True)
+                now("3/4 opening the Autopilot window…")
                 opened = agent.ensure_autopilot()
                 if not opened or "didn't" in opened:
                     raise SiteError("the Autopilot window didn't open")
                 log.info("leaving it open for 20s so you can see the Autopilot window")
-                for _ in range(5):  # its own report fills the AUTOPILOT card and trades table on the Status tab
+                for i in range(5):  # its own report fills the AUTOPILOT card and trades table on the Status tab
+                    now(f"4/4 reading the Autopilot window ({i + 1}/5)…")
                     agent.wait(4)
                     if run.on:
                         report_autopilot(root, agent)
