@@ -534,6 +534,11 @@ class App:
             kind, title, sub = "setup", "Ending the stream…", ""
         elif phase == "retrying":
             kind, title, sub = "failed", "Problem - retrying", st.get("message", "")
+        elif phase == "tested" and st.get("check") and age is not None and age < 900:
+            check = st["check"]
+            kind = "data" if check.get("ok") else "failed"
+            title = f"{check.get('name', 'Check')}: " + ("passed" if check.get("ok") else "found a problem")
+            sub = check.get("summary", "")
         elif not running:
             kind, title = "off", "Scheduler is OFF"
             sub = "Nothing will start by itself. Click ▶ Start scheduler."

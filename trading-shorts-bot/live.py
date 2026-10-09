@@ -1193,83 +1193,134 @@ def require_live_data() -> str:
     return detail
 
 
-def check(settings: Settings) -> int:
-    bad = 0
+# Which diagram node each check step belongs to (a step with no node only shows in the log).
+CHECK_NODES = {"gateway": "gateway", "live data": "gateway", "obs": "obs", "youtube": "youtube",
+               "scanner site": "scanner", "website + autopilot": "scanner"}
 
+
+class CheckRun:
+    """Mirrors a Check setup run on the Status tab: the diagram's steps light up as each part is tested (orange
+    working, green ok, red failed), the parts a check doesn't use are greyed, and the banner shows "Test run..."
+    and then the result. Leaves the screen alone when a stream is being set up or is live."""
+
+    def __init__(self, root: Path, title: str, nodes: set[str]):
+        state = live_status.read(root)
+        age = live_status.age_seconds(state)
+        busy = state.get("phase") in ("setup", "ready", "live", "ending", "retrying") and (age is None or age < 600)
+        self.root, self.title, self.on, self.parts = root, title, not busy, {}
+        if self.on:
+            steps = {n: ({"state": "waiting", "detail": ""} if n in nodes else {"state": "off", "detail": "not part of this check"})
+                     for n in live_status.STEPS}
+            live_status.write(root, phase="test", message=title, error="", steps=steps, check=None, autopilot=None)
+
+    def update(self, name: str, state: str, detail: str = "") -> None:
+        node = CHECK_NODES.get(name)
+        if not (self.on and node):
+            return
+        self.parts.setdefault(node, {})[name] = (state, detail)
+        states = [st for st, _ in self.parts[node].values()]
+        node_state = "failed" if "failed" in states else "working" if "working" in states else "ok"
+        live_status.step(self.root, node, node_state, " · ".join(d for _, d in self.parts[node].values() if d)[:160])
+
+    def finish(self, failed: list[str]) -> None:
+        if not self.on:
+            return
+        summary = f"{len(failed)} part(s) not ready: {', '.join(failed)}" if failed else "everything it tested is ready"
+        live_status.write(self.root, phase="tested", message=f"{self.title}: {summary}",
+                          check={"name": self.title, "ok": not failed, "summary": summary, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def _checked(run: CheckRun, bad: list[str]):
+    """A step runner for a check: logs, records the result for the diagram, and counts what failed."""
     def step(name, fn):
-        nonlocal bad
+        run.update(name, "working")
         try:
-            log.info("[%s] OK: %s", name, fn())
-        except Exception as e:
-            bad += 1
+            result = fn()
+            log.info("[%s] OK: %s", name, result)
+            run.update(name, "ok", (_summary(result) if isinstance(result, dict) else str(result or ""))[:120])
+        except Exception as e:  # noqa: BLE001
+            bad.append(name)
             log.error("[%s] NOT READY: %s", name, e)
+            run.update(name, "failed", str(e).splitlines()[0][:120] if str(e) else type(e).__name__)
+    return step
 
-    import tiktok_studio as tt
 
-    def destination():
-        dest = tt.destination()
-        tt.check_destination(dest)
-        if tt.uses_studio(dest):
-            exe = tt.exe_path()
-            if exe is None or not exe.exists():
-                raise ConfigError("TikTok LIVE Studio isn't set - pick it in the TikTok tab")
-        return {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}[dest]
-    step("stream goes to", destination)
-    step("gateway", lambda: GatewayAgent(settings).run())
-    step("live data", require_live_data)
-    step("obs", lambda: __import__("obs_control").OBS.connect(start=True).version())
+def check(settings: Settings) -> int:
+    bad: list[str] = []
+    run = CheckRun(live_root(settings), "Check setup (stream)", {"gateway", "scanner", "youtube", "obs"})
+    step = _checked(run, bad)
     try:
-        to_youtube = tt.to_youtube(tt.destination())
-    except ConfigError:
-        to_youtube = True
-    if env_bool("YOUTUBE_LIVE_API", True) and to_youtube:
-        step("youtube", lambda: __import__("youtube_live").check())
+        import tiktok_studio as tt
 
-    def site():
-        agent = BrowserAgent(settings)
+        def destination():
+            dest = tt.destination()
+            tt.check_destination(dest)
+            if tt.uses_studio(dest):
+                exe = tt.exe_path()
+                if exe is None or not exe.exists():
+                    raise ConfigError("TikTok LIVE Studio isn't set - pick it in the TikTok tab")
+            return {"youtube": "YouTube", "tiktok": "TikTok", "both": "YouTube and TikTok"}[dest]
+        step("stream goes to", destination)
+        step("gateway", lambda: GatewayAgent(settings).run())
+        step("live data", require_live_data)
+        step("obs", lambda: __import__("obs_control").OBS.connect(start=True).version())
         try:
-            return agent.run()
-        finally:
-            agent.close()
-    step("scanner site", site)
+            to_youtube = tt.to_youtube(tt.destination())
+        except ConfigError:
+            to_youtube = True
+        if env_bool("YOUTUBE_LIVE_API", True) and to_youtube:
+            step("youtube", lambda: __import__("youtube_live").check())
+        else:
+            run.update("youtube", "ok", "not used for this destination")
+
+        def site():
+            agent = BrowserAgent(settings)
+            try:
+                return agent.run()
+            finally:
+                agent.close()
+        step("scanner site", site)
+    finally:
+        run.finish(bad)
     return 1 if bad else 0
 
 
 def check_autopilot(settings: Settings) -> int:
     """Only what Autopilot needs: IB Gateway (paper), the website signed in and connected, and the
-    Autopilot window. No OBS, YouTube or TikTok."""
-    bad = 0
+    Autopilot window. No OBS, YouTube or TikTok. The Status tab shows the run: Gateway and live prices,
+    the website, and the Autopilot card filled in from the real Autopilot window."""
+    bad: list[str] = []
+    root = live_root(settings)
+    run = CheckRun(root, "Check Autopilot setup", {"gateway", "scanner"})
+    step = _checked(run, bad)
+    try:
+        step("gateway", lambda: GatewayAgent(settings).run())
+        step("live data", require_live_data)
 
-    def step(name, fn):
-        nonlocal bad
-        try:
-            log.info("[%s] OK: %s", name, fn())
-        except Exception as e:
-            bad += 1
-            log.error("[%s] NOT READY: %s", name, e)
-
-    step("gateway", lambda: GatewayAgent(settings).run())
-    step("live data", require_live_data)
-
-    def site():
-        from scanner_site import ScannerSite, SiteError, autopilot_wanted
-        if not autopilot_wanted():
-            raise ConfigError("'Also open Autopilot' is off in the IB Gateway tab")
-        agent = ScannerSite(live_root(settings) / "browser-profile")
-        try:
-            agent.open()
-            agent.start_scanner(connect_only=True)
-            opened = agent.ensure_autopilot()
-            if not opened or "didn't" in opened:
-                raise SiteError("the Autopilot window didn't open")
-            log.info("leaving it open for 20s so you can see the Autopilot window")
-            agent.wait(20)
-            return "website connected · Autopilot window open (tick 'Run every market day' in it once)"
-        finally:
-            agent.close()
-    step("website + autopilot", site)
+        def site():
+            from scanner_site import ScannerSite, SiteError, autopilot_wanted
+            if not autopilot_wanted():
+                raise ConfigError("'Also open Autopilot' is off in the IB Gateway tab")
+            agent = ScannerSite(root / "browser-profile")
+            try:
+                agent.open()
+                agent.start_scanner(connect_only=True)
+                opened = agent.ensure_autopilot()
+                if not opened or "didn't" in opened:
+                    raise SiteError("the Autopilot window didn't open")
+                log.info("leaving it open for 20s so you can see the Autopilot window")
+                for _ in range(5):  # its own report fills the AUTOPILOT card and trades table on the Status tab
+                    agent.wait(4)
+                    if run.on:
+                        report_autopilot(root, agent)
+                return "website connected · Autopilot window open (tick 'Run every market day' in it once)"
+            finally:
+                agent.close()
+        step("website + autopilot", site)
+    finally:
+        run.finish(bad)
     if bad:
-        log.error("%d part(s) not ready", bad)
+        log.error("%d part(s) not ready", len(bad))
     else:
         log.info("Autopilot is ready: set the Website data schedule (09:00-16:15) and it runs every market day")
     return 1 if bad else 0

@@ -1356,3 +1356,65 @@ def test_report_autopilot_copies_the_window_summary(tmp_path):
     assert ap["window"] is True and ap["state"] == "Trading" and ap["read"]
     live.report_autopilot(tmp_path, Site(None))
     assert live_status.read(tmp_path)["autopilot"]["window"] is False
+
+
+def _fake_autopilot_check(monkeypatch, gateway_fails=False):
+    import scanner_site as ss
+    import obs_control
+
+    class Gateway:
+        def __init__(self, s): pass
+        def run(self):
+            if gateway_fails:
+                raise ibkr.IBKRError("login refused")
+            return {"port": 4002}
+
+    class Site:
+        def __init__(self, profile): pass
+        def open(self): pass
+        def start_scanner(self, connect_only=False): pass
+        def ensure_autopilot(self): return "autopilot opened"
+        def autopilot_status(self):
+            return {"state": "Waiting for the market to open", "enabled": True, "connected": True, "trading": False, "trades": []}
+        def wait(self, s): pass
+        def close(self): pass
+
+    monkeypatch.setattr(live, "GatewayAgent", Gateway)
+    monkeypatch.setattr(ss, "ScannerSite", Site)
+    monkeypatch.setattr(ss, "app_path", lambda: None)
+    monkeypatch.delenv("AUTOPILOT_WINDOW", raising=False)
+    monkeypatch.setattr(live, "require_live_data", lambda: "SPY 500 at 10:04 New York")
+    monkeypatch.setattr(obs_control.OBS, "connect", classmethod(lambda cls, start=True: (_ for _ in ()).throw(AssertionError("OBS must not start"))))
+
+
+def test_check_autopilot_shows_the_test_run_on_the_status_tab(settings, monkeypatch):
+    import live_status
+    _fake_autopilot_check(monkeypatch)
+    assert live.check_autopilot(settings) == 0
+    st = live_status.read(live.live_root(settings))
+    steps = st["steps"]
+    assert st["phase"] == "tested"
+    assert steps["gateway"]["state"] == "ok" and "SPY 500" in steps["gateway"]["detail"]      # Gateway and live prices
+    assert steps["scanner"]["state"] == "ok" and "Autopilot window open" in steps["scanner"]["detail"]
+    assert [steps[n]["state"] for n in ("youtube", "obs", "live")] == ["off", "off", "off"]   # not part of this check
+    assert st["check"] == {"name": "Check Autopilot setup", "ok": True, "summary": "everything it tested is ready", "at": st["check"]["at"]}
+    assert st["autopilot"]["window"] is True and st["autopilot"]["state"].startswith("Waiting")  # the AUTOPILOT card
+
+
+def test_check_autopilot_marks_the_failed_part_red(settings, monkeypatch):
+    import live_status
+    _fake_autopilot_check(monkeypatch, gateway_fails=True)
+    assert live.check_autopilot(settings) == 1
+    st = live_status.read(live.live_root(settings))
+    assert st["steps"]["gateway"]["state"] == "failed" and "login refused" in st["steps"]["gateway"]["detail"]
+    assert st["check"]["ok"] is False and "gateway" in st["check"]["summary"]
+
+
+def test_a_check_never_paints_over_a_stream_that_is_live(settings, monkeypatch):
+    import live_status
+    root = live.live_root(settings)
+    live_status.write(root, phase="live", message="Live", steps={"gateway": {"state": "ok", "detail": "port 4002"}})
+    _fake_autopilot_check(monkeypatch)
+    assert live.check_autopilot(settings) == 0
+    st = live_status.read(root)
+    assert st["phase"] == "live" and st["steps"]["gateway"]["detail"] == "port 4002" and not st.get("check")
