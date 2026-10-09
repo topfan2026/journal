@@ -281,7 +281,7 @@ class App:
             frame = ttk.Frame(nb, padding=12)
             frame.columnconfigure(1, weight=1)
             nb.add(frame, text=tab)
-            top_rows = 1 if tab == "Scanner site" else 0  # its two buttons sit on top: the tab is taller than the window
+            top_rows = 1 if tab in ("Scanner site", "YouTube") else 0  # its two buttons sit on top: the tab is taller than the window
             for row, f in enumerate(fields):
                 self._field(frame, row + top_rows, f, values.get(f.key, ""))
             extra = len(fields) + top_rows
@@ -321,7 +321,7 @@ class App:
                             "radar_send").pack(side="left")
             if tab == "YouTube":
                 make_button(frame, "Connect YouTube account…", self.connect_youtube,
-                            "connect_youtube").grid(row=extra, column=1, sticky="w", pady=(10, 0))
+                            "connect_youtube").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         rows = [
             [("Save settings", self.save, "save"),
