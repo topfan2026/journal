@@ -744,6 +744,7 @@ class ScannerSite:
                 try:
                     try:
                         self.step(verb, arg)
+                        self.retry_scan(verb, arg)
                     except Exception:
                         # A step that fails because the site is asking to sign in: sign in, then try it again.
                         if not self.sign_in_if_needed():
@@ -767,6 +768,24 @@ class ScannerSite:
         log.info("browser: scanner running at %s (%s)", self.page.url, self.page.title())
         return {"url": self.page.url, "title": self.page.title(), "clicked": clicked}
 
+    def retry_scan(self, verb: str, arg: str) -> None:
+        """A scan started right after IB Gateway came up can time out ("IBKR did not answer the scan"): the
+        Gateway is still warming up. Wait and press it again a few times before calling it a failure."""
+        if verb != "click" or "scan" not in arg.lower():
+            return
+        for attempt in range(1, int(env_float("SCANNER_SCAN_RETRIES", 3)) + 1):
+            self.page.wait_for_timeout(env_float("SCANNER_SCAN_CHECK", 15) * 1000)
+            alert = self.page.locator("[role=alert]").first
+            try:
+                text = alert.inner_text().strip() if alert.count() and alert.is_visible() else ""
+            except Exception:
+                text = ""
+            if "did not answer" not in text.lower():
+                return
+            log.warning("browser: the scan got no answer from IBKR (%s) - trying again (%d)", text[:80], attempt)
+            self.page.wait_for_timeout(env_float("SCANNER_SCAN_WAIT", 20) * 1000)
+            self.step(verb, arg)
+
     # ------------------------------------------------------------------ sign-in
     PASSWORD_BOX = "input[type=password], input#auth-password"
     LOGIN_BOX = "input#auth-email, input[type=email], input[autocomplete=username], input[autocomplete=email]"
@@ -781,6 +800,11 @@ class ScannerSite:
         password = page.locator(self.PASSWORD_BOX).first
         try:
             if not password.is_visible():
+                return False
+            # The scanner's own "Local connector secret" box is a password box too: only a real sign-in form
+            # (an email/username box beside it, or the site's sign-in box) counts.
+            real = page.locator(self.LOGIN_BOX).first.is_visible() or page.locator("input#auth-password").first.is_visible()
+            if not real:
                 return False
         except Exception:
             return False
