@@ -1112,6 +1112,8 @@ def site_login(profile_dir: Path) -> None:
         site.page.goto(site.url)
         print(f"Sign in to {site.url} in the browser window, check the scanner works, "
               "then close the browser window.", flush=True)
-        site.page.wait_for_event("close", timeout=0)
+        # Wait until the whole browser is closed, not just its first tab: opening or closing another tab
+        # (a layout dialog, a pop-up) must not end this and take the window down with it.
+        site.context.wait_for_event("close", timeout=0)
     finally:
         site.close()
