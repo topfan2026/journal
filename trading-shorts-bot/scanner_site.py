@@ -486,6 +486,11 @@ class ScannerSite:
         self.want_fullscreen = False
 
     # ------------------------------------------------------------------ browser
+    def _start_position(self) -> list[str]:
+        """Open Chrome on the stream monitor from the start (it would otherwise open on the main monitor)."""
+        spot = self._stream_spot()
+        return [f"--window-position={spot['left']},{spot['top']}"] if spot else []
+
     def open(self) -> "ScannerSite":
         if app_path():
             return self.open_app()
@@ -502,7 +507,7 @@ class ScannerSite:
         kwargs = dict(
             headless=False, no_viewport=True,
             # The Autopilot window is often behind the scanner: keep Chrome from slowing its timers down.
-            args=["--start-maximized", "--disable-background-timer-throttling",
+            args=[*self._start_position(), "--start-maximized", "--disable-background-timer-throttling",
                   "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding"],
             # No "controlled by automated test software" / "--no-sandbox" bars on the stream.
             # (Chrome's sandbox can't run as root on Linux, so it stays off there.)
@@ -840,10 +845,11 @@ class ScannerSite:
         (Chrome goes full screen on whichever monitor the window is on), so a wide monitor doesn't leave bars."""
         screens = monitors()
         target = pick_stream_monitor(screens, env("STREAM_MONITOR", "auto") or "auto")
+        log.info("browser: monitors found: %s -> stream window goes on %s",
+                 ", ".join(f"{w}x{h} at ({x},{y})" for x, y, w, h in screens) or "none (couldn't read them)",
+                 f"the {target[2]}x{target[3]} one" if target else "Chrome's choice")
         if target is None:
             return {}
-        if len(screens) > 1 or env("STREAM_MONITOR", "auto") != "auto":
-            log.info("browser: stream window goes on the %dx%d monitor", target[2], target[3])
         return {"left": target[0] + 100, "top": target[1] + 100, "width": 900, "height": 600}
 
     def browser_fullscreen(self, on: bool = True) -> None:
