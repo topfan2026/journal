@@ -301,6 +301,8 @@ class App:
                             "site_login").pack(side="left", padx=(0, 6))
                 make_button(row_btns, "Test scanner steps", lambda: self.spawn("live.py", "site-test"),
                             "site_test").pack(side="left")
+                make_button(row_btns, "Update connector (order flow)", lambda: self.spawn("connector_update.py"),
+                            "update_connector").pack(side="left", padx=(6, 0))
             if tab == "TikTok":
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -1164,6 +1166,7 @@ BUTTONS: dict[str, tuple[str, str]] = {
     "test": ("test", "A dry run of the whole stream: IB Gateway, the website and OBS, without going live or creating a broadcast."),
     "check": ("check", "Checks everything a STREAM needs: IB Gateway login, OBS, YouTube and the website steps. Opens OBS."),
     "check_autopilot": ("autopilot", "Checks only what Autopilot needs: IB Gateway (paper), the website signed in and connected, and the Autopilot window. No OBS or YouTube."),
+    "update_connector": ("update", "Installs the new IBKR connector file you downloaded from GitHub (app.py in your Downloads folder): saves the old one, copies the new one into your connector folder and restarts the connector. Needed for order flow and bubbles."),
     "update": ("update", "Downloads the latest AiAlgobot and replaces the program files. Your settings, passwords and scanner steps are kept. Stop running tasks first."),
     "shortcut": ("shortcut", "Puts an AiAlgobot icon on your desktop that opens this app (no console window). Replaces its own older copy."),
     "scheduler_start": ("play", "Starts the scheduler: it goes live at your stream time, runs the Website data schedule (IB Gateway + website + Autopilot) and sends the Market Radar. Keep it running."),
