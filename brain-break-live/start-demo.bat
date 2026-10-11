@@ -13,7 +13,7 @@ start "" cmd /c "timeout /t 4 >nul & start http://127.0.0.1:8790/control"
 goto :end
 
 :setup
-if exist .venv\Scripts\python.exe exit /b 0
+if exist .venv\Scripts\python.exe goto :deps
 echo First run: installing (this takes a minute)...
 where py >nul 2>nul && (py -3 -m venv .venv) || (python -m venv .venv)
 if not exist .venv\Scripts\python.exe (
@@ -23,7 +23,8 @@ if not exist .venv\Scripts\python.exe (
   exit /b 1
 )
 .venv\Scripts\python -m pip install --upgrade pip >nul
-.venv\Scripts\python -m pip install -r requirements.txt || exit /b 1
+:deps
+.venv\Scripts\python -m pip install -q -r requirements.txt || exit /b 1
 exit /b 0
 
 :end

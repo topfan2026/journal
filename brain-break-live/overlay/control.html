@@ -171,6 +171,7 @@
         ["Mode", null, s.mode],
         ["Viewers", null, c.viewers == null ? "–" : String(c.viewers)],
         ["API quota left today", null, c.quota_left == null ? "demo" : c.quota_left.toLocaleString()],
+        ["Time zone", null, s.timezone || "?"],
       ];
       if (s.next_show) parts.push(["Next show", null, `${s.next_show.theme}, ${new Date(s.next_show.starts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`]);
       $("status").replaceChildren(...parts.map(([label, pre, value]) => {

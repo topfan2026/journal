@@ -47,6 +47,7 @@ def run(args) -> int:
     chat.start()
     base = f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '') else args.host}:{settings.port}"
     log.info("on air: %s (%s)%s", app.profile.name, app.active, " | DEMO chat" if args.demo else "")
+    log.info("time zone: %s (set TIMEZONE in .env if this is wrong)", settings.tz)
     log.info("overlay for OBS:  %s/", base)
     log.info("control page:     %s/control", base)
     try:

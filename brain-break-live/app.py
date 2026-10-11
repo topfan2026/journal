@@ -319,6 +319,7 @@ class App:
                 "now": now, "mode": mode, "profile": p.to_public(), "events": self.events[-6:],
                 "chat": self.chat.status(), "study": self.study().snapshot(now),
                 "background": self._background(p),
+                "timezone": str(self.s.tz),
             }
             win = self.next_window(now)
             if win and p.trivia.enabled:

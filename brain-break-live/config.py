@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import dataclass, field, fields
 from datetime import time as dtime
+from datetime import tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -69,7 +70,7 @@ def parse_hhmm(value: str) -> dtime:
 
 @dataclass(frozen=True)
 class Settings:
-    tz: ZoneInfo
+    tz: tzinfo
     port: int
     data_root: Path
     music_root: Path
@@ -122,8 +123,8 @@ class Settings:
         return cls(**values)
 
 
-def _local_zone() -> ZoneInfo:
-    """Best effort: the machine's IANA zone, else UTC."""
+def _local_zone():
+    """This computer's time zone (Windows included), else its current UTC offset, else UTC."""
     tz = os.environ.get("TZ")
     if tz:
         try:
@@ -131,12 +132,22 @@ def _local_zone() -> ZoneInfo:
         except Exception:
             pass
     try:
+        from tzlocal import get_localzone  # reads the zone from Windows / macOS / Linux settings
+        zone = get_localzone()
+        if zone is not None:
+            return zone
+    except Exception:
+        pass
+    try:
         link = Path("/etc/localtime").resolve()
         if "zoneinfo" in link.parts:
             return ZoneInfo("/".join(link.parts[link.parts.index("zoneinfo") + 1:]))
     except Exception:
         pass
-    return ZoneInfo("UTC")
+    # Fixed offset as a last resort: right today, but it won't follow a daylight-saving change
+    # until the program restarts. Set TIMEZONE in .env to avoid this.
+    from datetime import datetime
+    return datetime.now().astimezone().tzinfo or ZoneInfo("UTC")
 
 
 # --------------------------------------------------------------------------- niche profiles
