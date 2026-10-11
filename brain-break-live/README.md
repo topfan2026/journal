@@ -33,6 +33,18 @@ copy .env.example .env
 
 (macOS/Linux: `python3 -m venv .venv && source .venv/bin/activate`, `cp .env.example .env`.)
 
+## Updates (automatic)
+
+`start.bat` and `start-demo.bat` update the program from GitHub **every time they start**, so you
+never download it again by hand. While it runs, the control page shows when a new version is out;
+click **Update now** and it installs it and restarts in a few seconds (the OBS page reconnects by
+itself).
+
+Your own files are never changed: `.env`, `data\` (stats, leaderboards, tasks), and whatever you put
+in `music\` and `backgrounds\`. If you edited a file that an update also changes (a profile, for
+example), your version is kept and the new one is saved next to it as `<name>.new`. Offline? It
+starts the version you have. To turn updates off, put `AUTO_UPDATE=false` in `.env`.
+
 ## 2. Try it without YouTube
 
 ```bat
@@ -178,6 +190,8 @@ quota calculator and request more quota in Google Cloud if you need faster polli
 | File | Role |
 |---|---|
 | `main.py` | CLI: run / `--demo` / `check` / `auth` / `profiles` |
+| `launcher.py`, `update.py` | Self-update from GitHub, then run; restart on "Update now" |
+| `start.bat`, `start-demo.bat` | Double-click launchers for Windows |
 | `app.py` | Active niche, trivia schedule, chat routing, persistence, control actions |
 | `chat.py` | YouTube live-chat poller with quota pacing, message parsing, demo chat |
 | `study.py` | Pomodoro, task board, check-ins, focus hours |
@@ -190,4 +204,4 @@ quota calculator and request more quota in Google Cloud if you need faster polli
 | `questions/` | Trivia packs |
 | `data/` | Stats, leaderboards, tasks (created on first run, not committed) |
 
-Tests: `pytest` (41 tests, no network or YouTube needed).
+Tests: `pytest` (48 tests, no network or YouTube needed).
