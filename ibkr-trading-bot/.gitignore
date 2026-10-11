@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+trades.csv
+logs/
+open_positions.json
+open_positions.json.tmp
+safety-check-log.json
+watchlist.txt
+dashboard/
