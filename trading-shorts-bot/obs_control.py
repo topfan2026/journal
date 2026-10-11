@@ -87,8 +87,16 @@ def capture_target(title: str, exe: str, window_class: str = CHROMIUM_WINDOW_CLA
 
 
 def pick_monitor(items: list[dict], number: int) -> dict | None:
-    """The `number`-th (1 = first) monitor in OBS's own list, which follows Windows' display numbers."""
-    return items[number - 1] if 1 <= number <= len(items) else None
+    """The monitor with Windows display number `number` (1 = main) from OBS's list.
+
+    OBS lists a "[Select a display to capture]" placeholder first and names the real ones "Display 1: 1920x1080 ...",
+    so look for "Display N" by name first, and otherwise count only the real entries.
+    """
+    real = [i for i in items if i.get("itemValue") not in ("", None) and not str(i.get("itemName", "")).startswith("[")]
+    for item in real:
+        if str(item.get("itemName", "")).startswith(f"Display {number}"):
+            return item
+    return real[number - 1] if 1 <= number <= len(real) else None
 
 
 def frame_is_black(data_uri: str) -> bool:

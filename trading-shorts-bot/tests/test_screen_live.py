@@ -8,11 +8,15 @@ from obs_control import OBS, pick_monitor
 UTC = timezone.utc
 
 
-def test_pick_monitor_is_one_based():
-    items = [{"itemName": "Display 1", "itemValue": "a"}, {"itemName": "Display 2", "itemValue": "b"}]
+def test_pick_monitor_skips_the_placeholder_and_matches_display_numbers():
+    placeholder = {"itemName": "[Select a display to capture]", "itemValue": ""}
+    items = [placeholder, {"itemName": "Display 1: 1920x1080 @ 0,0", "itemValue": "a"}, {"itemName": "Display 2: 3440x1440", "itemValue": "b"}]
     assert pick_monitor(items, 1)["itemValue"] == "a"
     assert pick_monitor(items, 2)["itemValue"] == "b"
     assert pick_monitor(items, 3) is None and pick_monitor(items, 0) is None
+    # no "Display N" names: count only the real entries
+    plain = [placeholder, {"itemName": "Left", "itemValue": "x"}, {"itemName": "Right", "itemValue": "y"}]
+    assert pick_monitor(plain, 1)["itemValue"] == "x" and pick_monitor(plain, 2)["itemValue"] == "y"
 
 
 class FakeClient:
@@ -35,7 +39,8 @@ class FakeClient:
         if name == "GetInputPropertiesListPropertyItems":
             if not self.monitors:
                 raise RuntimeError("no such property")
-            return {"propertyItems": [{"itemName": "Display 1: 1920x1080 (Primary)", "itemValue": "id-1"},
+            return {"propertyItems": [{"itemName": "[Select a display to capture]", "itemValue": ""},
+                                      {"itemName": "Display 1: 1920x1080 (Primary)", "itemValue": "id-1"},
                                       {"itemName": "Display 2: 3440x1440", "itemValue": "id-2"}]}
         if name == "GetVideoSettings":
             return {"baseWidth": 1920, "baseHeight": 1080}
