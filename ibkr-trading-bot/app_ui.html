@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IBKR Trading Bot</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #14171c; --muted: #646b76; --line: #e3e6eb;
+  --up: #0f8a4f; --down: #c53030; --accent: #2457d6; --warn: #b26b00;
+  --chip: #eef1f5; --up-bg: #e5f5ec; --down-bg: #fbe9e9; --warn-bg: #fff3dc; --accent-bg: #e8eefc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --card: #171b21; --ink: #e8ebef; --muted: #98a0ab; --line: #272d36;
+    --up: #3fcf8e; --down: #ff6b6b; --accent: #7aa2ff; --warn: #ffb547;
+    --chip: #222832; --up-bg: #12301f; --down-bg: #3a1717; --warn-bg: #3a2a0e; --accent-bg: #1b2747;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 2; background: var(--card); border-bottom: 1px solid var(--line);
+  padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+h1 { font-size: 17px; margin: 0; }
+.sub { color: var(--muted); font-size: 12px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--chip); white-space: nowrap; }
+.pill.up { background: var(--up-bg); color: var(--up); } .pill.down { background: var(--down-bg); color: var(--down); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); } .pill.accent { background: var(--accent-bg); color: var(--accent); }
+main { max-width: 1280px; margin: 0 auto; padding: 16px 20px 40px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+button { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { color: var(--down); }
+#toast { color: var(--muted); font-size: 13px; }
+.alert { background: var(--warn-bg); color: var(--warn); padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-weight: 500; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.kpi .label { color: var(--muted); font-size: 12px; }
+.kpi .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.kpi .hint { color: var(--muted); font-size: 11px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 0; }
+.card h2 { font-size: 14px; margin: 0; padding: 11px 14px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.card h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.card .body { padding: 12px 14px; }
+.scroll { overflow: auto; max-height: 360px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--card); }
+td.num, th.num { text-align: right; }
+td.wrap { white-space: normal; color: var(--muted); font-size: 12px; min-width: 220px; }
+.up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--muted); }
+.empty { color: var(--muted); padding: 18px 14px; text-align: center; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--chip); }
+.chip.BOUGHT, .chip.PASS { background: var(--up-bg); color: var(--up); }
+.chip.SKIP { background: var(--chip); color: var(--muted); }
+.chip.WAITING { background: var(--warn-bg); color: var(--warn); }
+.chip.bot { background: var(--accent-bg); color: var(--accent); }
+svg text { fill: var(--muted); font-size: 11px; }
+pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; overflow: auto; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+@media (max-width: 700px) { .split { grid-template-columns: 1fr; } header { padding: 10px 16px; } main { padding: 12px 16px 32px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>IBKR Trading Bot</h1>
+    <div class="sub" id="sub">loading…</div>
+  </div>
+  <div class="pills" id="pills"></div>
+</header>
+<main>
+  <div class="bar">
+    <button id="pauseBtn" class="primary">Pause bot</button>
+    <button data-action="scan" title="Scan the S&P 500 for 3%+ gappers now">Scan now</button>
+    <button data-action="scan_test" title="Same scan with a 1% gap: handy on quiet days">Test scan (1%)</button>
+    <button data-action="cycle" title="Run one trading cycle now (it only trades 10:05–15:30 ET)">Run cycle now</button>
+    <button data-action="summary" title="Send the daily summary to Telegram and rebuild the HTML report">Daily summary</button>
+    <button data-action="schedule" id="schedBtn">Install schedule</button>
+    <span id="toast"></span>
+  </div>
+  <div id="alerts"></div>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid">
+    <section class="card"><h2>Open positions <small id="posNote"></small></h2><div class="scroll" id="positions"></div></section>
+    <section class="card"><h2>Today's watchlist <small id="wlNote"></small></h2><div class="scroll" id="watchlist"></div></section>
+
+    <section class="card"><h2>My trades today <small>whole account: your TWS trades + the bot's</small></h2>
+      <div class="split">
+        <div class="scroll" id="acctBySym"></div>
+        <div class="scroll" id="acctFills"></div>
+      </div>
+    </section>
+    <section class="card"><h2>Bot performance <small>cumulative P&amp;L of closed bot trades</small></h2>
+      <div class="body" id="equity"></div>
+      <div class="scroll" id="botClosed"></div>
+    </section>
+
+    <section class="card"><h2>Bot activity <small>every decision, newest first</small></h2><div class="scroll" id="events"></div></section>
+    <section class="card"><h2>Last command output</h2><div class="body"><pre id="jobs" class="muted">Nothing run from the app yet.</pre></div></section>
+  </div>
+</main>
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (v, sign = true) => v == null || isNaN(v) ? "—" :
+  (sign && v > 0 ? "+" : v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const cls = v => v > 0 ? "up" : v < 0 ? "down" : "";
+const num = (v, d = 2) => v == null || isNaN(v) ? "—" : Number(v).toFixed(d);
+const table = (head, rows, empty) => rows.length
+  ? `<table><thead><tr>${head.map(h => `<th class="${h.endsWith("#") ? "num" : ""}">${esc(h.replace("#", ""))}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`
+  : `<div class="empty">${empty}</div>`;
+
+const MARKET = {weekend: ["Weekend: market closed", ""], too_early: ["Before 10:00 ET: bot idle", ""],
+  closed: ["After close: bot idle", ""], manage_only: ["Managing trades only", "warn"],
+  force_close: ["Closing all positions", "warn"], ok: ["Market open: bot hunting", "up"]};
+
+let state = null;
+
+function render(s) {
+  state = s;
+  const live = s.live || {};
+  const m = MARKET[s.market] || [s.market, ""];
+  $("sub").textContent = `${s.strategy} · ${s.now}` + (live.updated ? ` · TWS data ${live.updated}` : "");
+  $("pills").innerHTML = [
+    `<span class="pill ${s.paper ? "accent" : "down"}">${s.paper ? "PAPER" : "LIVE MONEY"} · port ${s.port}</span>`,
+    live.connected ? `<span class="pill up">TWS connected · ${esc((live.accounts || []).join(", "))}</span>`
+                   : `<span class="pill down">TWS not connected</span>`,
+    `<span class="pill ${m[1]}">${m[0]}</span>`,
+    `<span class="pill ${s.paused ? "warn" : "up"}">Bot ${s.paused ? "PAUSED" : "active"}</span>`,
+  ].join("");
+  $("pauseBtn").textContent = s.paused ? "Resume bot" : "Pause bot";
+  $("schedBtn").textContent = s.schedule.installed ? "Re-install schedule" : "Install schedule";
+
+  const alerts = [];
+  if (!live.connected) alerts.push(esc(live.error || "Waiting for TWS…") + ". Account data appears here once you're logged in.");
+  if (s.schedule.installed === false) alerts.push("The bot isn't scheduled yet, so it won't trade on its own. Click “Install schedule” once.");
+  if (s.paused) alerts.push("Paused: the bot won't open new trades, but it keeps managing stops on open ones.");
+  $("alerts").innerHTML = alerts.map(a => `<div class="alert">${a}</div>`).join("");
+
+  const v = live.values || {}, bp = s.bot_perf.all, ap = s.account_perf.today;
+  const dayPnl = (v.RealizedPnL ?? 0) + (v.UnrealizedPnL ?? 0);
+  const kpis = [
+    ["Net liquidation", live.connected ? money(v.NetLiquidation, false) : "—", "", "account value in IBKR"],
+    ["Account P&L today", live.connected ? money(dayPnl) : "—", cls(dayPnl), `realized ${money(v.RealizedPnL)} · open ${money(v.UnrealizedPnL)}`],
+    ["My round trips today", ap.total_trades, "", `${ap.wins}W / ${ap.losses}L · ${money(ap.gross_pnl_usd)}`],
+    ["Bot P&L (all time)", money(bp.gross_pnl_usd), cls(bp.gross_pnl_usd), `${bp.total_trades} closed trades`],
+    ["Bot win rate", bp.total_trades ? bp.win_rate_pct + "%" : "—", "", `${bp.wins}W / ${bp.losses}L`],
+    ["Bot profit factor", bp.profit_factor, "", `avg ${num(bp.avg_R)}R per trade`],
+  ];
+  $("kpis").innerHTML = kpis.map(([l, val, c, h]) =>
+    `<div class="kpi"><div class="label">${l}</div><div class="value ${c}">${val}</div><div class="hint">${h}</div></div>`).join("");
+
+  const port = live.portfolio || [];
+  $("posNote").textContent = live.connected ? `${port.length} open` : "from bot records (TWS offline)";
+  const posRows = live.connected
+    ? port.map(p => `<tr><td><b>${esc(p.symbol)}</b> ${p.bot ? '<span class="chip bot">BOT</span>' : ""}</td>
+        <td class="num">${p.qty}</td><td class="num">${num(p.avg_cost)}</td><td class="num">${num(p.price)}</td>
+        <td class="num ${cls(p.unrealized)}">${money(p.unrealized)}</td><td class="num">${p.stop ? num(p.stop) : "—"}</td>
+        <td class="num ${cls(p.r_now)}">${p.r_now == null ? "—" : num(p.r_now) + "R"}</td></tr>`)
+    : s.bot_positions.map(p => `<tr><td><b>${esc(p.symbol)}</b> <span class="chip bot">BOT</span></td><td class="num">${p.qty}</td>
+        <td class="num">${num(p.entry_price)}</td><td class="num">—</td><td class="num">—</td><td class="num">${num(p.stop)}</td><td class="num">—</td></tr>`);
+  $("positions").innerHTML = table(["Symbol", "Qty#", "Avg cost#", "Price#", "Unrealized#", "Stop#", "Now#"], posRows, "No open positions.");
+
+  $("wlNote").textContent = s.watchlist_time ? `scanned ${s.watchlist_time}` : "no scan yet";
+  $("watchlist").innerHTML = table(["Ticker", "Status", "Gap", "Why"],
+    s.watchlist.map(w => `<tr><td><b>${esc(w.symbol)}</b></td><td><span class="chip ${w.verdict}">${w.verdict}</span></td>
+      <td class="muted">${esc(w.gap.split("open")[0].replace("gap", "").trim())}</td><td class="wrap">${esc(w.detail)}</td></tr>`),
+    "No watchlist yet. The scanner runs at 9:55 ET and every 30 minutes until 12:55, or click “Scan now”.");
+
+  $("acctBySym").innerHTML = table(["Symbol", "Realized#"],
+    s.account_perf.by_symbol.map(r => `<tr><td><b>${esc(r.symbol)}</b></td><td class="num ${cls(r.pnl)}">${money(r.pnl)}</td></tr>`),
+    live.connected ? "No closed round trips today." : "Connect TWS to see your trades.");
+  $("acctFills").innerHTML = table(["Time", "Side", "Symbol", "Qty#", "Price#"],
+    (live.fills || []).slice().reverse().map(f => `<tr><td class="muted">${esc(f.time.slice(11, 16))}</td>
+      <td class="${f.side === "BUY" ? "up" : "down"}">${f.side}</td><td>${esc(f.symbol)}</td><td class="num">${f.qty}</td><td class="num">${num(f.price)}</td></tr>`),
+    live.connected ? "No fills today." : "");
+
+  $("equity").innerHTML = equityChart(s.bot_perf.equity);
+  $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "P&L#", "R#"],
+    s.bot_perf.closed.map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td>${esc(c.symbol)}</td>
+      <td class="num">${c.qty}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td>
+      <td class="num ${cls(c.pnl)}">${money(c.pnl)}</td><td class="num ${cls(c.R)}"><b>${num(c.R)}R</b></td></tr>`),
+    "No closed bot trades yet.");
+
+  $("events").innerHTML = table(["Time", "Event", "Details"],
+    s.events.map(e => { const {ts, event, ...rest} = e;
+      const d = Object.entries(rest).filter(([k]) => k !== "metrics").map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join("; ") : typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ");
+      return `<tr><td class="muted">${esc((ts || "").slice(5, 19).replace("T", " "))}</td><td><b>${esc(event)}</b></td><td class="wrap">${esc(d)}</td></tr>`; }),
+    "No activity yet. Bot decisions show up here once the schedule runs during market hours.");
+
+  const jobs = Object.entries(s.jobs);
+  if (jobs.length) $("jobs").textContent = jobs.map(([k, j]) =>
+    `▶ ${k} ${j.running ? "(running since " + j.started + ")…" : "(finished " + j.finished + ")"}\n${j.output || ""}`).join("\n\n");
+}
+
+function equityChart(pts) {
+  if (pts.length < 2) return `<div class="empty">The equity curve appears after two closed trades.</div>`;
+  const W = 600, H = 150, P = 28, vals = pts.map(p => p.v), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
+  const x = i => P + i * (W - 2 * P) / (pts.length - 1), y = v => H - 14 - (v - lo) / span * (H - 44);
+  const last = vals[vals.length - 1], col = last >= 0 ? "var(--up)" : "var(--down)";
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Cumulative bot P&L">
+    <line x1="${P}" x2="${W - P}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="4 4"/>
+    <text x="2" y="${y(0) + 4}">$0</text><text x="2" y="${y(hi) + 10}">${money(hi, false)}</text>
+    <polyline fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(last)}" r="4" fill="${col}"/>
+    <text x="${W - P}" y="${y(last) - 8}" text-anchor="end" style="fill:${col};font-weight:700">${money(last)}</text></svg>`;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/state", {cache: "no-store"});
+    const s = await r.json();
+    if (s.error) throw new Error(s.error);
+    render(s);
+  } catch (e) {
+    $("sub").textContent = "Lost contact with the app. Is its black window still open? (" + e.message + ")";
+  }
+}
+
+async function act(name) {
+  $("toast").textContent = "…";
+  try {
+    const r = await fetch("/api/action/" + name, {method: "POST", headers: {"X-Token": TOKEN}});
+    $("toast").textContent = (await r.json()).message;
+  } catch (e) { $("toast").textContent = "Failed: " + e.message; }
+  setTimeout(refresh, 400);
+}
+
+document.querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
+$("pauseBtn").onclick = () => act(state && state.paused ? "resume" : "pause");
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

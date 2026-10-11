@@ -27,6 +27,7 @@ WATCHLIST_PATH = PROJECT_DIR / "watchlist.txt"
 SAFETY_LOG_PATH = PROJECT_DIR / "safety-check-log.json"
 LOGS_DIR = PROJECT_DIR / "logs"
 DASHBOARD_DIR = PROJECT_DIR / "dashboard"
+PAUSE_PATH = PROJECT_DIR / "PAUSED"  # exists = no new entries (open trades are still managed)
 
 TRADES_HEADER = ["timestamp_iso", "symbol", "side", "size", "fill_price", "order_id", "status", "stop_price"]
 

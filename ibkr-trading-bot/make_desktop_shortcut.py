@@ -32,7 +32,7 @@ $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 $s.TargetPath = {q(py)}
 $s.Arguments = {q(f'"{launcher}"')}
 $s.WorkingDirectory = {q(PROJECT_DIR)}
-$s.Description = 'Log in to TWS and check the IBKR paper-trading bot'
+$s.Description = 'Open TWS and the IBKR Trading Bot app'
 $s.Save()
 Write-Output $lnk
 """

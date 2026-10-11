@@ -28,19 +28,34 @@ flattens everything at 15:51 ET, sends Telegram alerts and builds an HTML dashbo
 8. **Telegram:** message @BotFather `/newbot` → token; @userinfobot → chat id; put both in `.env`, then
    `python -c "from src.notify import notify; notify('Test', 'Hello from IBKR bot')"`
 9. **Schedule everything:** `python setup_schedule.py` (11 tasks, no admin). Undo with `python cleanup_schedule.py`.
-10. **Desktop shortcut:** `python make_desktop_shortcut.py` (see below).
+10. **Desktop app:** `python make_desktop_shortcut.py`, then double-click **IBKR Trading Bot** on your desktop (see below).
 
-## Desktop shortcut ("log in to the app")
+## The desktop app
 
-`python make_desktop_shortcut.py` puts an **IBKR Trading Bot** shortcut on your desktop. Double-clicking it runs
-`launch.py`, which:
+`python make_desktop_shortcut.py` puts an **IBKR Trading Bot** shortcut on your desktop. Double-click it and:
 
-1. opens TWS (or IB Gateway) if it isn't already running. It looks in `C:\Jts\...`; set `TWS_PATH=` in `.env` if yours is elsewhere,
-2. waits while **you log in** in TWS's own login window (your IBKR password is never stored by the bot),
-3. waits for the API port, runs the connection test, and
-4. opens the dashboard.
+1. TWS opens if it isn't already running, so you can **log in** to your paper account (TWS's own login: the bot never
+   stores your password). It looks in `C:\Jts\...`; set `TWS_PATH=` in `.env` if yours is elsewhere.
+2. The **app** opens in your browser at `http://127.0.0.1:8765` (this PC only). Keep its black window open; close it
+   to quit the app. The scheduled bot keeps trading either way.
 
-On a Mac it creates `IBKR Trading Bot.command`, and on Linux it creates a `.desktop` launcher.
+The app refreshes every 5 seconds and shows:
+
+| Section | What you see |
+|---|---|
+| Status bar | Paper/live, TWS connected + account, market phase, bot active/paused |
+| Numbers | Net liquidation, today's account P&L, your round trips today, bot all-time P&L, win rate, profit factor, avg R |
+| Open positions | Everything in the account; bot trades marked **BOT** with their current stop and R |
+| Today's watchlist | Each gapper and the bot's verdict: BOUGHT / SKIP (with the failed filter) / WAITING |
+| My trades today | **Every fill in the account**, including trades you place yourself in TWS, with realized P&L per symbol |
+| Bot performance | Equity curve and every closed bot trade with its R-multiple |
+| Bot activity | Every decision the bot made, newest first |
+
+Buttons: **Pause / Resume** (paused = no new entries; open trades keep their stops managed), **Scan now**,
+**Test scan (1%)**, **Run cycle now**, **Daily summary**, **Install schedule**.
+
+The app's TWS connection is **read-only** (client id 7), so it can't place orders. Its buttons are protected by a
+per-session token, so other websites can't trigger them.
 
 ## Files
 
@@ -54,7 +69,8 @@ On a Mac it creates `IBKR Trading Bot.command`, and on Linux it creates a `.desk
 | `compute_perf.py` | Daily summary (JSON + Telegram) and `dashboard/index.html` with R-multiple histogram |
 | `rotate_logs.py` | Archives old logs, keeps 90 days of `trades.csv` |
 | `setup_schedule.py` / `cleanup_schedule.py` | Windows Task Scheduler install / uninstall |
-| `launch.py` / `make_desktop_shortcut.py` | Desktop shortcut: log in to TWS, check the connection, open the dashboard |
+| `app.py` + `app_ui.html` | The desktop app: live bot + account view, pause/resume and run buttons |
+| `launch.py` / `make_desktop_shortcut.py` | Desktop shortcut: opens TWS for login, then the app |
 | `src/filters.py` | Pure logic: D1–D3, I1–I3, RVOL, swing lows, sizing (unit tested) |
 | `src/ibkr_client.py` | ib_async wrapper: market orders, GTC protective stops, modify/cancel |
 

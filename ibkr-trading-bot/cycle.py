@@ -13,7 +13,7 @@ import time as _time
 import traceback
 from datetime import datetime, time, timedelta
 
-from src.common import (LOGS_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, append_jsonl, append_trade, check_paper_live_guard,
+from src.common import (LOGS_DIR, PAUSE_PATH, SAFETY_LOG_PATH, WATCHLIST_PATH, append_jsonl, append_trade, check_paper_live_guard,
                         env_float, env_int, env_str, load_positions, load_rules, now_et, read_trades, read_watchlist,
                         save_positions, todays_buy_count, ts)
 
@@ -323,6 +323,8 @@ def main() -> int:
     if msg := check_paper_live_guard():
         log("abort", reason=msg)
         return 1
+    if status == "ok" and PAUSE_PATH.exists():
+        status = "manage_only"  # paused from the app: keep managing open trades, no new entries
 
     ibkr = None
     try:
