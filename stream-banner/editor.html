@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banner Editor</title>
+<style>
+  :root {
+    --bg: #f5f5f2; --panel: #ffffff; --ink: #1b1b19; --soft: #6b6862; --line: #e2dfd8;
+    --accent: #15803d; --accent-soft: #e7f5ec; --bad: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131312; --panel: #1d1c1b; --ink: #f1efe9; --soft: #a19d95; --line: #33312d;
+      --accent: #4ade80; --accent-soft: #14301f; --bad: #ff7a6b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131312; --panel: #1d1c1b; --ink: #f1efe9; --soft: #a19d95; --line: #33312d;
+    --accent: #4ade80; --accent-soft: #14301f; --bad: #ff7a6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 22px 16px 60px; }
+  h1 { font-size: 23px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .sub { color: var(--soft); margin: 0 0 18px; }
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #0d1117; }
+  .preview canvas, .preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .note { color: var(--soft); font-size: 13px; }
+  .bars { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 900px) { .bars { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .field { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; margin-top: 10px; }
+  .field > label:first-child { color: var(--soft); }
+  input[type=text], input[type=number], select, textarea {
+    font: inherit; width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  textarea { min-height: 96px; resize: vertical; }
+  input[type=color] { width: 46px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toggle { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+  button { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.primary { color: #062411; } }
+  :root[data-theme="dark"] button.primary { color: #062411; }
+  #status { min-height: 22px; color: var(--soft); }
+  #status.err { color: var(--bad); }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; font-weight: 600; }
+  ol.steps { padding-left: 20px; }
+  code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Stream banner editor</h1>
+  <p class="sub">Top and bottom bars for promo text and images. The middle stays transparent so your chart shows through.</p>
+
+  <div class="preview">
+    <canvas id="chart" width="1920" height="1080" aria-label="Sample chart"></canvas>
+    <iframe id="frame" src="banner.html?preview=1" title="Banner preview"></iframe>
+  </div>
+  <p class="note">Preview over a sample chart. On stream, your real chart shows in the middle.</p>
+
+  <div class="bars" id="bars"></div>
+
+  <div class="actions">
+    <button class="primary" type="button" id="save">Save</button>
+    <button type="button" id="reset">Undo changes</button>
+    <span id="status"></span>
+  </div>
+
+  <details>
+    <summary>How saving works</summary>
+    <ol class="steps">
+      <li>Click <b>Save</b>. The first time, choose <code>banner-config.js</code> in this folder and replace it.
+        After that, Save writes straight to it.</li>
+      <li>If your browser asks where to download instead, save it as <code>banner-config.js</code> in this folder
+        (the <code>stream-banner</code> folder), replacing the old one.</li>
+      <li>OBS picks up the change within 5 seconds. You don't need to touch OBS.</li>
+      <li>Images (logo, promo pictures, QR code) must be copied into this folder first; then type the file name, e.g. <code>logo.png</code>.</li>
+    </ol>
+  </details>
+</main>
+
+<script src="banner-config.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const el = (tag, attrs, text) => { const e = document.createElement(tag); Object.assign(e, attrs || {}); if (text != null) e.textContent = text; return e; };
+  const DEFAULT_BAR = { show: true, height: 90, background: "#0b1120", opacity: 0.88, accent: "#22c55e", textColor: "#ffffff",
+    textSize: 32, logo: "", badge: "", mode: "rotate", seconds: 8, speed: 110, messages: [], images: [],
+    clock: false, clockZone: "America/New_York", clockLabel: "NY", marketStatus: false };
+  const original = JSON.parse(JSON.stringify(window.BANNER || {}));
+  let cfg = JSON.parse(JSON.stringify(original));
+  for (const w of ["top", "bottom"]) cfg[w] = { ...DEFAULT_BAR, ...(cfg[w] || {}) };
+  cfg.font = cfg.font || "'Segoe UI', Inter, Arial, sans-serif";
+
+  // ---------------------------------------------------------------- preview
+  const frame = $("frame");
+  const push = () => frame.contentWindow && frame.contentWindow.postMessage({ type: "banner-config", config: cfg }, "*");
+  addEventListener("message", e => { if (e.data && e.data.type === "banner-ready") push(); });
+  frame.addEventListener("load", push);
+
+  (function drawChart() {     // a believable candlestick chart so you can judge the layout
+    const c = $("chart").getContext("2d"), W = 1920, H = 1080;
+    c.fillStyle = "#0d1117"; c.fillRect(0, 0, W, H);
+    c.strokeStyle = "rgba(255,255,255,0.06)"; c.lineWidth = 1;
+    for (let y = 60; y < H; y += 80) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+    for (let x = 80; x < W; x += 160) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    let p = 560; const w = 14;
+    for (let x = 40; x < W - 140; x += 22) {
+      const o = p, cl = o + (rnd() - 0.48) * 48, hi = Math.min(o, cl) - rnd() * 22, lo = Math.max(o, cl) + rnd() * 22;
+      const up = cl < o; c.strokeStyle = c.fillStyle = up ? "#22c55e" : "#ef4444";
+      c.beginPath(); c.moveTo(x + w / 2, hi); c.lineTo(x + w / 2, lo); c.stroke();
+      c.fillRect(x, Math.min(o, cl), w, Math.max(2, Math.abs(cl - o)));
+      c.fillStyle = "rgba(148,163,184,0.25)"; c.fillRect(x, H - 40 - rnd() * 90, w, 200);
+      p = Math.max(200, Math.min(880, cl));
+    }
+    c.fillStyle = "#94a3b8"; c.font = "22px Segoe UI, sans-serif";
+    for (let y = 140, v = 182.4; y < H - 100; y += 160, v -= 1.6) c.fillText(v.toFixed(2), W - 110, y);
+  })();
+
+  // ---------------------------------------------------------------- form
+  function field(label, input, hint) {
+    const row = el("div", { className: "field" });
+    const lab = el("label", {}, label);
+    if (input.id) lab.htmlFor = input.id;
+    const right = el("div");
+    right.append(input);
+    if (hint) right.append(el("div", { className: "note" }, hint));
+    row.append(lab, right);
+    return row;
+  }
+
+  function barForm(where, title) {
+    const c = cfg[where];
+    const panel = el("section", { className: "panel" });
+    const head = el("div", { className: "inline" });
+    const show = el("input", { type: "checkbox", checked: c.show, id: `${where}-show` });
+    const showLab = el("label", { className: "toggle", htmlFor: `${where}-show` }); showLab.append(show, document.createTextNode(" Show"));
+    head.append(el("h2", { style: "margin:0;flex:1" }, title), showLab);
+    panel.append(head);
+    const body = el("div");
+    panel.append(body);
+    const set = (k, v) => { c[k] = v; push(); dirty(); };
+    show.addEventListener("change", () => { set("show", show.checked); body.style.opacity = show.checked ? 1 : 0.45; });
+    body.style.opacity = c.show ? 1 : 0.45;
+
+    const msgs = el("textarea", { id: `${where}-messages`, value: c.messages.join("\n") });
+    msgs.addEventListener("input", () => set("messages", msgs.value.split("\n").map(s => s.trim()).filter(Boolean)));
+    body.append(field("Messages", msgs, "One per line. Emoji work 👍"));
+
+    const mode = el("select", { id: `${where}-mode` });
+    for (const [v, t] of [["rotate", "One at a time (fade)"], ["scroll", "Scrolling ticker"], ["static", "Only the first, fixed"]])
+      mode.append(el("option", { value: v }, t));
+    mode.value = c.mode;
+    const timing = el("input", { type: "number", min: 1, max: 600, id: `${where}-timing` });
+    const timingRow = field("", timing);
+    const syncTiming = () => {
+      const scroll = mode.value === "scroll";
+      timingRow.firstChild.textContent = scroll ? "Scroll speed" : "Seconds each";
+      timing.value = scroll ? c.speed : c.seconds;
+      timingRow.style.display = mode.value === "static" ? "none" : "";
+    };
+    mode.addEventListener("change", () => { set("mode", mode.value); syncTiming(); });
+    timing.addEventListener("input", () => set(mode.value === "scroll" ? "speed" : "seconds", Number(timing.value) || 1));
+    body.append(field("Style", mode), timingRow);
+    syncTiming();
+
+    const height = el("input", { type: "number", min: 30, max: 400, value: c.height, id: `${where}-height` });
+    height.addEventListener("input", () => set("height", Number(height.value) || 90));
+    const size = el("input", { type: "number", min: 12, max: 120, value: c.textSize, id: `${where}-size` });
+    size.addEventListener("input", () => set("textSize", Number(size.value) || 32));
+    const sizes = el("div", { className: "inline" });
+    sizes.append(height, el("span", { className: "note" }, "px tall   text"), size, el("span", { className: "note" }, "px"));
+    height.style.width = size.style.width = "90px";
+    body.append(field("Size", sizes, "Of a 1920×1080 stream"));
+
+    const colors = el("div", { className: "inline" });
+    const colorInput = (k, label) => {
+      const i = el("input", { type: "color", value: c[k] || "#000000", title: label, ariaLabel: label });
+      i.addEventListener("input", () => set(k, i.value));
+      colors.append(el("span", { className: "note" }, label), i);
+    };
+    colorInput("background", "Bar"); colorInput("textColor", "Text"); colorInput("accent", "Line");
+    body.append(field("Colors", colors));
+
+    const opacity = el("input", { type: "range", min: 0, max: 1, step: 0.02, value: c.opacity, id: `${where}-opacity` });
+    opacity.addEventListener("input", () => set("opacity", Number(opacity.value)));
+    body.append(field("Bar see-through", opacity, "Left = clear, right = solid"));
+
+    const badge = el("input", { type: "text", value: c.badge, placeholder: "e.g. LIVE (empty = none)", id: `${where}-badge` });
+    badge.addEventListener("input", () => set("badge", badge.value.trim()));
+    body.append(field("Red badge", badge));
+
+    const logo = el("input", { type: "text", value: c.logo, placeholder: "logo.png", id: `${where}-logo` });
+    logo.addEventListener("input", () => set("logo", logo.value.trim()));
+    body.append(field("Logo (left)", logo, "File name of an image in this folder"));
+
+    const imgs = el("input", { type: "text", value: c.images.join(", "), placeholder: "promo1.png, qr.png", id: `${where}-images` });
+    imgs.addEventListener("input", () => set("images", imgs.value.split(",").map(s => s.trim()).filter(Boolean)));
+    body.append(field("Images (right)", imgs, "Promo pictures or a QR code; several rotate"));
+
+    const extras = el("div", { className: "inline" });
+    const check = (k, label) => {
+      const b = el("input", { type: "checkbox", checked: !!c[k], id: `${where}-${k}` });
+      b.addEventListener("change", () => set(k, b.checked));
+      const l = el("label", { className: "toggle", htmlFor: b.id }); l.append(b, document.createTextNode(" " + label));
+      extras.append(l);
+    };
+    check("clock", "Clock"); check("marketStatus", "US market open/closed");
+    body.append(field("Extras", extras, "Clock shows New York time; market status uses regular hours (holidays not included)"));
+    return panel;
+  }
+
+  function buildForm() {
+    $("bars").replaceChildren(barForm("top", "Top banner"), barForm("bottom", "Bottom banner"));
+    push();
+  }
+
+  // ---------------------------------------------------------------- save
+  let handle = null;
+  const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "err" : ""; };
+  const dirty = () => status("Unsaved changes");
+  const fileText = () => "// Banner settings. Edit with editor.html (easiest) or in Notepad, then save.\n" +
+    "// The banner in OBS reloads this file every 5 seconds, so changes appear by themselves.\n" +
+    "// Images (logo, promo pictures) must be in this same folder; write just the file name.\n" +
+    "window.BANNER = " + JSON.stringify(cfg, null, 2) + ";\n";
+
+  $("save").addEventListener("click", async () => {
+    const text = fileText();
+    if (window.showSaveFilePicker) {
+      try {
+        if (!handle) handle = await showSaveFilePicker({ suggestedName: "banner-config.js",
+          types: [{ description: "Banner settings", accept: { "text/javascript": [".js"] } }] });
+        const w = await handle.createWritable(); await w.write(text); await w.close();
+        status("Saved. OBS updates within 5 seconds.");
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return status("Not saved");
+        handle = null;   // fall back to a download
+      }
+    }
+    const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/javascript" })), download: "banner-config.js" });
+    document.body.append(a); a.click(); a.remove();
+    status("Downloaded banner-config.js: move it into the stream-banner folder, replacing the old one.");
+  });
+  $("reset").addEventListener("click", () => {
+    cfg = JSON.parse(JSON.stringify(original));
+    for (const w of ["top", "bottom"]) cfg[w] = { ...DEFAULT_BAR, ...(cfg[w] || {}) };
+    buildForm(); status("Back to the saved version");
+  });
+
+  buildForm();
+})();
+</script>
+</body>
+</html>

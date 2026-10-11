@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Banner</title>
+<!-- OBS Browser Source overlay: a top and a bottom bar, transparent in the middle.
+     Settings live in banner-config.js (reloaded every 5 s). Use editor.html to change them. -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent !important; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .bar {
+    position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 22px;
+    padding: 0 30px; box-sizing: border-box; overflow: hidden; color: var(--text); isolation: isolate;
+  }
+  .bar.top { top: 0; border-bottom: 3px solid var(--accent); }
+  .bar.bottom { bottom: 0; border-top: 3px solid var(--accent); }
+  .bar::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; background: var(--bg);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+  .bar::after {     /* soft sheen so the bar doesn't look flat */
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 55%);
+  }
+  .logo { height: 72%; width: auto; flex: 0 0 auto; object-fit: contain; }
+  .badge {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 10px; padding: 0.28em 0.75em;
+    border-radius: 0.4em; background: #e11d2a; color: #fff; font-weight: 800; letter-spacing: 0.08em;
+    font-size: 0.72em; text-transform: uppercase;
+  }
+  .badge::before {
+    content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: #fff; animation: blink 1.4s infinite;
+  }
+  .content { position: relative; flex: 1 1 auto; height: 100%; overflow: hidden; min-width: 0; }
+  .msg {
+    position: absolute; inset: 0; display: flex; align-items: center; white-space: nowrap;
+    font-weight: 650; opacity: 0; transform: translateY(14px); transition: opacity 0.6s, transform 0.6s;
+  }
+  .msg.on { opacity: 1; transform: none; }
+  .track { position: absolute; top: 0; bottom: 0; left: 0; display: flex; align-items: center; white-space: nowrap;
+    font-weight: 600; will-change: transform; }
+  .track .sep { color: var(--accent); margin: 0 1.1em; font-weight: 800; }
+  .side { flex: 0 0 auto; height: 82%; display: flex; align-items: center; position: relative; }
+  .side img { height: 100%; width: auto; border-radius: 10px; position: absolute; right: 0; opacity: 0; transition: opacity 0.8s; }
+  .side img.on { opacity: 1; position: relative; }
+  .clock { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; font-variant-numeric: tabular-nums;
+    font-size: 0.82em; font-weight: 600; }
+  .clock .zone { opacity: 0.6; font-size: 0.8em; margin-right: 6px; }
+  .mkt { padding: 0.22em 0.7em; border-radius: 0.4em; font-size: 0.72em; font-weight: 800; letter-spacing: 0.06em; }
+  .mkt.open { background: #16a34a; color: #fff; }
+  .mkt.pre, .mkt.after { background: #d97706; color: #fff; }
+  .mkt.closed { background: rgba(255,255,255,0.16); color: rgba(255,255,255,0.85); }
+  @keyframes blink { 50% { opacity: 0.25; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+(function () {
+  "use strict";
+  const stage = document.getElementById("stage");
+  const PREVIEW = new URLSearchParams(location.search).has("preview");
+  let config = null, key = "", timers = [], frames = [];
+
+  // ---------------------------------------------------------------- scale the 1920x1080 stage to the window
+  function fit() {
+    const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `scale(${k})`;
+    stage.style.left = `${(innerWidth - 1920 * k) / 2}px`;
+    stage.style.top = `${(innerHeight - 1080 * k) / 2}px`;
+  }
+  addEventListener("resize", fit); fit();
+
+  // ---------------------------------------------------------------- helpers
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function rgba(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return `rgba(11,17,32,${a})`;
+    const n = parseInt(m[1], 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  function stop() { timers.forEach(clearInterval); frames.forEach(cancelAnimationFrame); timers = []; frames = []; }
+
+  // US stock market session in New York time (regular hours; exchange holidays not included)
+  function market(now) {
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
+      .formatToParts(now).reduce((o, x) => (o[x.type] = x.value, o), {});
+    const m = (Number(p.hour) % 24) * 60 + Number(p.minute);
+    if (p.weekday === "Sat" || p.weekday === "Sun") return ["closed", "MARKET CLOSED"];
+    if (m >= 240 && m < 570) return ["pre", "PRE-MARKET"];
+    if (m >= 570 && m < 960) return ["open", "MARKET OPEN"];
+    if (m >= 960 && m < 1200) return ["after", "AFTER-HOURS"];
+    return ["closed", "MARKET CLOSED"];
+  }
+
+  // ---------------------------------------------------------------- one bar
+  function buildBar(where, c, font) {
+    if (!c || !c.show) return;
+    const h = Math.max(30, Math.min(400, Number(c.height) || 90));
+    const bar = el("div", `bar ${where}`);
+    bar.style.height = `${h}px`;
+    bar.style.fontFamily = font;
+    bar.style.fontSize = `${Number(c.textSize) || 32}px`;
+    bar.style.setProperty("--bg", rgba(c.background, c.opacity == null ? 0.88 : c.opacity));
+    bar.style.setProperty("--accent", c.accent || "#22c55e");
+    bar.style.setProperty("--text", c.textColor || "#ffffff");
+    if (!c.accent) bar.style.borderWidth = "0";
+
+    if (c.logo) { const img = el("img", "logo"); img.src = c.logo; img.alt = ""; img.onerror = () => img.remove(); bar.append(img); }
+    if (c.badge) bar.append(el("span", "badge", c.badge));
+
+    const content = el("div", "content");
+    bar.append(content);
+    const messages = (c.messages || []).map(String).filter(m => m.trim());
+    if (c.mode === "scroll" && messages.length) scroller(content, messages, Number(c.speed) || 110);
+    else if (messages.length) rotator(content, c.mode === "static" ? messages.slice(0, 1) : messages, Number(c.seconds) || 8);
+
+    if (c.clock || c.marketStatus) {
+      const box = el("div", "clock");
+      const mk = el("span", "mkt"), time = el("span");
+      if (c.marketStatus) box.append(mk);
+      if (c.clock) box.append(time);
+      const tick = () => {
+        const now = new Date();
+        if (c.clock) {
+          let t;
+          try { t = now.toLocaleTimeString("en-US", { timeZone: c.clockZone || undefined, hour: "numeric", minute: "2-digit" }); }
+          catch (e) { t = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+          time.replaceChildren(el("span", "zone", c.clockLabel || ""), document.createTextNode(t));
+        }
+        if (c.marketStatus) { const [cls, label] = market(now); mk.className = `mkt ${cls}`; mk.textContent = label; }
+      };
+      tick(); timers.push(setInterval(tick, 1000));
+      bar.append(box);
+    }
+
+    const images = (c.images || []).map(String).filter(Boolean);
+    if (images.length) {
+      const side = el("div", "side");
+      const imgs = images.map((src, i) => { const img = el("img", i === 0 ? "on" : ""); img.src = src; img.alt = ""; side.append(img); return img; });
+      if (imgs.length > 1) {
+        let i = 0;
+        timers.push(setInterval(() => { imgs[i].className = ""; i = (i + 1) % imgs.length; imgs[i].className = "on"; }, (Number(c.seconds) || 8) * 1000));
+      }
+      bar.append(side);
+    }
+    stage.append(bar);
+  }
+
+  // messages one at a time, fading; long ones shrink to fit
+  function rotator(box, messages, seconds) {
+    const items = messages.map(text => { const m = el("div", "msg", text); box.append(m); return m; });
+    const shrink = m => {
+      m.style.fontSize = "";
+      let size = 1;
+      while (m.scrollWidth > box.clientWidth && size > 0.55) { size -= 0.05; m.style.fontSize = `${size}em`; }
+    };
+    let i = 0;
+    const show = () => { items.forEach((m, j) => m.classList.toggle("on", j === i)); shrink(items[i]); };
+    requestAnimationFrame(show);
+    if (items.length > 1) timers.push(setInterval(() => { i = (i + 1) % items.length; show(); }, seconds * 1000));
+  }
+
+  // endless ticker: the messages twice in a row, moved left at `speed` px/s
+  function scroller(box, messages, speed) {
+    const track = el("div", "track");
+    const add = () => messages.forEach(text => { track.append(el("span", null, text), el("span", "sep", "•")); });
+    add(); add();
+    box.append(track);
+    let x = 0, last = performance.now();
+    const step = now => {
+      const half = track.scrollWidth / 2;
+      x -= speed * Math.min(0.1, (now - last) / 1000); last = now;
+      if (half && -x >= half) x += half;
+      track.style.transform = `translateX(${x}px)`;
+      frames[0] = requestAnimationFrame(step);
+    };
+    frames[0] = requestAnimationFrame(step);
+  }
+
+  function render(next) {
+    const k = JSON.stringify(next);
+    if (k === key) return;
+    key = k; config = next;
+    stop();
+    stage.replaceChildren();
+    buildBar("top", next.top, next.font);
+    buildBar("bottom", next.bottom, next.font);
+  }
+
+  // ---------------------------------------------------------------- load + live reload of banner-config.js
+  function load() {
+    const s = document.createElement("script");
+    s.src = `banner-config.js?t=${Date.now()}`;
+    s.onload = () => { if (window.BANNER) render(window.BANNER); s.remove(); };
+    s.onerror = () => s.remove();
+    document.head.append(s);
+  }
+  if (PREVIEW) {
+    addEventListener("message", e => { if (e.data && e.data.type === "banner-config") render(e.data.config); });
+    parent.postMessage({ type: "banner-ready" }, "*");
+  } else {
+    load();
+    setInterval(load, 5000);
+  }
+})();
+</script>
+</body>
+</html>
