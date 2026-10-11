@@ -1,0 +1,19 @@
+{
+  "_comment": "A 24/7 trivia game show: rounds run back to back, theme changes by weekday.",
+  "name": "Trivia Arcade 24/7",
+  "niche": "trivia",
+  "scene": "space",
+  "headline": "Non-stop live trivia · play in chat",
+  "broadcast_match": "Trivia",
+  "pomodoro": false,
+  "tasks": false,
+  "ticker": [
+    "Type A, B, C or D to answer · fastest correct answer earns a bonus",
+    "Super Chat = the next question is worth double for everyone"
+  ],
+  "music_dir": "trivia",
+  "music_volume": 0.35,
+  "break_question": false,
+  "trivia": {"enabled": true, "always_on": true, "minutes": 30, "question_seconds": 25,
+             "leaderboard_every": 8}
+}

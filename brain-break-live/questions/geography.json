@@ -1,0 +1,605 @@
+{
+ "title": "Around the World",
+ "questions": [
+  {
+   "q": "What is the capital of Australia?",
+   "a": "Canberra",
+   "wrong": [
+    "Sydney",
+    "Melbourne",
+    "Perth"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "What is the capital of Canada?",
+   "a": "Ottawa",
+   "wrong": [
+    "Toronto",
+    "Vancouver",
+    "Montreal"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "What is the longest river in Africa?",
+   "a": "The Nile",
+   "wrong": [
+    "The Congo",
+    "The Niger",
+    "The Zambezi"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "What is the largest ocean on Earth?",
+   "a": "Pacific Ocean",
+   "wrong": [
+    "Atlantic Ocean",
+    "Indian Ocean",
+    "Arctic Ocean"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "Which is the largest country in the world by area?",
+   "a": "Russia",
+   "wrong": [
+    "Canada",
+    "China",
+    "United States"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "What is the smallest country in the world?",
+   "a": "Vatican City",
+   "wrong": [
+    "Monaco",
+    "San Marino",
+    "Liechtenstein"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "Mount Everest sits on the border of Nepal and which other country?",
+   "a": "China",
+   "wrong": [
+    "India",
+    "Bhutan",
+    "Pakistan"
+   ],
+   "cat": "Mountains"
+  },
+  {
+   "q": "What is the capital of Japan?",
+   "a": "Tokyo",
+   "wrong": [
+    "Kyoto",
+    "Osaka",
+    "Hiroshima"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "How many continents are there (in the most common count)?",
+   "a": "7",
+   "wrong": [
+    "5",
+    "6",
+    "8"
+   ],
+   "cat": "World Facts"
+  },
+  {
+   "q": "What is the largest hot desert in the world?",
+   "a": "Sahara",
+   "wrong": [
+    "Gobi",
+    "Kalahari",
+    "Arabian"
+   ],
+   "cat": "Deserts"
+  },
+  {
+   "q": "What is the capital of Brazil?",
+   "a": "Brasília",
+   "wrong": [
+    "Rio de Janeiro",
+    "São Paulo",
+    "Salvador"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which country is shaped like a boot?",
+   "a": "Italy",
+   "wrong": [
+    "Greece",
+    "Spain",
+    "Portugal"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "The Great Barrier Reef lies off the coast of which country?",
+   "a": "Australia",
+   "wrong": [
+    "Indonesia",
+    "Philippines",
+    "New Zealand"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "What is the capital of Egypt?",
+   "a": "Cairo",
+   "wrong": [
+    "Alexandria",
+    "Giza",
+    "Luxor"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which river flows through Paris?",
+   "a": "The Seine",
+   "wrong": [
+    "The Thames",
+    "The Rhine",
+    "The Loire"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "Which river flows through London?",
+   "a": "The Thames",
+   "wrong": [
+    "The Seine",
+    "The Severn",
+    "The Danube"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "What is the largest island in the world that is not a continent?",
+   "a": "Greenland",
+   "wrong": [
+    "New Guinea",
+    "Borneo",
+    "Madagascar"
+   ],
+   "cat": "World Facts"
+  },
+  {
+   "q": "What is the capital of Spain?",
+   "a": "Madrid",
+   "wrong": [
+    "Barcelona",
+    "Seville",
+    "Valencia"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which is the largest US state by area?",
+   "a": "Alaska",
+   "wrong": [
+    "Texas",
+    "California",
+    "Montana"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "The city of Marrakech is in which country?",
+   "a": "Morocco",
+   "wrong": [
+    "Algeria",
+    "Tunisia",
+    "Egypt"
+   ],
+   "cat": "Cities"
+  },
+  {
+   "q": "What is the capital of Turkey?",
+   "a": "Ankara",
+   "wrong": [
+    "Istanbul",
+    "Izmir",
+    "Antalya"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which mountain range is traditionally seen as part of the border between Europe and Asia?",
+   "a": "The Ural Mountains",
+   "wrong": [
+    "The Alps",
+    "The Andes",
+    "The Rockies"
+   ],
+   "cat": "Mountains"
+  },
+  {
+   "q": "The Andes mountains are on which continent?",
+   "a": "South America",
+   "wrong": [
+    "North America",
+    "Africa",
+    "Asia"
+   ],
+   "cat": "Mountains"
+  },
+  {
+   "q": "What is the capital of South Korea?",
+   "a": "Seoul",
+   "wrong": [
+    "Busan",
+    "Incheon",
+    "Pyongyang"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Machu Picchu is in which country?",
+   "a": "Peru",
+   "wrong": [
+    "Bolivia",
+    "Chile",
+    "Ecuador"
+   ],
+   "cat": "Landmarks"
+  },
+  {
+   "q": "The Taj Mahal is in which country?",
+   "a": "India",
+   "wrong": [
+    "Pakistan",
+    "Bangladesh",
+    "Iran"
+   ],
+   "cat": "Landmarks"
+  },
+  {
+   "q": "What is the deepest known ocean trench?",
+   "a": "Mariana Trench",
+   "wrong": [
+    "Puerto Rico Trench",
+    "Java Trench",
+    "Tonga Trench"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "What is the capital of Kenya?",
+   "a": "Nairobi",
+   "wrong": [
+    "Mombasa",
+    "Kisumu",
+    "Nakuru"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Buenos Aires is the capital of which country?",
+   "a": "Argentina",
+   "wrong": [
+    "Uruguay",
+    "Chile",
+    "Paraguay"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "What is the largest country in South America by area?",
+   "a": "Brazil",
+   "wrong": [
+    "Argentina",
+    "Peru",
+    "Colombia"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "Reykjavik is the capital of which country?",
+   "a": "Iceland",
+   "wrong": [
+    "Norway",
+    "Finland",
+    "Ireland"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "The Strait of Gibraltar separates Spain from which country?",
+   "a": "Morocco",
+   "wrong": [
+    "Algeria",
+    "Portugal",
+    "Tunisia"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "Which US state is made up entirely of islands?",
+   "a": "Hawaii",
+   "wrong": [
+    "Florida",
+    "Alaska",
+    "Rhode Island"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "What is the capital of Germany?",
+   "a": "Berlin",
+   "wrong": [
+    "Munich",
+    "Frankfurt",
+    "Hamburg"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which two countries share the longest international border?",
+   "a": "Canada and the United States",
+   "wrong": [
+    "Russia and Kazakhstan",
+    "Chile and Argentina",
+    "China and Mongolia"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "Wellington is the capital of which country?",
+   "a": "New Zealand",
+   "wrong": [
+    "Australia",
+    "Fiji",
+    "Papua New Guinea"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "What is the tallest mountain in Africa?",
+   "a": "Mount Kilimanjaro",
+   "wrong": [
+    "Mount Kenya",
+    "Mount Stanley",
+    "Ras Dashen"
+   ],
+   "cat": "Mountains"
+  },
+  {
+   "q": "Which body of water is so salty that people float in it easily?",
+   "a": "The Dead Sea",
+   "wrong": [
+    "The Red Sea",
+    "The Black Sea",
+    "The Caspian Sea"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "The Panama Canal connects the Atlantic Ocean with which ocean?",
+   "a": "Pacific Ocean",
+   "wrong": [
+    "Indian Ocean",
+    "Arctic Ocean",
+    "Southern Ocean"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "Which country is called the \"Land of the Rising Sun\"?",
+   "a": "Japan",
+   "wrong": [
+    "China",
+    "South Korea",
+    "Thailand"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "What is the capital of Thailand?",
+   "a": "Bangkok",
+   "wrong": [
+    "Chiang Mai",
+    "Phuket",
+    "Pattaya"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which Italian city is famous for its canals and gondolas?",
+   "a": "Venice",
+   "wrong": [
+    "Florence",
+    "Milan",
+    "Naples"
+   ],
+   "cat": "Cities"
+  },
+  {
+   "q": "Which country has more lakes than any other?",
+   "a": "Canada",
+   "wrong": [
+    "Finland",
+    "Russia",
+    "United States"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "What is the capital of Norway?",
+   "a": "Oslo",
+   "wrong": [
+    "Bergen",
+    "Stockholm",
+    "Copenhagen"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Greenland is an autonomous territory within which kingdom?",
+   "a": "Denmark",
+   "wrong": [
+    "Norway",
+    "Iceland",
+    "Sweden"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "What is the largest lake in Africa?",
+   "a": "Lake Victoria",
+   "wrong": [
+    "Lake Tanganyika",
+    "Lake Malawi",
+    "Lake Chad"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "Which US city is nicknamed \"the Big Apple\"?",
+   "a": "New York City",
+   "wrong": [
+    "Chicago",
+    "Boston",
+    "Los Angeles"
+   ],
+   "cat": "Cities"
+  },
+  {
+   "q": "Which desert covers much of Mongolia and northern China?",
+   "a": "The Gobi",
+   "wrong": [
+    "The Sahara",
+    "The Atacama",
+    "The Kalahari"
+   ],
+   "cat": "Deserts"
+  },
+  {
+   "q": "What is the capital of Ireland?",
+   "a": "Dublin",
+   "wrong": [
+    "Cork",
+    "Galway",
+    "Belfast"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which imaginary line divides Earth into the Northern and Southern Hemispheres?",
+   "a": "The Equator",
+   "wrong": [
+    "The Prime Meridian",
+    "The Tropic of Cancer",
+    "The International Date Line"
+   ],
+   "cat": "World Facts"
+  },
+  {
+   "q": "What is the capital of Mexico?",
+   "a": "Mexico City",
+   "wrong": [
+    "Guadalajara",
+    "Cancún",
+    "Monterrey"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "What is the longest river in South America?",
+   "a": "The Amazon",
+   "wrong": [
+    "The Paraná",
+    "The Orinoco",
+    "The São Francisco"
+   ],
+   "cat": "Rivers & Lakes"
+  },
+  {
+   "q": "Istanbul is in which country?",
+   "a": "Turkey",
+   "wrong": [
+    "Greece",
+    "Bulgaria",
+    "Cyprus"
+   ],
+   "cat": "Cities"
+  },
+  {
+   "q": "What is the capital of Portugal?",
+   "a": "Lisbon",
+   "wrong": [
+    "Porto",
+    "Faro",
+    "Coimbra"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "Which African country was formerly known as Abyssinia?",
+   "a": "Ethiopia",
+   "wrong": [
+    "Eritrea",
+    "Somalia",
+    "Sudan"
+   ],
+   "cat": "Countries"
+  },
+  {
+   "q": "Which ocean lies between Africa and Australia?",
+   "a": "Indian Ocean",
+   "wrong": [
+    "Pacific Ocean",
+    "Atlantic Ocean",
+    "Southern Ocean"
+   ],
+   "cat": "Oceans & Seas"
+  },
+  {
+   "q": "What is the capital of Switzerland?",
+   "a": "Bern",
+   "wrong": [
+    "Zurich",
+    "Geneva",
+    "Basel"
+   ],
+   "cat": "Capitals"
+  },
+  {
+   "q": "The ancient city of Petra is in which country?",
+   "a": "Jordan",
+   "wrong": [
+    "Egypt",
+    "Israel",
+    "Lebanon"
+   ],
+   "cat": "Landmarks"
+  },
+  {
+   "q": "What is the world's highest uninterrupted waterfall?",
+   "a": "Angel Falls",
+   "wrong": [
+    "Niagara Falls",
+    "Victoria Falls",
+    "Iguazu Falls"
+   ],
+   "cat": "Landmarks"
+  },
+  {
+   "q": "The Grand Canyon is in which US state?",
+   "a": "Arizona",
+   "wrong": [
+    "Nevada",
+    "Utah",
+    "Colorado"
+   ],
+   "cat": "Landmarks"
+  }
+ ]
+}

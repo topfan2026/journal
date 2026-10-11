@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain Break Live</title>
+<link rel="stylesheet" href="/static/overlay.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="scene" width="1920" height="1080"></canvas>
+  <div id="shade"></div>
+
+  <header id="brand" class="glass">
+    <div class="live-dot"></div>
+    <div>
+      <div id="channel">Brain Break Live</div>
+      <div id="headline"></div>
+    </div>
+    <div id="clock"></div>
+  </header>
+
+  <!-- study / ambient layer -->
+  <section id="study-layer">
+    <div id="pomo" class="glass card hidden">
+      <div id="pomo-phase">FOCUS</div>
+      <svg id="ring" viewBox="0 0 220 220" aria-hidden="true">
+        <circle class="track" cx="110" cy="110" r="96"></circle>
+        <circle id="ring-fill" class="fill" cx="110" cy="110" r="96"></circle>
+      </svg>
+      <div id="pomo-time">25:00</div>
+      <div id="pomo-sub"></div>
+    </div>
+
+    <div id="tasks" class="glass card hidden">
+      <h2>Today's tasks <span class="hint">type <b>!task</b> your task · <b>!done</b></span></h2>
+      <ul id="task-list"></ul>
+      <div id="task-empty">Set your goal: type <b>!task</b> followed by what you're working on</div>
+    </div>
+
+    <div id="checkin" class="glass card hidden">
+      <div id="checkin-count">0</div>
+      <div id="checkin-label"></div>
+    </div>
+
+    <div id="markets" class="glass card hidden">
+      <h2>Market hours <span class="hint">regular sessions</span></h2>
+      <ul id="market-list"></ul>
+    </div>
+
+    <div id="breakq" class="glass card hidden">
+      <div class="eyebrow">Break-time brain teaser</div>
+      <div id="breakq-text"></div>
+      <ol id="breakq-options" class="options small"></ol>
+    </div>
+
+    <div id="goal" class="glass hidden">
+      <div id="goal-label"></div>
+      <div class="bar"><div id="goal-fill"></div></div>
+      <div id="goal-num"></div>
+    </div>
+  </section>
+
+  <!-- trivia layer -->
+  <section id="trivia-layer" class="hidden">
+    <div id="t-top" class="glass">
+      <span class="badge">TRIVIA</span>
+      <span id="t-pack"></span>
+      <span id="t-num"></span>
+      <span id="t-double" class="badge gold hidden">2× POINTS</span>
+      <span id="t-players"></span>
+    </div>
+
+    <div id="t-main" class="glass card">
+      <div id="t-intro" class="hidden">
+        <div class="big" id="t-intro-title">Trivia starts now!</div>
+        <div class="how">Type <b>A</b>, <b>B</b>, <b>C</b> or <b>D</b> in chat to answer.<br>
+          Correct = points · fastest correct = bonus · first answer counts</div>
+      </div>
+      <div id="t-q" class="hidden">
+        <div class="eyebrow" id="t-cat"></div>
+        <div id="t-question"></div>
+        <ol id="t-options" class="options"></ol>
+        <div id="t-timer"><div id="t-timer-fill"></div></div>
+        <div id="t-status"></div>
+      </div>
+      <div id="t-board" class="hidden">
+        <div class="big" id="t-board-title">Leaderboard</div>
+        <ol id="t-board-list" class="board"></ol>
+      </div>
+    </div>
+
+    <div id="t-side" class="glass card">
+      <h2>Top players</h2>
+      <ol id="t-side-list" class="board small"></ol>
+      <div id="t-side-empty">Answer to get on the board!</div>
+    </div>
+  </section>
+
+  <div id="banner" class="glass hidden"></div>
+  <div id="toasts"></div>
+
+  <footer id="ticker" class="glass">
+    <span id="music" class="hidden">♪ <span id="track"></span></span>
+    <span id="ticker-text"></span>
+  </footer>
+
+  <div id="offline" class="hidden">Reconnecting to Brain Break Live…</div>
+</div>
+<audio id="player" preload="auto"></audio>
+<script src="/static/scenes.js"></script>
+<script src="/static/overlay.js"></script>
+</body>
+</html>

@@ -1,0 +1,605 @@
+{
+ "title": "Science Lab",
+ "questions": [
+  {
+   "q": "What is the chemical symbol for gold?",
+   "a": "Au",
+   "wrong": [
+    "Ag",
+    "Gd",
+    "Go"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "Which planet is known as the Red Planet?",
+   "a": "Mars",
+   "wrong": [
+    "Venus",
+    "Jupiter",
+    "Mercury"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "At sea level, water boils at what temperature in Celsius?",
+   "a": "100 °C",
+   "wrong": [
+    "90 °C",
+    "110 °C",
+    "212 °C"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which gas do plants take from the air for photosynthesis?",
+   "a": "Carbon dioxide",
+   "wrong": [
+    "Oxygen",
+    "Nitrogen",
+    "Hydrogen"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "What is the largest planet in our solar system?",
+   "a": "Jupiter",
+   "wrong": [
+    "Saturn",
+    "Neptune",
+    "Earth"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "How many bones are in the adult human body?",
+   "a": "206",
+   "wrong": [
+    "196",
+    "212",
+    "230"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "Which part of a cell contains most of its genetic material?",
+   "a": "The nucleus",
+   "wrong": [
+    "The ribosome",
+    "The cell membrane",
+    "The cytoplasm"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "Roughly how fast does light travel?",
+   "a": "300,000 km per second",
+   "wrong": [
+    "30,000 km per second",
+    "3,000,000 km per second",
+    "150,000 km per second"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "What is the hardest natural substance?",
+   "a": "Diamond",
+   "wrong": [
+    "Quartz",
+    "Granite",
+    "Steel"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "What is the chemical formula for water?",
+   "a": "H2O",
+   "wrong": [
+    "CO2",
+    "O2",
+    "HO2"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "Which planet is most famous for its rings?",
+   "a": "Saturn",
+   "wrong": [
+    "Uranus",
+    "Mars",
+    "Mercury"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What force keeps us on the ground?",
+   "a": "Gravity",
+   "wrong": [
+    "Magnetism",
+    "Friction",
+    "Inertia"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which particle has a negative electric charge?",
+   "a": "Electron",
+   "wrong": [
+    "Proton",
+    "Neutron",
+    "Photon"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "What is the closest star to Earth?",
+   "a": "The Sun",
+   "wrong": [
+    "Proxima Centauri",
+    "Sirius",
+    "Polaris"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "Which organ pumps blood around the body?",
+   "a": "The heart",
+   "wrong": [
+    "The lungs",
+    "The liver",
+    "The kidneys"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "What is the smallest unit of life?",
+   "a": "The cell",
+   "wrong": [
+    "The atom",
+    "The molecule",
+    "The organ"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "What is the chemical symbol for sodium?",
+   "a": "Na",
+   "wrong": [
+    "So",
+    "Sd",
+    "S"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "Which vitamin does your skin make when exposed to sunlight?",
+   "a": "Vitamin D",
+   "wrong": [
+    "Vitamin C",
+    "Vitamin A",
+    "Vitamin B12"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "Which gas makes up most of Earth's atmosphere?",
+   "a": "Nitrogen",
+   "wrong": [
+    "Oxygen",
+    "Carbon dioxide",
+    "Argon"
+   ],
+   "cat": "Earth Science"
+  },
+  {
+   "q": "Which part of the cell is called its \"powerhouse\"?",
+   "a": "Mitochondria",
+   "wrong": [
+    "Nucleus",
+    "Golgi apparatus",
+    "Ribosome"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "Which planet is closest to the Sun?",
+   "a": "Mercury",
+   "wrong": [
+    "Venus",
+    "Mars",
+    "Earth"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What is the chemical symbol for iron?",
+   "a": "Fe",
+   "wrong": [
+    "Ir",
+    "In",
+    "I"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "How many planets are in our solar system?",
+   "a": "8",
+   "wrong": [
+    "7",
+    "9",
+    "10"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What kind of animal is a whale?",
+   "a": "A mammal",
+   "wrong": [
+    "A fish",
+    "A reptile",
+    "An amphibian"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "What is the freezing point of water in Fahrenheit?",
+   "a": "32 °F",
+   "wrong": [
+    "0 °F",
+    "100 °F",
+    "-32 °F"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which blood cells help your body fight infection?",
+   "a": "White blood cells",
+   "wrong": [
+    "Red blood cells",
+    "Platelets",
+    "Plasma cells"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "Who developed the theory of relativity?",
+   "a": "Albert Einstein",
+   "wrong": [
+    "Isaac Newton",
+    "Niels Bohr",
+    "Stephen Hawking"
+   ],
+   "cat": "Scientists"
+  },
+  {
+   "q": "Who described the laws of motion and universal gravitation in 1687?",
+   "a": "Isaac Newton",
+   "wrong": [
+    "Galileo Galilei",
+    "Johannes Kepler",
+    "Albert Einstein"
+   ],
+   "cat": "Scientists"
+  },
+  {
+   "q": "What is the largest organ of the human body?",
+   "a": "The skin",
+   "wrong": [
+    "The liver",
+    "The brain",
+    "The lungs"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "What is the unit of electrical resistance?",
+   "a": "Ohm",
+   "wrong": [
+    "Volt",
+    "Ampere",
+    "Watt"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which scientist is famous for the theory of evolution by natural selection?",
+   "a": "Charles Darwin",
+   "wrong": [
+    "Gregor Mendel",
+    "Louis Pasteur",
+    "Alfred Nobel"
+   ],
+   "cat": "Scientists"
+  },
+  {
+   "q": "What is the pH of pure water at 25 °C?",
+   "a": "7",
+   "wrong": [
+    "0",
+    "5",
+    "14"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "What is the most abundant element in the Sun?",
+   "a": "Hydrogen",
+   "wrong": [
+    "Helium",
+    "Oxygen",
+    "Carbon"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "Which planet rotates on its side?",
+   "a": "Uranus",
+   "wrong": [
+    "Neptune",
+    "Saturn",
+    "Venus"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What is the scientific study of earthquakes called?",
+   "a": "Seismology",
+   "wrong": [
+    "Meteorology",
+    "Volcanology",
+    "Geology"
+   ],
+   "cat": "Earth Science"
+  },
+  {
+   "q": "Which element has the chemical symbol O?",
+   "a": "Oxygen",
+   "wrong": [
+    "Osmium",
+    "Gold",
+    "Oganesson"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "What does DNA stand for?",
+   "a": "Deoxyribonucleic acid",
+   "wrong": [
+    "Dinitrogen acid",
+    "Dynamic nuclear acid",
+    "Deoxyribose nitrate"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "How many chambers does the human heart have?",
+   "a": "4",
+   "wrong": [
+    "2",
+    "3",
+    "6"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "What kind of energy does a moving object have?",
+   "a": "Kinetic energy",
+   "wrong": [
+    "Potential energy",
+    "Chemical energy",
+    "Nuclear energy"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which metal is liquid at room temperature?",
+   "a": "Mercury",
+   "wrong": [
+    "Lead",
+    "Tin",
+    "Aluminium"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "What do we call animals that eat only plants?",
+   "a": "Herbivores",
+   "wrong": [
+    "Carnivores",
+    "Omnivores",
+    "Insectivores"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "What is the name of the galaxy we live in?",
+   "a": "The Milky Way",
+   "wrong": [
+    "Andromeda",
+    "Triangulum",
+    "Whirlpool"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "Which force resists motion between two surfaces that touch?",
+   "a": "Friction",
+   "wrong": [
+    "Gravity",
+    "Buoyancy",
+    "Tension"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which bones protect the brain?",
+   "a": "The skull",
+   "wrong": [
+    "The ribs",
+    "The spine",
+    "The pelvis"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "What is a baby frog called?",
+   "a": "A tadpole",
+   "wrong": [
+    "A kit",
+    "A fry",
+    "A calf"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "Which planet has the hottest surface in our solar system?",
+   "a": "Venus",
+   "wrong": [
+    "Mercury",
+    "Mars",
+    "Jupiter"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "A light-year is a measure of what?",
+   "a": "Distance",
+   "wrong": [
+    "Time",
+    "Brightness",
+    "Speed"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "Who discovered penicillin in 1928?",
+   "a": "Alexander Fleming",
+   "wrong": [
+    "Louis Pasteur",
+    "Marie Curie",
+    "Edward Jenner"
+   ],
+   "cat": "Scientists"
+  },
+  {
+   "q": "Roughly how long does sunlight take to reach Earth?",
+   "a": "About 8 minutes",
+   "wrong": [
+    "About 8 seconds",
+    "About 8 hours",
+    "About 1 minute"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What is the SI unit of force?",
+   "a": "Newton",
+   "wrong": [
+    "Joule",
+    "Pascal",
+    "Watt"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "What is the chemical symbol for potassium?",
+   "a": "K",
+   "wrong": [
+    "P",
+    "Po",
+    "Pt"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "What is the largest animal that has ever lived?",
+   "a": "The blue whale",
+   "wrong": [
+    "The African elephant",
+    "Argentinosaurus",
+    "The whale shark"
+   ],
+   "cat": "Biology"
+  },
+  {
+   "q": "Which planet has the Great Red Spot, a giant storm?",
+   "a": "Jupiter",
+   "wrong": [
+    "Mars",
+    "Saturn",
+    "Neptune"
+   ],
+   "cat": "Space"
+  },
+  {
+   "q": "What do we call a substance that speeds up a chemical reaction without being used up?",
+   "a": "A catalyst",
+   "wrong": [
+    "A solvent",
+    "An isotope",
+    "A polymer"
+   ],
+   "cat": "Chemistry"
+  },
+  {
+   "q": "Who developed the first widely used injected polio vaccine in the 1950s?",
+   "a": "Jonas Salk",
+   "wrong": [
+    "Albert Sabin",
+    "Edward Jenner",
+    "Robert Koch"
+   ],
+   "cat": "Scientists"
+  },
+  {
+   "q": "Which layer of the atmosphere contains the ozone layer?",
+   "a": "Stratosphere",
+   "wrong": [
+    "Troposphere",
+    "Mesosphere",
+    "Thermosphere"
+   ],
+   "cat": "Earth Science"
+  },
+  {
+   "q": "How many teeth does an adult human usually have, including wisdom teeth?",
+   "a": "32",
+   "wrong": [
+    "28",
+    "30",
+    "36"
+   ],
+   "cat": "Human Body"
+  },
+  {
+   "q": "What is it called when a liquid turns into a gas at its surface?",
+   "a": "Evaporation",
+   "wrong": [
+    "Condensation",
+    "Sublimation",
+    "Freezing"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "What is absolute zero in Celsius?",
+   "a": "-273.15 °C",
+   "wrong": [
+    "-100 °C",
+    "-373.15 °C",
+    "-173.15 °C"
+   ],
+   "cat": "Physics"
+  },
+  {
+   "q": "Which part of a plant does most of the photosynthesis?",
+   "a": "The leaves",
+   "wrong": [
+    "The roots",
+    "The stem",
+    "The flowers"
+   ],
+   "cat": "Biology"
+  }
+ ]
+}

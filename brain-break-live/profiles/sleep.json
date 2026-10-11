@@ -1,0 +1,22 @@
+{
+  "_comment": "Ambient sleep / relax stream: rain on a window, no timer, a nightly check-in counter.",
+  "name": "Rainy Night Sleep",
+  "niche": "sleep",
+  "scene": "rain-window",
+  "headline": "Rain sounds for sleep, study & relaxing",
+  "broadcast_match": "Sleep",
+  "pomodoro": false,
+  "tasks": false,
+  "checkin_command": "!sleep",
+  "checkin_label": "people resting with us today",
+  "clock": true,
+  "ticker": [
+    "Type !sleep to join tonight's count",
+    "Leave it running all night",
+    "Sweet dreams"
+  ],
+  "music_dir": "sleep",
+  "music_volume": 0.5,
+  "break_question": false,
+  "trivia": {"enabled": false}
+}

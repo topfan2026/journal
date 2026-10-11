@@ -1,0 +1,505 @@
+{
+ "title": "Sports Night",
+ "questions": [
+  {
+   "q": "How many players does a soccer team have on the field?",
+   "a": "11",
+   "wrong": [
+    "9",
+    "10",
+    "12"
+   ],
+   "cat": "Football / Soccer"
+  },
+  {
+   "q": "How often are the Summer Olympic Games normally held?",
+   "a": "Every 4 years",
+   "wrong": [
+    "Every 2 years",
+    "Every 3 years",
+    "Every 5 years"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "Which country won the first FIFA World Cup in 1930?",
+   "a": "Uruguay",
+   "wrong": [
+    "Brazil",
+    "Argentina",
+    "Italy"
+   ],
+   "cat": "Football / Soccer"
+  },
+  {
+   "q": "In which sport do players hit a shuttlecock?",
+   "a": "Badminton",
+   "wrong": [
+    "Squash",
+    "Table tennis",
+    "Volleyball"
+   ],
+   "cat": "Racket Sports"
+  },
+  {
+   "q": "How many points is a touchdown worth in American football, before the extra point?",
+   "a": "6",
+   "wrong": [
+    "7",
+    "3",
+    "5"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "How many holes are in a standard round of golf?",
+   "a": "18",
+   "wrong": [
+    "9",
+    "12",
+    "20"
+   ],
+   "cat": "Golf"
+  },
+  {
+   "q": "What is the standard maximum break in snooker?",
+   "a": "147",
+   "wrong": [
+    "160",
+    "100",
+    "180"
+   ],
+   "cat": "Bat & Ball"
+  },
+  {
+   "q": "In tennis, what is a score of zero called?",
+   "a": "Love",
+   "wrong": [
+    "Nil",
+    "Duck",
+    "Zip"
+   ],
+   "cat": "Racket Sports"
+  },
+  {
+   "q": "Which sport is played at Wimbledon?",
+   "a": "Tennis",
+   "wrong": [
+    "Golf",
+    "Cricket",
+    "Croquet"
+   ],
+   "cat": "Racket Sports"
+  },
+  {
+   "q": "How many players per team are on a basketball court?",
+   "a": "5",
+   "wrong": [
+    "6",
+    "7",
+    "4"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "Which country hosts the Tour de France?",
+   "a": "France",
+   "wrong": [
+    "Italy",
+    "Belgium",
+    "Spain"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "In which sport would you perform a slam dunk?",
+   "a": "Basketball",
+   "wrong": [
+    "Volleyball",
+    "Netball",
+    "Handball"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "How long is a marathon?",
+   "a": "26.2 miles",
+   "wrong": [
+    "20 miles",
+    "24.8 miles",
+    "30 miles"
+   ],
+   "cat": "Athletics"
+  },
+  {
+   "q": "What color is the center of an Olympic archery target?",
+   "a": "Gold",
+   "wrong": [
+    "Red",
+    "Blue",
+    "Black"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "Which boxer called himself \"The Greatest\"?",
+   "a": "Muhammad Ali",
+   "wrong": [
+    "Mike Tyson",
+    "Joe Frazier",
+    "George Foreman"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "How many rings are on the Olympic flag?",
+   "a": "5",
+   "wrong": [
+    "4",
+    "6",
+    "7"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "In baseball, how many strikes make a strikeout?",
+   "a": "3",
+   "wrong": [
+    "2",
+    "4",
+    "5"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "What do ice hockey players hit into the goal?",
+   "a": "A puck",
+   "wrong": [
+    "A ball",
+    "A disc",
+    "A stone"
+   ],
+   "cat": "Winter Sports"
+  },
+  {
+   "q": "Usain Bolt is famous in which sport?",
+   "a": "Sprinting",
+   "wrong": [
+    "Swimming",
+    "Long jump",
+    "Cycling"
+   ],
+   "cat": "Athletics"
+  },
+  {
+   "q": "In which country did the ancient Olympic Games begin?",
+   "a": "Greece",
+   "wrong": [
+    "Italy",
+    "Egypt",
+    "Turkey"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "How many players does a rugby union team have on the field?",
+   "a": "15",
+   "wrong": [
+    "13",
+    "11",
+    "12"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "Sumo wrestling is most associated with which country?",
+   "a": "Japan",
+   "wrong": [
+    "China",
+    "Mongolia",
+    "South Korea"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "In cricket, how many legal balls are in a standard over?",
+   "a": "6",
+   "wrong": [
+    "5",
+    "8",
+    "10"
+   ],
+   "cat": "Bat & Ball"
+  },
+  {
+   "q": "The Masters tournament at Augusta is a major in which sport?",
+   "a": "Golf",
+   "wrong": [
+    "Tennis",
+    "Snooker",
+    "Darts"
+   ],
+   "cat": "Golf"
+  },
+  {
+   "q": "Which swimming stroke is named after an insect?",
+   "a": "Butterfly",
+   "wrong": [
+    "Dragonfly",
+    "Grasshopper",
+    "Mosquito"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "How many minutes is a regular soccer match, not counting stoppage time?",
+   "a": "90",
+   "wrong": [
+    "80",
+    "100",
+    "120"
+   ],
+   "cat": "Football / Soccer"
+  },
+  {
+   "q": "How many points is a field goal worth in American football?",
+   "a": "3",
+   "wrong": [
+    "2",
+    "1",
+    "6"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "Which basketball star wore number 23 for the Chicago Bulls in the 1990s?",
+   "a": "Michael Jordan",
+   "wrong": [
+    "Scottie Pippen",
+    "Magic Johnson",
+    "Larry Bird"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "What is three strikes in a row called in bowling?",
+   "a": "A turkey",
+   "wrong": [
+    "A hat-trick",
+    "A triple",
+    "A gobbler"
+   ],
+   "cat": "Bat & Ball"
+  },
+  {
+   "q": "Which country won the 2014 FIFA World Cup?",
+   "a": "Germany",
+   "wrong": [
+    "Argentina",
+    "Brazil",
+    "Spain"
+   ],
+   "cat": "Football / Soccer"
+  },
+  {
+   "q": "The Stanley Cup is the championship trophy in which sport?",
+   "a": "Ice hockey",
+   "wrong": [
+    "Basketball",
+    "Baseball",
+    "American football"
+   ],
+   "cat": "Winter Sports"
+  },
+  {
+   "q": "How many players per team are on a volleyball court?",
+   "a": "6",
+   "wrong": [
+    "5",
+    "7",
+    "4"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "Which Grand Slam tennis tournament is played on clay?",
+   "a": "The French Open",
+   "wrong": [
+    "Wimbledon",
+    "The US Open",
+    "The Australian Open"
+   ],
+   "cat": "Racket Sports"
+  },
+  {
+   "q": "Which sport is Canada's official national summer sport?",
+   "a": "Lacrosse",
+   "wrong": [
+    "Baseball",
+    "Soccer",
+    "Rugby"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "The Super Bowl is the championship game of which league?",
+   "a": "The NFL",
+   "wrong": [
+    "The NBA",
+    "MLB",
+    "The NHL"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "Which martial art's name means \"the gentle way\"?",
+   "a": "Judo",
+   "wrong": [
+    "Karate",
+    "Taekwondo",
+    "Kung fu"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "How many players per team are in the water in a water polo match?",
+   "a": "7",
+   "wrong": [
+    "6",
+    "5",
+    "11"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "Who invented basketball in 1891?",
+   "a": "James Naismith",
+   "wrong": [
+    "Abner Doubleday",
+    "Walter Camp",
+    "William Morgan"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "In Formula 1, which flag signals the end of the race?",
+   "a": "The chequered flag",
+   "wrong": [
+    "The red flag",
+    "The yellow flag",
+    "The blue flag"
+   ],
+   "cat": "Motorsport"
+  },
+  {
+   "q": "What is the highest possible score with three darts?",
+   "a": "180",
+   "wrong": [
+    "150",
+    "171",
+    "200"
+   ],
+   "cat": "Bat & Ball"
+  },
+  {
+   "q": "In which sport are the terms \"birdie\" and \"eagle\" used?",
+   "a": "Golf",
+   "wrong": [
+    "Badminton",
+    "Cricket",
+    "Archery"
+   ],
+   "cat": "Golf"
+  },
+  {
+   "q": "Which country did tennis star Roger Federer represent?",
+   "a": "Switzerland",
+   "wrong": [
+    "Austria",
+    "Germany",
+    "Sweden"
+   ],
+   "cat": "Racket Sports"
+  },
+  {
+   "q": "How long is an Olympic swimming pool?",
+   "a": "50 meters",
+   "wrong": [
+    "25 meters",
+    "100 meters",
+    "75 meters"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "Which city hosted the 2012 Summer Olympics?",
+   "a": "London",
+   "wrong": [
+    "Beijing",
+    "Rio de Janeiro",
+    "Athens"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "In baseball, what is it called when a batter hits the ball out of the park in fair territory?",
+   "a": "A home run",
+   "wrong": [
+    "A grand slam double",
+    "A walk-off strike",
+    "A triple play"
+   ],
+   "cat": "American Sports"
+  },
+  {
+   "q": "Which country won the first Rugby World Cup in 1987?",
+   "a": "New Zealand",
+   "wrong": [
+    "Australia",
+    "South Africa",
+    "England"
+   ],
+   "cat": "World Sports"
+  },
+  {
+   "q": "How many players per team are on the ice in ice hockey, including the goalie?",
+   "a": "6",
+   "wrong": [
+    "5",
+    "7",
+    "11"
+   ],
+   "cat": "Winter Sports"
+  },
+  {
+   "q": "Which swimmer has won the most Olympic medals ever?",
+   "a": "Michael Phelps",
+   "wrong": [
+    "Mark Spitz",
+    "Ryan Lochte",
+    "Ian Thorpe"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which kind of cycling takes place in a velodrome?",
+   "a": "Track cycling",
+   "wrong": [
+    "Mountain biking",
+    "BMX freestyle",
+    "Cyclocross"
+   ],
+   "cat": "Olympics"
+  },
+  {
+   "q": "The Maracanã stadium is in which city?",
+   "a": "Rio de Janeiro",
+   "wrong": [
+    "São Paulo",
+    "Buenos Aires",
+    "Lisbon"
+   ],
+   "cat": "Football / Soccer"
+  }
+ ]
+}

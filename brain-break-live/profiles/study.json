@@ -1,0 +1,30 @@
+{
+  "_comment": "The main channel: 24/7 study-with-me Pomodoro stream + nightly themed trivia show.",
+  "name": "Brain Break Live",
+  "niche": "study",
+  "scene": "study-room",
+  "headline": "Study with me · 25/5 Pomodoro · trivia every night",
+  "broadcast_match": "",
+  "pomodoro": true,
+  "focus_minutes": 25,
+  "break_minutes": 5,
+  "tasks": true,
+  "goal_hours": 1000,
+  "goal_label": "Community focus hours",
+  "ticker": [
+    "New here? Type !task and what you're working on, then !done when you finish",
+    "Every focus block you chat in adds to the community goal",
+    "Trivia night: answer A/B/C/D in chat, fastest correct answer gets bonus points"
+  ],
+  "affiliate_line": "",
+  "music_dir": "study",
+  "music_volume": 0.55,
+  "break_question": true,
+  "trivia": {
+    "enabled": true,
+    "start": "20:00",
+    "minutes": 60,
+    "themes": {"mon": "movies", "tue": "geography", "wed": "science", "thu": "music",
+               "fri": "mixed", "sat": "sports", "sun": "general"}
+  }
+}

@@ -1,0 +1,1005 @@
+{
+ "title": "Movie Night",
+ "questions": [
+  {
+   "q": "In The Wizard of Oz (1939), what color are Dorothy's magic slippers?",
+   "a": "Ruby red",
+   "wrong": [
+    "Silver",
+    "Gold",
+    "Emerald green"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "Which 1942 film features the line \"Here's looking at you, kid\"?",
+   "a": "Casablanca",
+   "wrong": [
+    "Citizen Kane",
+    "Gone with the Wind",
+    "The Maltese Falcon"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "Who directed Psycho (1960)?",
+   "a": "Alfred Hitchcock",
+   "wrong": [
+    "Orson Welles",
+    "Billy Wilder",
+    "Stanley Kubrick"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "In Gone with the Wind, what is the name of the O'Hara family plantation?",
+   "a": "Tara",
+   "wrong": [
+    "Twelve Oaks",
+    "Belle Reve",
+    "Oakwood"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "Who famously dances through puddles in Singin' in the Rain (1952)?",
+   "a": "Gene Kelly",
+   "wrong": [
+    "Fred Astaire",
+    "Frank Sinatra",
+    "Dean Martin"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "What is Charles Foster Kane's famous dying word in Citizen Kane?",
+   "a": "Rosebud",
+   "wrong": [
+    "Xanadu",
+    "Mother",
+    "Snowglobe"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "Which actress starred as Holly Golightly in Breakfast at Tiffany's (1961)?",
+   "a": "Audrey Hepburn",
+   "wrong": [
+    "Marilyn Monroe",
+    "Grace Kelly",
+    "Elizabeth Taylor"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "The Sound of Music (1965) is set in which country?",
+   "a": "Austria",
+   "wrong": [
+    "Switzerland",
+    "Germany",
+    "Norway"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "In It's a Wonderful Life, what happens every time a bell rings?",
+   "a": "An angel gets his wings",
+   "wrong": [
+    "A wish comes true",
+    "Someone falls in love",
+    "Snow starts to fall"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "Which film won the very first Academy Award for Best Picture?",
+   "a": "Wings",
+   "wrong": [
+    "Sunrise",
+    "The Jazz Singer",
+    "Metropolis"
+   ],
+   "cat": "Hollywood Classics"
+  },
+  {
+   "q": "In The Lion King (1994), what is Simba's father's name?",
+   "a": "Mufasa",
+   "wrong": [
+    "Scar",
+    "Rafiki",
+    "Zazu"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "What kind of fish is Nemo in Finding Nemo?",
+   "a": "Clownfish",
+   "wrong": [
+    "Angelfish",
+    "Goldfish",
+    "Pufferfish"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "Which studio made Toy Story (1995), the first fully computer-animated feature film?",
+   "a": "Pixar",
+   "wrong": [
+    "DreamWorks",
+    "Blue Sky",
+    "Illumination"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "In Frozen (2013), what is the name of the talking snowman?",
+   "a": "Olaf",
+   "wrong": [
+    "Sven",
+    "Kristoff",
+    "Marshmallow"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "In Shrek, what does Princess Fiona turn into every night?",
+   "a": "An ogre",
+   "wrong": [
+    "A dragon",
+    "A frog",
+    "A donkey"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "In Up (2009), what lifts Carl's house into the sky?",
+   "a": "Balloons",
+   "wrong": [
+    "A blimp",
+    "A tornado",
+    "Rockets"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "What is the name of the rat who dreams of being a chef in Ratatouille?",
+   "a": "Remy",
+   "wrong": [
+    "Emile",
+    "Linguini",
+    "Gusteau"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "Who voiced the Genie in the 1992 animated Aladdin?",
+   "a": "Robin Williams",
+   "wrong": [
+    "Eddie Murphy",
+    "Jim Carrey",
+    "Will Smith"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "What was Disney's first full-length animated feature film (1937)?",
+   "a": "Snow White and the Seven Dwarfs",
+   "wrong": [
+    "Cinderella",
+    "Pinocchio",
+    "Fantasia"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "In Monsters, Inc., what originally powers the city of Monstropolis?",
+   "a": "Children's screams",
+   "wrong": [
+    "Lightning",
+    "Candy",
+    "Children's dreams"
+   ],
+   "cat": "Animated Favorites"
+  },
+  {
+   "q": "Who directed Jaws (1975)?",
+   "a": "Steven Spielberg",
+   "wrong": [
+    "George Lucas",
+    "Martin Scorsese",
+    "Ridley Scott"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed Pulp Fiction (1994)?",
+   "a": "Quentin Tarantino",
+   "wrong": [
+    "Guy Ritchie",
+    "David Fincher",
+    "the Coen brothers"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed Inception and The Dark Knight?",
+   "a": "Christopher Nolan",
+   "wrong": [
+    "Denis Villeneuve",
+    "Zack Snyder",
+    "Sam Raimi"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed both Titanic (1997) and Avatar (2009)?",
+   "a": "James Cameron",
+   "wrong": [
+    "Michael Bay",
+    "Ron Howard",
+    "Robert Zemeckis"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed The Godfather (1972)?",
+   "a": "Francis Ford Coppola",
+   "wrong": [
+    "Martin Scorsese",
+    "Brian De Palma",
+    "Sergio Leone"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who wrote and directed Get Out (2017)?",
+   "a": "Jordan Peele",
+   "wrong": [
+    "Spike Lee",
+    "Ryan Coogler",
+    "Barry Jenkins"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Which director made the animated film Spirited Away?",
+   "a": "Hayao Miyazaki",
+   "wrong": [
+    "Makoto Shinkai",
+    "Isao Takahata",
+    "Mamoru Hosoda"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed The Lord of the Rings film trilogy?",
+   "a": "Peter Jackson",
+   "wrong": [
+    "Guillermo del Toro",
+    "Chris Columbus",
+    "Sam Mendes"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed Parasite (2019)?",
+   "a": "Bong Joon-ho",
+   "wrong": [
+    "Park Chan-wook",
+    "Ang Lee",
+    "Wong Kar-wai"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Who directed Barbie (2023)?",
+   "a": "Greta Gerwig",
+   "wrong": [
+    "Sofia Coppola",
+    "Olivia Wilde",
+    "Kathryn Bigelow"
+   ],
+   "cat": "Directors"
+  },
+  {
+   "q": "Which film was the first non-English-language winner of the Best Picture Academy Award?",
+   "a": "Parasite",
+   "wrong": [
+    "Roma",
+    "Crouching Tiger, Hidden Dragon",
+    "Life Is Beautiful"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "How many Academy Awards did Titanic (1997) win?",
+   "a": "11",
+   "wrong": [
+    "9",
+    "12",
+    "14"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which actress won four Best Actress Academy Awards?",
+   "a": "Katharine Hepburn",
+   "wrong": [
+    "Meryl Streep",
+    "Bette Davis",
+    "Ingrid Bergman"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which film won Best Picture at the Academy Awards held in 2024?",
+   "a": "Oppenheimer",
+   "wrong": [
+    "Barbie",
+    "Poor Things",
+    "Killers of the Flower Moon"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which of these films did NOT win Best Picture?",
+   "a": "Pulp Fiction",
+   "wrong": [
+    "Forrest Gump",
+    "Gladiator",
+    "Rocky"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Leonardo DiCaprio won his first Academy Award for which film?",
+   "a": "The Revenant",
+   "wrong": [
+    "Titanic",
+    "The Wolf of Wall Street",
+    "Inception"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which film tied Ben-Hur and Titanic with 11 Academy Awards?",
+   "a": "The Lord of the Rings: The Return of the King",
+   "wrong": [
+    "Avatar",
+    "Schindler's List",
+    "West Side Story"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Who has won more Academy Awards than any other person?",
+   "a": "Walt Disney",
+   "wrong": [
+    "John Williams",
+    "Steven Spielberg",
+    "Katharine Hepburn"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which film about a laundromat owner and the multiverse won Best Picture in 2023?",
+   "a": "Everything Everywhere All at Once",
+   "wrong": [
+    "The Banshees of Inisherin",
+    "Top Gun: Maverick",
+    "The Fabelmans"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "What is the statuette given at the Academy Awards nicknamed?",
+   "a": "Oscar",
+   "wrong": [
+    "Emmy",
+    "Tony",
+    "Grammy"
+   ],
+   "cat": "Award Winners"
+  },
+  {
+   "q": "Which 2019 film concluded Marvel's \"Infinity Saga\"?",
+   "a": "Avengers: Endgame",
+   "wrong": [
+    "Avengers: Infinity War",
+    "Captain Marvel",
+    "Spider-Man: Far From Home"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "In Jurassic Park, which dinosaur famously chases the jeep?",
+   "a": "Tyrannosaurus rex",
+   "wrong": [
+    "Velociraptor",
+    "Triceratops",
+    "Spinosaurus"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "What is the name of the shark-hunting boat in Jaws?",
+   "a": "The Orca",
+   "wrong": [
+    "The Pequod",
+    "The Andrea Gail",
+    "The Black Pearl"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "In Back to the Future, what speed does the DeLorean need to reach to time travel?",
+   "a": "88 mph",
+   "wrong": [
+    "77 mph",
+    "100 mph",
+    "121 mph"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "What giant creature attacks New York at the end of Ghostbusters (1984)?",
+   "a": "The Stay Puft Marshmallow Man",
+   "wrong": [
+    "A giant gorilla",
+    "Slimer",
+    "A sea serpent"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "In Titanic, what is the blue diamond necklace called?",
+   "a": "The Heart of the Ocean",
+   "wrong": [
+    "The Star of India",
+    "The Hope Diamond",
+    "The Blue Moon"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "What animal is Indiana Jones famously afraid of?",
+   "a": "Snakes",
+   "wrong": [
+    "Spiders",
+    "Rats",
+    "Bats"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "Who plays Captain Jack Sparrow in Pirates of the Caribbean?",
+   "a": "Johnny Depp",
+   "wrong": [
+    "Orlando Bloom",
+    "Geoffrey Rush",
+    "Javier Bardem"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "What is Tom Cruise's call sign in Top Gun (1986)?",
+   "a": "Maverick",
+   "wrong": [
+    "Iceman",
+    "Goose",
+    "Viper"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "In The Matrix, which color pill does Neo take?",
+   "a": "Red",
+   "wrong": [
+    "Blue",
+    "Green",
+    "White"
+   ],
+   "cat": "Blockbusters"
+  },
+  {
+   "q": "In the Star Wars saga, who is revealed to be Luke Skywalker's father?",
+   "a": "Darth Vader",
+   "wrong": [
+    "Obi-Wan Kenobi",
+    "Emperor Palpatine",
+    "Han Solo"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In E.T. the Extra-Terrestrial, which candy does Elliott use to lure E.T.?",
+   "a": "Reese's Pieces",
+   "wrong": [
+    "M&M's",
+    "Skittles",
+    "Jelly beans"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "Which Hogwarts house is Harry Potter sorted into?",
+   "a": "Gryffindor",
+   "wrong": [
+    "Slytherin",
+    "Ravenclaw",
+    "Hufflepuff"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "What is the name of the ship's computer in 2001: A Space Odyssey?",
+   "a": "HAL 9000",
+   "wrong": [
+    "MOTHER",
+    "Skynet",
+    "JARVIS"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In The Lord of the Rings, who carries the One Ring to Mount Doom?",
+   "a": "Frodo Baggins",
+   "wrong": [
+    "Bilbo Baggins",
+    "Aragorn",
+    "Gandalf"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In Avatar (2009), what is the name of the moon where the story takes place?",
+   "a": "Pandora",
+   "wrong": [
+    "Arrakis",
+    "Endor",
+    "Titan"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In Interstellar, what is the name of the robot with an adjustable humor setting?",
+   "a": "TARS",
+   "wrong": [
+    "CASE",
+    "KIPP",
+    "WALL-E"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "What does \"E.T.\" stand for?",
+   "a": "Extra-Terrestrial",
+   "wrong": [
+    "Earth Traveler",
+    "Electronic Transmission",
+    "Eternal Time"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In The Terminator (1984), what year is the Terminator sent back to?",
+   "a": "1984",
+   "wrong": [
+    "1997",
+    "2029",
+    "1955"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "What is the name of Han Solo's ship in Star Wars?",
+   "a": "Millennium Falcon",
+   "wrong": [
+    "Star Destroyer",
+    "X-wing",
+    "Slave I"
+   ],
+   "cat": "Sci-Fi & Fantasy"
+  },
+  {
+   "q": "In Home Alone, where is the McCallister family flying when they leave Kevin behind?",
+   "a": "Paris",
+   "wrong": [
+    "London",
+    "Rome",
+    "Miami"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "On which day of the week do the students serve detention in The Breakfast Club?",
+   "a": "Saturday",
+   "wrong": [
+    "Friday",
+    "Sunday",
+    "Monday"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "In Forrest Gump, what did Mama always say life was like?",
+   "a": "A box of chocolates",
+   "wrong": [
+    "A long road",
+    "A game of ping-pong",
+    "A bowl of cherries"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "In Ferris Bueller's Day Off, what kind of car do the friends borrow?",
+   "a": "A Ferrari",
+   "wrong": [
+    "A Porsche",
+    "A Lamborghini",
+    "A Corvette"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "Which 1997 film features Will Smith and Tommy Lee Jones as agents who police aliens?",
+   "a": "Men in Black",
+   "wrong": [
+    "Independence Day",
+    "Bad Boys",
+    "Wild Wild West"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "What does Cole famously whisper in The Sixth Sense?",
+   "a": "\"I see dead people.\"",
+   "wrong": [
+    "\"They're here.\"",
+    "\"Here's Johnny!\"",
+    "\"Be afraid.\""
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "In Jumanji (1995), what kind of game is Jumanji?",
+   "a": "A board game",
+   "wrong": [
+    "A video game",
+    "A card game",
+    "A puzzle box"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "In Ghost (1990), which hobby do Sam and Molly famously share in one scene?",
+   "a": "Pottery",
+   "wrong": [
+    "Painting",
+    "Dancing",
+    "Piano"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "In The Karate Kid (1984), what chore goes with \"wax on, wax off\"?",
+   "a": "Waxing cars",
+   "wrong": [
+    "Polishing floors",
+    "Painting a fence",
+    "Sanding a deck"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "What is the main character's first name in Clueless (1995)?",
+   "a": "Cher",
+   "wrong": [
+    "Dionne",
+    "Tai",
+    "Amber"
+   ],
+   "cat": "80s & 90s"
+  },
+  {
+   "q": "\"May the Force be with you\" comes from which film series?",
+   "a": "Star Wars",
+   "wrong": [
+    "Star Trek",
+    "The Matrix",
+    "Dune"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "Which actor famously says \"I'll be back\" in The Terminator?",
+   "a": "Arnold Schwarzenegger",
+   "wrong": [
+    "Sylvester Stallone",
+    "Bruce Willis",
+    "Jean-Claude Van Damme"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"You're gonna need a bigger boat\" is from which film?",
+   "a": "Jaws",
+   "wrong": [
+    "Titanic",
+    "The Perfect Storm",
+    "Moby Dick"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"There's no place like home\" is a famous line from which film?",
+   "a": "The Wizard of Oz",
+   "wrong": [
+    "Home Alone",
+    "E.T.",
+    "Mary Poppins"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"To infinity and beyond!\" is the catchphrase of which character?",
+   "a": "Buzz Lightyear",
+   "wrong": [
+    "Woody",
+    "Mr. Incredible",
+    "WALL-E"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"Houston, we have a problem\" is a famous line from which film?",
+   "a": "Apollo 13",
+   "wrong": [
+    "Armageddon",
+    "Gravity",
+    "The Martian"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "Which villain asks \"Why so serious?\"",
+   "a": "The Joker",
+   "wrong": [
+    "Bane",
+    "The Riddler",
+    "Two-Face"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"I'm the king of the world!\" is shouted in which film?",
+   "a": "Titanic",
+   "wrong": [
+    "The Lion King",
+    "Gladiator",
+    "King Kong"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"Just keep swimming\" is the motto of which character?",
+   "a": "Dory",
+   "wrong": [
+    "Nemo",
+    "Marlin",
+    "Ariel"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "\"Life, uh, finds a way\" is said in which film?",
+   "a": "Jurassic Park",
+   "wrong": [
+    "Contact",
+    "Arrival",
+    "Twister"
+   ],
+   "cat": "Famous Lines"
+  },
+  {
+   "q": "Which 2018 film tells the story of the band Queen?",
+   "a": "Bohemian Rhapsody",
+   "wrong": [
+    "Rocketman",
+    "Walk the Line",
+    "Elvis"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Who sang \"My Heart Will Go On\" from Titanic?",
+   "a": "Celine Dion",
+   "wrong": [
+    "Whitney Houston",
+    "Mariah Carey",
+    "Adele"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Which Lion King song is about having \"no worries\"?",
+   "a": "Hakuna Matata",
+   "wrong": [
+    "Circle of Life",
+    "Be Prepared",
+    "I Just Can't Wait to Be King"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "\"Eye of the Tiger\" became famous from which film series?",
+   "a": "Rocky",
+   "wrong": [
+    "Karate Kid",
+    "Top Gun",
+    "Rambo"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Who composed the music for Star Wars, Jaws and Jurassic Park?",
+   "a": "John Williams",
+   "wrong": [
+    "Hans Zimmer",
+    "Danny Elfman",
+    "Ennio Morricone"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "\"Let It Go\" is sung in which film?",
+   "a": "Frozen",
+   "wrong": [
+    "Moana",
+    "Tangled",
+    "Encanto"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Which film ends with the dance to \"(I've Had) The Time of My Life\"?",
+   "a": "Dirty Dancing",
+   "wrong": [
+    "Footloose",
+    "Flashdance",
+    "Grease"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Which 2016 musical stars Ryan Gosling and Emma Stone?",
+   "a": "La La Land",
+   "wrong": [
+    "The Greatest Showman",
+    "A Star Is Born",
+    "Mamma Mia!"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Which 1978 musical stars John Travolta and Olivia Newton-John?",
+   "a": "Grease",
+   "wrong": [
+    "Saturday Night Fever",
+    "Hairspray",
+    "Fame"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "In The Sound of Music, which song begins \"Doe, a deer\"?",
+   "a": "Do-Re-Mi",
+   "wrong": [
+    "My Favorite Things",
+    "Edelweiss",
+    "Sixteen Going on Seventeen"
+   ],
+   "cat": "Music in the Movies"
+  },
+  {
+   "q": "Who provided the voice of Darth Vader in the original Star Wars films?",
+   "a": "James Earl Jones",
+   "wrong": [
+    "Morgan Freeman",
+    "Samuel L. Jackson",
+    "Christopher Lee"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "What did the Hollywood sign originally say?",
+   "a": "Hollywoodland",
+   "wrong": [
+    "Hollywood Hills",
+    "Hollywoodville",
+    "Hollywood Studios"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Hollywood is a neighborhood of which city?",
+   "a": "Los Angeles",
+   "wrong": [
+    "San Francisco",
+    "San Diego",
+    "Las Vegas"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "\"Bollywood\" is the nickname of which country's Hindi-language film industry?",
+   "a": "India",
+   "wrong": [
+    "Pakistan",
+    "Bangladesh",
+    "Nepal"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Which 1927 film was the first feature-length \"talkie\" with synchronized dialogue?",
+   "a": "The Jazz Singer",
+   "wrong": [
+    "Wings",
+    "Metropolis",
+    "The General"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Who played Tony Stark / Iron Man in the Marvel films?",
+   "a": "Robert Downey Jr.",
+   "wrong": [
+    "Chris Evans",
+    "Chris Hemsworth",
+    "Mark Ruffalo"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Which actor played James Bond in the most official Eon Productions films?",
+   "a": "Roger Moore",
+   "wrong": [
+    "Sean Connery",
+    "Daniel Craig",
+    "Pierce Brosnan"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Which film series follows the agent Ethan Hunt?",
+   "a": "Mission: Impossible",
+   "wrong": [
+    "The Bourne films",
+    "James Bond",
+    "John Wick"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Which film festival awards the Palme d'Or?",
+   "a": "Cannes",
+   "wrong": [
+    "Venice",
+    "Berlin",
+    "Sundance"
+   ],
+   "cat": "Behind the Scenes"
+  },
+  {
+   "q": "Who played Jack Dawson in Titanic?",
+   "a": "Leonardo DiCaprio",
+   "wrong": [
+    "Brad Pitt",
+    "Matt Damon",
+    "Johnny Depp"
+   ],
+   "cat": "Behind the Scenes"
+  }
+ ]
+}

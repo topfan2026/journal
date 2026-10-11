@@ -1,0 +1,2 @@
+# One word or phrase per line. Tasks/messages containing any of these are not shown on stream.
+# Lines starting with # are ignored. Matching is case-insensitive and also matches inside words.

@@ -1,0 +1,505 @@
+{
+ "title": "Music Night",
+ "questions": [
+  {
+   "q": "How many strings does a standard guitar have?",
+   "a": "6",
+   "wrong": [
+    "4",
+    "5",
+    "8"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Which band recorded \"Hey Jude\"?",
+   "a": "The Beatles",
+   "wrong": [
+    "The Rolling Stones",
+    "The Who",
+    "The Kinks"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Who is known as the \"King of Pop\"?",
+   "a": "Michael Jackson",
+   "wrong": [
+    "Prince",
+    "Elvis Presley",
+    "Justin Timberlake"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Who is known as the \"King of Rock and Roll\"?",
+   "a": "Elvis Presley",
+   "wrong": [
+    "Chuck Berry",
+    "Little Richard",
+    "Buddy Holly"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which composer wrote \"Für Elise\"?",
+   "a": "Ludwig van Beethoven",
+   "wrong": [
+    "Wolfgang Amadeus Mozart",
+    "Johann Sebastian Bach",
+    "Frédéric Chopin"
+   ],
+   "cat": "Classical"
+  },
+  {
+   "q": "How many keys does a standard piano have?",
+   "a": "88",
+   "wrong": [
+    "76",
+    "92",
+    "100"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Which is the smallest and highest-pitched member of the violin family?",
+   "a": "Violin",
+   "wrong": [
+    "Viola",
+    "Cello",
+    "Double bass"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Which singer released the 2015 single \"Hello\"?",
+   "a": "Adele",
+   "wrong": [
+    "Sam Smith",
+    "Ed Sheeran",
+    "Lana Del Rey"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Which band recorded \"Bohemian Rhapsody\"?",
+   "a": "Queen",
+   "wrong": [
+    "Led Zeppelin",
+    "Pink Floyd",
+    "Aerosmith"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Which country does ABBA come from?",
+   "a": "Sweden",
+   "wrong": [
+    "Norway",
+    "Denmark",
+    "Finland"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which former Beatle wrote and sang \"Imagine\" as a solo artist?",
+   "a": "John Lennon",
+   "wrong": [
+    "Paul McCartney",
+    "George Harrison",
+    "Ringo Starr"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Who composed \"The Four Seasons\"?",
+   "a": "Antonio Vivaldi",
+   "wrong": [
+    "Johann Sebastian Bach",
+    "George Frideric Handel",
+    "Joseph Haydn"
+   ],
+   "cat": "Classical"
+  },
+  {
+   "q": "Who recorded the album and song \"Purple Rain\"?",
+   "a": "Prince",
+   "wrong": [
+    "Michael Jackson",
+    "Stevie Wonder",
+    "David Bowie"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Bob Marley is most famous for which genre?",
+   "a": "Reggae",
+   "wrong": [
+    "Ska",
+    "Calypso",
+    "Soul"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "How many musicians play in a quartet?",
+   "a": "4",
+   "wrong": [
+    "3",
+    "5",
+    "8"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "What does \"forte\" mean in music?",
+   "a": "Loud",
+   "wrong": [
+    "Soft",
+    "Fast",
+    "Slow"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "Which rapper's real name is Marshall Mathers?",
+   "a": "Eminem",
+   "wrong": [
+    "Jay-Z",
+    "Snoop Dogg",
+    "50 Cent"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Which singer is known as the \"Queen of Pop\"?",
+   "a": "Madonna",
+   "wrong": [
+    "Cher",
+    "Whitney Houston",
+    "Britney Spears"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which band recorded \"Smells Like Teen Spirit\"?",
+   "a": "Nirvana",
+   "wrong": [
+    "Pearl Jam",
+    "Soundgarden",
+    "Foo Fighters"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Who composed the opera \"The Magic Flute\"?",
+   "a": "Wolfgang Amadeus Mozart",
+   "wrong": [
+    "Giuseppe Verdi",
+    "Richard Wagner",
+    "Giacomo Puccini"
+   ],
+   "cat": "Classical"
+  },
+  {
+   "q": "Who is the lead singer of the Rolling Stones?",
+   "a": "Mick Jagger",
+   "wrong": [
+    "Keith Richards",
+    "Roger Daltrey",
+    "Robert Plant"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Which instrument is Kenny G famous for playing?",
+   "a": "Saxophone",
+   "wrong": [
+    "Trumpet",
+    "Clarinet",
+    "Flute"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Which city is widely called the birthplace of jazz?",
+   "a": "New Orleans",
+   "wrong": [
+    "Chicago",
+    "New York",
+    "Memphis"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which K-pop group released \"Dynamite\" in 2020?",
+   "a": "BTS",
+   "wrong": [
+    "BLACKPINK",
+    "EXO",
+    "TWICE"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Who had a 2014 hit with \"Shake It Off\"?",
+   "a": "Taylor Swift",
+   "wrong": [
+    "Katy Perry",
+    "Ariana Grande",
+    "Selena Gomez"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "What is the highest standard female singing voice?",
+   "a": "Soprano",
+   "wrong": [
+    "Alto",
+    "Mezzo-soprano",
+    "Contralto"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "How many lines are on a standard musical staff?",
+   "a": "5",
+   "wrong": [
+    "4",
+    "6",
+    "7"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "Which band released the album \"The Dark Side of the Moon\"?",
+   "a": "Pink Floyd",
+   "wrong": [
+    "Genesis",
+    "Yes",
+    "The Doors"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Who composed the opera \"La traviata\"?",
+   "a": "Giuseppe Verdi",
+   "wrong": [
+    "Giacomo Puccini",
+    "Gioachino Rossini",
+    "Georges Bizet"
+   ],
+   "cat": "Classical"
+  },
+  {
+   "q": "Who released \"Like a Rolling Stone\" in 1965?",
+   "a": "Bob Dylan",
+   "wrong": [
+    "The Rolling Stones",
+    "Simon & Garfunkel",
+    "Johnny Cash"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Beyoncé first became famous in which group?",
+   "a": "Destiny's Child",
+   "wrong": [
+    "TLC",
+    "En Vogue",
+    "The Pussycat Dolls"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which singer is nicknamed \"The Boss\"?",
+   "a": "Bruce Springsteen",
+   "wrong": [
+    "Bon Jovi",
+    "Tom Petty",
+    "Billy Joel"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which large orchestral instrument is played by plucking dozens of strings?",
+   "a": "Harp",
+   "wrong": [
+    "Cello",
+    "Piano",
+    "Timpani"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Which band recorded \"Wonderwall\"?",
+   "a": "Oasis",
+   "wrong": [
+    "Blur",
+    "Radiohead",
+    "Coldplay"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Which country star wrote and recorded \"Jolene\"?",
+   "a": "Dolly Parton",
+   "wrong": [
+    "Reba McEntire",
+    "Loretta Lynn",
+    "Shania Twain"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Who composed the music for the ballet \"The Nutcracker\"?",
+   "a": "Pyotr Ilyich Tchaikovsky",
+   "wrong": [
+    "Igor Stravinsky",
+    "Sergei Prokofiev",
+    "Claude Debussy"
+   ],
+   "cat": "Classical"
+  },
+  {
+   "q": "Which group recorded \"I Want It That Way\"?",
+   "a": "Backstreet Boys",
+   "wrong": [
+    "*NSYNC",
+    "Boyz II Men",
+    "Westlife"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Which singer calls her fans \"Little Monsters\"?",
+   "a": "Lady Gaga",
+   "wrong": [
+    "Katy Perry",
+    "Rihanna",
+    "Nicki Minaj"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Yo-Yo Ma is famous for playing which instrument?",
+   "a": "Cello",
+   "wrong": [
+    "Violin",
+    "Piano",
+    "Guitar"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Who sang the 2017 hit \"Despacito\" with Daddy Yankee?",
+   "a": "Luis Fonsi",
+   "wrong": [
+    "Enrique Iglesias",
+    "J Balvin",
+    "Ricky Martin"
+   ],
+   "cat": "Modern Hits"
+  },
+  {
+   "q": "Which tempo marking means slow?",
+   "a": "Adagio",
+   "wrong": [
+    "Allegro",
+    "Presto",
+    "Vivace"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "Which band recorded \"Hotel California\"?",
+   "a": "Eagles",
+   "wrong": [
+    "Fleetwood Mac",
+    "Lynyrd Skynyrd",
+    "The Doobie Brothers"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Which guitarist recorded \"Purple Haze\"?",
+   "a": "Jimi Hendrix",
+   "wrong": [
+    "Eric Clapton",
+    "Jimmy Page",
+    "Carlos Santana"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which jazz singer was nicknamed \"Lady Day\"?",
+   "a": "Billie Holiday",
+   "wrong": [
+    "Ella Fitzgerald",
+    "Nina Simone",
+    "Sarah Vaughan"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which of these is a woodwind instrument?",
+   "a": "Flute",
+   "wrong": [
+    "Trumpet",
+    "Trombone",
+    "Tuba"
+   ],
+   "cat": "Instruments"
+  },
+  {
+   "q": "Gene Simmons and Paul Stanley, known for face paint, are in which band?",
+   "a": "KISS",
+   "wrong": [
+    "Mötley Crüe",
+    "Alice Cooper",
+    "Def Leppard"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "What is a group of three musicians called?",
+   "a": "A trio",
+   "wrong": [
+    "A duet",
+    "A quartet",
+    "A quintet"
+   ],
+   "cat": "Music Basics"
+  },
+  {
+   "q": "Which rock band recorded \"Back in Black\"?",
+   "a": "AC/DC",
+   "wrong": [
+    "Metallica",
+    "Guns N' Roses",
+    "Iron Maiden"
+   ],
+   "cat": "Classic Rock & Pop"
+  },
+  {
+   "q": "Who recorded \"What a Wonderful World\" in 1967?",
+   "a": "Louis Armstrong",
+   "wrong": [
+    "Frank Sinatra",
+    "Nat King Cole",
+    "Ray Charles"
+   ],
+   "cat": "Legends"
+  },
+  {
+   "q": "Which famous music festival took place in 1969 near Bethel, New York?",
+   "a": "Woodstock",
+   "wrong": [
+    "Coachella",
+    "Glastonbury",
+    "Lollapalooza"
+   ],
+   "cat": "Legends"
+  }
+ ]
+}

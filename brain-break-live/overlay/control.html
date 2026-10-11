@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain Break Control</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --soft: #6b6862; --line: #e4e1db;
+    --accent: #c4620f; --accent-soft: #fbeee2; --good: #1f8a4c; --bad: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --panel: #1e1d1b; --ink: #f1efe9; --soft: #a19d95; --line: #33312d;
+      --accent: #f0974a; --accent-soft: #3a2614; --good: #4cc27c; --bad: #ff7a6b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --panel: #1e1d1b; --ink: #f1efe9; --soft: #a19d95; --line: #33312d;
+    --accent: #f0974a; --accent-soft: #3a2614; --good: #4cc27c; --bad: #ff7a6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .sub { color: var(--soft); margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; }
+  .preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .status { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; color: var(--soft); font-size: 14px; }
+  .status b { color: var(--ink); font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
+  .dot.on { background: var(--good); }
+  .profiles { display: grid; gap: 8px; }
+  .profile { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 14px;
+    background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font: inherit; }
+  .profile:hover { border-color: var(--accent); }
+  .profile.active { border-color: var(--accent); background: var(--accent-soft); }
+  .profile .name { font-weight: 600; }
+  .profile .meta { color: var(--soft); font-size: 13px; }
+  .profile .tag { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button.btn { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); cursor: pointer; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn:hover { border-color: var(--accent); }
+  input[type=text], select { font: inherit; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+  label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--soft); }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .quick button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--soft); cursor: pointer; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--soft); font-weight: 600; font-size: 13px; }
+  tr.best td:first-child::after { content: " ★"; color: var(--accent); }
+  .note { color: var(--soft); font-size: 13px; margin-top: 10px; }
+  #msg { min-height: 22px; font-size: 14px; color: var(--soft); margin-top: 8px; }
+  #msg.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Brain Break Live control</h1>
+  <p class="sub">Switch niches, run trivia, test chat commands and compare how each niche performs.</p>
+
+  <div class="grid">
+    <div>
+      <section class="panel">
+        <h2>On air now</h2>
+        <div class="preview"><iframe src="/?muted=1" title="Stream preview"></iframe></div>
+        <div class="status" id="status"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Test chat <span class="note">(handled as if a viewer typed it)</span></h2>
+        <form id="chat-form" class="row">
+          <input type="text" id="author" value="TestViewer" aria-label="Viewer name" style="width:140px">
+          <input type="text" id="text" placeholder="!task finish essay   or   B" aria-label="Message" style="flex:1 1 200px">
+          <label class="check"><input type="checkbox" id="superchat"> Super Chat</label>
+          <label class="check"><input type="checkbox" id="mod"> Mod</label>
+          <button class="btn primary" type="submit">Send</button>
+        </form>
+        <div class="quick" id="quick"></div>
+        <div id="msg"></div>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel">
+        <h2>Niche / profile</h2>
+        <div class="profiles" id="profiles"></div>
+        <p class="note">Switching changes the scene, music and features within a second. With a real chat, the bot then follows the live broadcast whose title contains the profile's <code>broadcast_match</code>.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Trivia</h2>
+        <div class="row">
+          <button class="btn primary" data-act="trivia_start">Start trivia now</button>
+          <select id="minutes" aria-label="Show length">
+            <option value="10">10 min</option><option value="30">30 min</option><option value="60" selected>60 min</option>
+          </select>
+          <button class="btn" data-act="trivia_stop">Stop trivia</button>
+          <button class="btn" data-act="clear_tasks">Clear task board</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Compare niches</h2>
+      <select id="days" aria-label="Period">
+        <option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Niche</th><th>Hours live</th><th>Avg viewers</th><th>Peak</th><th>Chatters</th>
+          <th>Chatters / h</th><th>Messages / h</th><th>Super Chats</th><th>New members</th><th>Trivia answers</th>
+        </tr></thead>
+        <tbody id="stats"><tr><td colspan="10">No data yet: run a profile for a while.</td></tr></tbody>
+      </table>
+    </div>
+    <p class="note">★ = most chatters per live hour (after at least 1 hour live), the best early sign a niche will grow. Give each niche at least a few days and similar hours before deciding; YouTube Studio has the full watch-time and revenue numbers.</p>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const msg = (text, err) => { $("msg").textContent = text; $("msg").className = err ? "err" : ""; };
+
+  async function control(action, extra) {
+    const r = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...(extra || {}) }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.statusText);
+    return data;
+  }
+
+  async function loadProfiles() {
+    const data = await (await fetch("/api/profiles", { cache: "no-store" })).json();
+    $("profiles").replaceChildren(...data.profiles.map(p => {
+      const b = el("button", "profile" + (p.id === data.active ? " active" : ""));
+      b.type = "button";
+      const text = el("div");
+      const features = [p.pomodoro && "Pomodoro", p.trivia && (p.always_on ? "24/7 trivia" : "nightly trivia"),
+        `${p.music_tracks} tracks`].filter(Boolean).join(" · ");
+      text.append(el("div", "name", p.name), el("div", "meta", `${p.niche} · ${p.scene} · ${features}`));
+      b.append(text, el("span", "tag", p.id === data.active ? "ON AIR" : "Switch"));
+      b.addEventListener("click", async () => {
+        try { await control("switch", { profile: p.id }); msg(`Switched to ${p.name}`); loadProfiles(); loadQuick(); }
+        catch (e) { msg(e.message, true); }
+      });
+      return b;
+    }));
+  }
+
+  async function loadStatus() {
+    try {
+      const s = await (await fetch("/api/state", { cache: "no-store" })).json();
+      const c = s.chat || {};
+      const parts = [
+        [null, el("span", "dot" + (c.connected ? " on" : "")), c.detail || "chat"],
+        ["Mode", null, s.mode],
+        ["Viewers", null, c.viewers == null ? "–" : String(c.viewers)],
+        ["API quota left today", null, c.quota_left == null ? "demo" : c.quota_left.toLocaleString()],
+      ];
+      if (s.next_show) parts.push(["Next show", null, `${s.next_show.theme}, ${new Date(s.next_show.starts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`]);
+      $("status").replaceChildren(...parts.map(([label, pre, value]) => {
+        const span = el("span"); if (pre) span.append(pre);
+        if (label) span.append(document.createTextNode(label + ": "));
+        span.append(el("b", null, value)); return span;
+      }));
+    } catch (e) { $("status").textContent = "App not reachable"; }
+  }
+
+  async function loadStats() {
+    const data = await (await fetch(`/api/stats?days=${$("days").value}`, { cache: "no-store" })).json();
+    if (!data.rows.length) return;
+    const fmt = v => v == null ? "–" : typeof v === "number" ? v.toLocaleString() : v;
+    $("stats").replaceChildren(...data.rows.map((r, i) => {
+      const tr = el("tr", i === 0 && data.rows.length > 1 && r.hours_live >= 1 ? "best" : "");
+      for (const v of [r.name, r.hours_live, r.avg_viewers, r.peak_viewers, r.chatters, r.chatters_per_hour,
+        r.messages_per_hour, r.superchats + (r.amounts.length ? ` (${r.amounts.slice(-3).join(", ")})` : ""), r.members, r.trivia_answers])
+        tr.append(el("td", null, fmt(v)));
+      return tr;
+    }));
+  }
+
+  async function loadQuick() {
+    const s = await (await fetch("/api/state", { cache: "no-store" })).json();
+    const p = s.profile;
+    const cmds = s.mode === "trivia" ? ["A", "B", "C", "D", "!join"] : [
+      ...(p.tasks ? ["!task read chapter 4", "!done", "!hours", "!focus"] : []),
+      ...(p.checkin_command ? [p.checkin_command] : []), "hello from the test page"];
+    $("quick").replaceChildren(...cmds.map(c => {
+      const b = el("button", null, c); b.type = "button";
+      b.addEventListener("click", () => { $("text").value = c; $("chat-form").requestSubmit(); });
+      return b;
+    }));
+  }
+
+  $("chat-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const text = $("text").value.trim();
+    if (!text && !$("superchat").checked) return;
+    try {
+      await control("test_message", { author: $("author").value.trim() || "TestViewer", text,
+        superchat: $("superchat").checked, mod: $("mod").checked });
+      msg(`Sent "${text}" as ${$("author").value}`); $("text").value = "";
+    } catch (err) { msg(err.message, true); }
+  });
+  document.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", async () => {
+    try {
+      await control(b.dataset.act, b.dataset.act === "trivia_start" ? { minutes: Number($("minutes").value) } : {});
+      msg(b.textContent + ": done"); setTimeout(loadQuick, 600);
+    } catch (e) { msg(e.message, true); }
+  }));
+  $("days").addEventListener("change", loadStats);
+
+  loadProfiles(); loadQuick(); loadStatus(); loadStats();
+  setInterval(loadStatus, 3000); setInterval(loadStats, 30000);
+})();
+</script>
+</body>
+</html>

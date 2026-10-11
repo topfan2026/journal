@@ -1,0 +1,22 @@
+{
+  "_comment": "Code-with-me stream for programmers: 50/10 Pomodoro, task board, night city scene.",
+  "name": "Code With Me",
+  "niche": "coding",
+  "scene": "night-city",
+  "headline": "Code with me · 50/10 focus blocks · lofi",
+  "broadcast_match": "Code",
+  "pomodoro": true,
+  "focus_minutes": 50,
+  "break_minutes": 10,
+  "tasks": true,
+  "goal_hours": 500,
+  "goal_label": "Hours coded together",
+  "ticker": [
+    "Type !task what you're building · !done when it ships",
+    "Small commits, big progress"
+  ],
+  "music_dir": "study",
+  "music_volume": 0.5,
+  "break_question": true,
+  "trivia": {"enabled": false}
+}

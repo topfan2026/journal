@@ -1,0 +1,23 @@
+{
+  "_comment": "Background music for traders: world market-hours board + focus timer. Music and market hours only, no trade ideas or signals.",
+  "name": "Market Hours Focus",
+  "niche": "trading-music",
+  "scene": "night-city",
+  "headline": "Focus music for traders · live market hours",
+  "broadcast_match": "Market Hours",
+  "pomodoro": true,
+  "focus_minutes": 50,
+  "break_minutes": 10,
+  "tasks": false,
+  "market_clock": true,
+  "goal_hours": 0,
+  "ticker": [
+    "Music and market hours only, not financial advice",
+    "Session times are regular hours; exchange holidays are not shown",
+    "Type !focus to lock in with everyone"
+  ],
+  "music_dir": "trading",
+  "music_volume": 0.55,
+  "break_question": false,
+  "trivia": {"enabled": false}
+}

@@ -1,0 +1,605 @@
+{
+ "title": "General Knowledge",
+ "questions": [
+  {
+   "q": "How many days are in a leap year?",
+   "a": "366",
+   "wrong": [
+    "365",
+    "364",
+    "367"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "How many sides does a hexagon have?",
+   "a": "6",
+   "wrong": [
+    "5",
+    "7",
+    "8"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "What is the largest land animal?",
+   "a": "The African elephant",
+   "wrong": [
+    "The giraffe",
+    "The hippopotamus",
+    "The white rhino"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "What color do you get by mixing blue and yellow paint?",
+   "a": "Green",
+   "wrong": [
+    "Purple",
+    "Orange",
+    "Brown"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "How many minutes are in a day?",
+   "a": "1,440",
+   "wrong": [
+    "1,240",
+    "1,400",
+    "2,400"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "Which language has the most native speakers?",
+   "a": "Mandarin Chinese",
+   "wrong": [
+    "English",
+    "Spanish",
+    "Hindi"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "What is the currency of Japan?",
+   "a": "Yen",
+   "wrong": [
+    "Won",
+    "Yuan",
+    "Ringgit"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "Who painted the Mona Lisa?",
+   "a": "Leonardo da Vinci",
+   "wrong": [
+    "Michelangelo",
+    "Raphael",
+    "Rembrandt"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "What is the tallest animal?",
+   "a": "The giraffe",
+   "wrong": [
+    "The elephant",
+    "The ostrich",
+    "The camel"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Which famous passenger ship sank in 1912?",
+   "a": "Titanic",
+   "wrong": [
+    "Lusitania",
+    "Britannic",
+    "Queen Mary"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "In which year did humans first land on the Moon?",
+   "a": "1969",
+   "wrong": [
+    "1965",
+    "1972",
+    "1959"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "Who was the first person to walk on the Moon?",
+   "a": "Neil Armstrong",
+   "wrong": [
+    "Buzz Aldrin",
+    "Yuri Gagarin",
+    "John Glenn"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "What is the square root of 144?",
+   "a": "12",
+   "wrong": [
+    "14",
+    "11",
+    "16"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "How many legs does a spider have?",
+   "a": "8",
+   "wrong": [
+    "6",
+    "10",
+    "12"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Who wrote \"Romeo and Juliet\"?",
+   "a": "William Shakespeare",
+   "wrong": [
+    "Charles Dickens",
+    "Jane Austen",
+    "Geoffrey Chaucer"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "What is the capital of France?",
+   "a": "Paris",
+   "wrong": [
+    "Lyon",
+    "Marseille",
+    "Nice"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "At what temperature in Celsius does water freeze?",
+   "a": "0 °C",
+   "wrong": [
+    "32 °C",
+    "-10 °C",
+    "4 °C"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "How many colors are traditionally named in a rainbow?",
+   "a": "7",
+   "wrong": [
+    "5",
+    "6",
+    "8"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "What is the longest bone in the human body?",
+   "a": "The femur",
+   "wrong": [
+    "The tibia",
+    "The humerus",
+    "The spine"
+   ],
+   "cat": "Science"
+  },
+  {
+   "q": "Who painted \"The Starry Night\"?",
+   "a": "Vincent van Gogh",
+   "wrong": [
+    "Claude Monet",
+    "Pablo Picasso",
+    "Salvador Dalí"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "Which animal is often called the \"King of the Jungle\"?",
+   "a": "The lion",
+   "wrong": [
+    "The tiger",
+    "The gorilla",
+    "The elephant"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "What is the largest internal organ of the human body?",
+   "a": "The liver",
+   "wrong": [
+    "The heart",
+    "The brain",
+    "The stomach"
+   ],
+   "cat": "Science"
+  },
+  {
+   "q": "What does \"www\" stand for in a web address?",
+   "a": "World Wide Web",
+   "wrong": [
+    "World Web Wide",
+    "Wide World Web",
+    "Web World Wide"
+   ],
+   "cat": "Technology"
+  },
+  {
+   "q": "Who is credited with patenting the telephone in 1876?",
+   "a": "Alexander Graham Bell",
+   "wrong": [
+    "Thomas Edison",
+    "Nikola Tesla",
+    "Guglielmo Marconi"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "Which bird is a common symbol of peace?",
+   "a": "The dove",
+   "wrong": [
+    "The eagle",
+    "The swan",
+    "The owl"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "How many squares are on a chessboard?",
+   "a": "64",
+   "wrong": [
+    "48",
+    "72",
+    "100"
+   ],
+   "cat": "Games"
+  },
+  {
+   "q": "Which chess piece can only move diagonally?",
+   "a": "The bishop",
+   "wrong": [
+    "The rook",
+    "The knight",
+    "The queen"
+   ],
+   "cat": "Games"
+  },
+  {
+   "q": "What is the main ingredient in guacamole?",
+   "a": "Avocado",
+   "wrong": [
+    "Tomato",
+    "Lime",
+    "Pea"
+   ],
+   "cat": "Food"
+  },
+  {
+   "q": "Which country gave the Statue of Liberty to the United States?",
+   "a": "France",
+   "wrong": [
+    "England",
+    "Spain",
+    "Italy"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "Who wrote the Harry Potter books?",
+   "a": "J.K. Rowling",
+   "wrong": [
+    "J.R.R. Tolkien",
+    "Roald Dahl",
+    "C.S. Lewis"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "What is 15% of 200?",
+   "a": "30",
+   "wrong": [
+    "15",
+    "20",
+    "35"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "What is the Roman numeral for 50?",
+   "a": "L",
+   "wrong": [
+    "C",
+    "D",
+    "X"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "Which month has 28 days in a common year?",
+   "a": "February",
+   "wrong": [
+    "April",
+    "June",
+    "November"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "What do caterpillars turn into?",
+   "a": "Butterflies or moths",
+   "wrong": [
+    "Beetles",
+    "Dragonflies",
+    "Bees"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "What is the largest species of shark?",
+   "a": "The whale shark",
+   "wrong": [
+    "The great white shark",
+    "The tiger shark",
+    "The hammerhead shark"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Who was the first President of the United States?",
+   "a": "George Washington",
+   "wrong": [
+    "Thomas Jefferson",
+    "Abraham Lincoln",
+    "John Adams"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "In which city is the Colosseum?",
+   "a": "Rome",
+   "wrong": [
+    "Athens",
+    "Istanbul",
+    "Naples"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "What is the main language spoken in Brazil?",
+   "a": "Portuguese",
+   "wrong": [
+    "Spanish",
+    "French",
+    "English"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "How many wheels does a tricycle have?",
+   "a": "3",
+   "wrong": [
+    "2",
+    "4",
+    "1"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "Which wall began to be torn down in 1989?",
+   "a": "The Berlin Wall",
+   "wrong": [
+    "Hadrian's Wall",
+    "The Great Wall of China",
+    "The Western Wall"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "Which metal conducts electricity best?",
+   "a": "Silver",
+   "wrong": [
+    "Copper",
+    "Gold",
+    "Aluminium"
+   ],
+   "cat": "Science"
+  },
+  {
+   "q": "What instrument is used to measure temperature?",
+   "a": "A thermometer",
+   "wrong": [
+    "A barometer",
+    "A hygrometer",
+    "An odometer"
+   ],
+   "cat": "Science"
+  },
+  {
+   "q": "What is a baby kangaroo called?",
+   "a": "A joey",
+   "wrong": [
+    "A kit",
+    "A cub",
+    "A pup"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Which of the Seven Wonders of the Ancient World is still standing?",
+   "a": "The Great Pyramid of Giza",
+   "wrong": [
+    "The Colossus of Rhodes",
+    "The Hanging Gardens of Babylon",
+    "The Lighthouse of Alexandria"
+   ],
+   "cat": "History"
+  },
+  {
+   "q": "Who wrote the novel \"1984\"?",
+   "a": "George Orwell",
+   "wrong": [
+    "Aldous Huxley",
+    "Ray Bradbury",
+    "H.G. Wells"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "How many years are in a century?",
+   "a": "100",
+   "wrong": [
+    "10",
+    "1,000",
+    "50"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "Which company makes the iPhone?",
+   "a": "Apple",
+   "wrong": [
+    "Samsung",
+    "Google",
+    "Microsoft"
+   ],
+   "cat": "Technology"
+  },
+  {
+   "q": "What does a philatelist collect?",
+   "a": "Stamps",
+   "wrong": [
+    "Coins",
+    "Butterflies",
+    "Postcards"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "Which country is famous for maple syrup?",
+   "a": "Canada",
+   "wrong": [
+    "Sweden",
+    "Switzerland",
+    "New Zealand"
+   ],
+   "cat": "Food"
+  },
+  {
+   "q": "What is the plural of \"mouse\" (the animal)?",
+   "a": "Mice",
+   "wrong": [
+    "Mouses",
+    "Meese",
+    "Mousen"
+   ],
+   "cat": "Everyday"
+  },
+  {
+   "q": "How many zeros are in one million?",
+   "a": "6",
+   "wrong": [
+    "5",
+    "7",
+    "9"
+   ],
+   "cat": "Numbers"
+  },
+  {
+   "q": "Which fruit is dried to make raisins?",
+   "a": "Grapes",
+   "wrong": [
+    "Plums",
+    "Figs",
+    "Cherries"
+   ],
+   "cat": "Food"
+  },
+  {
+   "q": "Which fictional detective lived at 221B Baker Street?",
+   "a": "Sherlock Holmes",
+   "wrong": [
+    "Hercule Poirot",
+    "Miss Marple",
+    "Inspector Clouseau"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "What is the fastest land animal?",
+   "a": "The cheetah",
+   "wrong": [
+    "The lion",
+    "The pronghorn",
+    "The greyhound"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Who painted the ceiling of the Sistine Chapel?",
+   "a": "Michelangelo",
+   "wrong": [
+    "Leonardo da Vinci",
+    "Raphael",
+    "Botticelli"
+   ],
+   "cat": "Art & Books"
+  },
+  {
+   "q": "Which famous wall stretches across northern China?",
+   "a": "The Great Wall",
+   "wrong": [
+    "The Berlin Wall",
+    "Hadrian's Wall",
+    "The Western Wall"
+   ],
+   "cat": "World"
+  },
+  {
+   "q": "How many hearts does an octopus have?",
+   "a": "3",
+   "wrong": [
+    "1",
+    "2",
+    "8"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "Which blood type is known as the universal donor for red blood cells?",
+   "a": "O negative",
+   "wrong": [
+    "AB positive",
+    "A positive",
+    "B negative"
+   ],
+   "cat": "Science"
+  },
+  {
+   "q": "Which is the only mammal capable of true powered flight?",
+   "a": "The bat",
+   "wrong": [
+    "The flying squirrel",
+    "The sugar glider",
+    "The colugo"
+   ],
+   "cat": "Animals"
+  },
+  {
+   "q": "What is the tallest type of grass in the world?",
+   "a": "Bamboo",
+   "wrong": [
+    "Sugarcane",
+    "Pampas grass",
+    "Wheat"
+   ],
+   "cat": "Science"
+  }
+ ]
+}
