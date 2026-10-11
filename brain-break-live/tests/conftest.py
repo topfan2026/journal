@@ -14,7 +14,7 @@ from trivia import QuestionBank  # noqa: E402
 @pytest.fixture
 def settings(tmp_path):
     s = Settings.load(tz=ZoneInfo("America/New_York"), data_root=tmp_path / "data", music_root=tmp_path / "music",
-                      questions_dir=ROOT / "questions", profiles_dir=ROOT / "profiles", port=0,
+                      backgrounds_dir=tmp_path / "backgrounds", questions_dir=ROOT / "questions", profiles_dir=ROOT / "profiles", port=0,
                       trivia_poll_seconds=5, study_poll_seconds=20, daily_quota=10000, quota_reserve=500,
                       list_cost=5, insert_cost=50, bot_chat="minimal", blocked_words=("badword",))
     s.ensure_dirs()

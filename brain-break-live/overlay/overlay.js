@@ -5,7 +5,8 @@
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   const MUTED = params.get("muted") === "1";
-  let state = null, offset = 0, scene = "study-room", profileId = null, lastOk = Date.now();
+  let state = null, offset = 0, profileId = null, lastOk = Date.now();
+  let look = { scene: "study-room", background: {}, effects: [] };
 
   // ---------------------------------------------------------------- stage scaling
   function fit() {
@@ -16,7 +17,7 @@
     stage.style.top = `${(innerHeight - 1080 * k) / 2}px`;
   }
   addEventListener("resize", fit); fit();
-  BBScenes.start($("scene"), () => scene, 30);
+  BBRender.start($("scene"), () => look, 30);
 
   const now = () => Date.now() / 1000 + offset;
   const mmss = s => {
@@ -45,6 +46,7 @@
       const s = await r.json();
       offset = s.now - Date.now() / 1000;
       state = s; lastOk = Date.now();
+      look = { scene: s.profile.scene, background: s.background || {}, effects: s.profile.effects || [] };
       applyProfile(s.profile);
     } catch (e) { /* server restarting; keep the last picture */ }
     show("offline", Date.now() - lastOk > 5000);
@@ -54,7 +56,6 @@
   function applyProfile(p) {
     if (p.id === profileId) return;
     profileId = p.id;
-    scene = p.scene;
     const [accent, ink] = BBScenes.accent(p.scene);
     document.documentElement.style.setProperty("--accent", accent);
     document.documentElement.style.setProperty("--accent-ink", ink);

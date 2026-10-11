@@ -15,6 +15,8 @@ ENV_FILE = Path(os.environ.get("BRAINBREAK_ENV_FILE", BOT_DIR / ".env")).expandu
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 SCENES = ("study-room", "rain-window", "fireplace", "ocean", "night-city", "space")
+EFFECTS = ("rain-glass", "rain", "snow", "dust", "lightning", "grain", "vignette")
+MEDIA_EXT = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".webm", ".m4v", ".mov"}
 
 load_dotenv(ENV_FILE, override=False)
 # Fall back to trading-shorts-bot's .env for the shared YouTube credentials (values above win).
@@ -71,6 +73,7 @@ class Settings:
     port: int
     data_root: Path
     music_root: Path
+    backgrounds_dir: Path
     questions_dir: Path
     profiles_dir: Path
     study_poll_seconds: float
@@ -83,7 +86,7 @@ class Settings:
     blocked_words: tuple[str, ...] = field(default_factory=tuple)
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_root, self.music_root):
+        for d in (self.data_root, self.music_root, self.backgrounds_dir):
             d.mkdir(parents=True, exist_ok=True)
 
     @classmethod
@@ -103,6 +106,7 @@ class Settings:
             port=int(env_float("OVERLAY_PORT", 8790)),
             data_root=Path(env("DATA_DIR", str(BOT_DIR / "data"))).expanduser(),
             music_root=Path(env("MUSIC_DIR", str(BOT_DIR / "music"))).expanduser(),
+            backgrounds_dir=Path(env("BACKGROUNDS_DIR", str(BOT_DIR / "backgrounds"))).expanduser(),
             questions_dir=Path(env("QUESTIONS_DIR", str(BOT_DIR / "questions"))).expanduser(),
             profiles_dir=Path(env("PROFILES_DIR", str(BOT_DIR / "profiles"))).expanduser(),
             study_poll_seconds=env_float("STUDY_POLL_SECONDS", 20),
@@ -161,7 +165,10 @@ class Profile:
     id: str
     name: str                               # shown on the overlay
     niche: str                              # free text, used in the stats comparison
-    scene: str = "study-room"
+    scene: str = "study-room"               # built-in background, used when there is no background file
+    background: str = ""                    # photo/video in backgrounds/ (jpg png webp mp4 webm)
+    background_night: str = ""              # optional: used from 19:00 to 06:00
+    effects: tuple[str, ...] = ()           # realism layers; empty = the scene's defaults
     headline: str = ""
     broadcast_match: str = ""               # pick the live broadcast whose title contains this
     pomodoro: bool = True
@@ -187,7 +194,7 @@ class Profile:
     def to_public(self) -> dict:
         """What the overlay needs to know."""
         return {
-            "id": self.id, "name": self.name, "niche": self.niche, "scene": self.scene,
+            "id": self.id, "name": self.name, "niche": self.niche, "scene": self.scene, "effects": list(self.effects),
             "headline": self.headline, "pomodoro": self.pomodoro, "tasks": self.tasks,
             "checkin_label": self.checkin_label, "checkin_command": self.checkin_command,
             "goal_hours": self.goal_hours, "goal_label": self.goal_label, "clock": self.clock,
@@ -236,6 +243,16 @@ def load_profile(path: Path) -> Profile:
         raise ConfigError(f"{where}: scene must be one of {', '.join(SCENES)}")
     if "ticker" in raw:
         raw["ticker"] = tuple(raw["ticker"])
+    if "effects" in raw:
+        raw["effects"] = tuple(raw["effects"])
+        bad = set(raw["effects"]) - set(EFFECTS)
+        if bad:
+            raise ConfigError(f"{where}: unknown effect(s) {', '.join(sorted(bad))} (use {', '.join(EFFECTS)})")
+    for key in ("background", "background_night"):
+        name = raw.get(key, "")
+        if name and (Path(name).name != name or Path(name).suffix.lower() not in MEDIA_EXT):
+            raise ConfigError(f"{where}: {key} must be a file name in backgrounds/ ending in "
+                              f"{', '.join(sorted(MEDIA_EXT))}")
     raw["trivia"] = _trivia_from(raw.get("trivia", {}), where)
     profile = Profile(**raw)
     if profile.pomodoro and (profile.focus_minutes < 1 or profile.break_minutes < 1):

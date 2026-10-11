@@ -7,6 +7,7 @@
     /api/stats?days=7  per-niche comparison
     /api/music         the active niche's tracks
     /music/<file>      a track
+    /backgrounds/<file> a background photo or video
     POST /api/control  {"action": "switch" | "trivia_start" | "trivia_stop" | "clear_tasks" | "test_message", ...}
 
 It listens on 127.0.0.1 only: the control page has no password, so don't expose the port.
@@ -16,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -55,6 +57,47 @@ def make_handler(app: App):
                 ctype += "; charset=utf-8"
             self._send(200, path.read_bytes(), ctype, cache)
 
+        def _media(self, path: Path) -> None:
+            """Stream a music/video file with HTTP Range support (browsers need it to loop and seek)."""
+            if not path.is_file():
+                return self._json({"error": "not found"}, 404)
+            size = path.stat().st_size
+            ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            start, end = 0, size - 1
+            m = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", "").strip())
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1):
+                    start, end = int(m.group(1)), int(m.group(2) or size - 1)
+                else:
+                    start = max(0, size - int(m.group(2)))
+                end = min(end, size - 1)
+                if start > end:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.end_headers()
+                    return
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            else:
+                self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Cache-Control", "max-age=3600")
+            self.end_headers()
+            try:
+                with path.open("rb") as f:
+                    f.seek(start)
+                    left = end - start + 1
+                    while left > 0:
+                        chunk = f.read(min(1 << 20, left))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        left -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the browser stopped reading (normal when seeking)
+
         def do_GET(self):  # noqa: N802
             url = urlparse(self.path)
             route = url.path.rstrip("/") or "/"
@@ -73,7 +116,12 @@ def make_handler(app: App):
                 name = unquote(route[len("/music/"):])
                 if "/" in name or "\\" in name or name.startswith(".") or name not in app.music():
                     return self._json({"error": "not found"}, 404)
-                return self._file(app.profile.music_path(app.s) / name, cache=True)
+                return self._media(app.profile.music_path(app.s) / name)
+            if route.startswith("/backgrounds/"):
+                name = unquote(route[len("/backgrounds/"):])
+                if name not in app.backgrounds():
+                    return self._json({"error": "not found"}, 404)
+                return self._media(app.s.backgrounds_dir / name)
             if route.startswith("/static/"):
                 name = route[len("/static/"):]
                 target = (OVERLAY_DIR / name).resolve()

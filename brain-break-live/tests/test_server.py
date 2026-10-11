@@ -58,3 +58,35 @@ def test_control_and_cross_site_block(base):
     assert post(base + "/api/control", {"action": "switch", "profile": "study"}, origin="https://evil.example")[0] == 403
     code, body = post(base + "/api/control", {"action": "explode"})
     assert code == 400 and "unknown action" in body["error"]
+
+
+def test_background_video_supports_range(settings, profiles, bank, clock):
+    from dataclasses import replace
+    (settings.backgrounds_dir / "loop.webm").write_bytes(bytes(range(256)) * 4)
+    profiles = dict(profiles)
+    profiles["study"] = replace(profiles["study"], background="loop.webm", background_night="missing.webm")
+    app = App(settings, profiles, DemoChat(settings, clock=clock, rate=0), bank, active="study", clock=clock)
+    assert app.snapshot()["background"] == {"day": "/backgrounds/loop.webm"}   # missing night file is skipped
+    httpd = serve(app, "127.0.0.1", 0)
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/backgrounds/loop.webm"
+        req = urllib.request.Request(url, headers={"Range": "bytes=10-19"})
+        with urllib.request.urlopen(req) as r:
+            assert r.status == 206 and r.headers["Content-Range"] == "bytes 10-19/1024"
+            assert r.read() == bytes(range(10, 20))
+        assert len(get(url)[1]) == 1024
+        with pytest.raises(urllib.error.HTTPError):
+            get(url.replace("loop.webm", "..%2F..%2Fapp.py"))
+    finally:
+        httpd.shutdown()
+
+
+def test_bad_profile_background_rejected(tmp_path):
+    from config import ConfigError, load_profile
+    p = tmp_path / "x.json"
+    p.write_text('{"name": "X", "background": "../secret.mp4"}')
+    with pytest.raises(ConfigError):
+        load_profile(p)
+    p.write_text('{"name": "X", "effects": ["sparkles"]}')
+    with pytest.raises(ConfigError):
+        load_profile(p)

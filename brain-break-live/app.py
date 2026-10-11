@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from chat import ChatMessage, ChatSource, DemoChat
-from config import DAYS, Profile, Settings
+from config import DAYS, MEDIA_EXT, Profile, Settings
 from stats import Stats
 from study import StudyEngine
 from trivia import QuestionBank, TriviaGame
@@ -296,6 +296,20 @@ class App:
             return []
         return sorted(f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in MUSIC_EXT)
 
+    def backgrounds(self) -> list[str]:
+        folder = self.s.backgrounds_dir
+        if not folder.is_dir():
+            return []
+        return sorted(f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in MEDIA_EXT)
+
+    def _background(self, p: Profile) -> dict:
+        """URLs of the profile's background files that exist (missing ones fall back to the scene)."""
+        out = {}
+        for key, name in (("day", p.background), ("night", p.background_night)):
+            if name and (self.s.backgrounds_dir / name).is_file():
+                out[key] = "/backgrounds/" + name
+        return out
+
     def snapshot(self) -> dict:
         with self.lock:
             now = self.clock()
@@ -304,6 +318,7 @@ class App:
             snap = {
                 "now": now, "mode": mode, "profile": p.to_public(), "events": self.events[-6:],
                 "chat": self.chat.status(), "study": self.study().snapshot(now),
+                "background": self._background(p),
             }
             win = self.next_window(now)
             if win and p.trivia.enabled:
@@ -318,6 +333,7 @@ class App:
         with self.lock:
             return {"active": self.active, "profiles": [
                 {"id": pid, "name": pr.name, "niche": pr.niche, "scene": pr.scene,
+                 "background": pr.background or "", "has_background": bool(self._background(pr)),
                  "trivia": pr.trivia.enabled, "always_on": pr.trivia.always_on, "pomodoro": pr.pomodoro,
                  "music_tracks": len(self._tracks(pr)), "broadcast_match": pr.broadcast_match}
                 for pid, pr in self.profiles.items()]}
