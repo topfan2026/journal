@@ -90,3 +90,27 @@ def test_bad_profile_background_rejected(tmp_path):
     p.write_text('{"name": "X", "effects": ["sparkles"]}')
     with pytest.raises(ConfigError):
         load_profile(p)
+
+
+def test_upload_pick_and_effects(base):
+    import urllib.request as rq
+    body = b"\x89PNG fake image bytes"
+    req = rq.Request(base + "/api/background-upload?name=My%20Cozy%20Room!.png&slot=day", data=body,
+                     headers={"Content-Type": "application/octet-stream"})
+    with rq.urlopen(req) as r:
+        name = json.loads(r.read())["name"]
+    assert name == "My-Cozy-Room.png"
+    looks = json.loads(get(base + "/api/backgrounds")[1])
+    assert looks["day"] == name and name in looks["files"]
+    assert json.loads(get(base + "/api/state")[1])["background"] == {"day": "/backgrounds/My-Cozy-Room.png"}
+    assert get(base + "/backgrounds/My-Cozy-Room.png")[1] == body
+    assert post(base + "/api/control", {"action": "set_effects", "effects": ["vignette", "rain-glass"]})[0] == 200
+    assert json.loads(get(base + "/api/state")[1])["effects"] == ["rain-glass", "vignette"]
+    assert post(base + "/api/control", {"action": "set_effects", "effects": ["sparkles"]})[0] == 400
+    assert post(base + "/api/control", {"action": "set_background", "slot": "night", "name": "nope.png"})[0] == 400
+    req = rq.Request(base + "/api/background-upload?name=evil.exe", data=b"MZ", headers={})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        rq.urlopen(req)
+    assert e.value.code == 400
+    assert post(base + "/api/control", {"action": "reset_look"})[0] == 200
+    assert json.loads(get(base + "/api/state")[1])["background"] == {}

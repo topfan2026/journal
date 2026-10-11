@@ -8,7 +8,10 @@
     /api/music         the active niche's tracks
     /music/<file>      a track
     /backgrounds/<file> a background photo or video
-    POST /api/control  {"action": "switch" | "trivia_start" | "trivia_stop" | "clear_tasks" | "test_message", ...}
+    /api/backgrounds   background files + the active niche's chosen background/effects
+    POST /api/control  {"action": "switch" | "trivia_start" | "trivia_stop" | "clear_tasks" | "test_message"
+                        | "set_background" | "set_effects" | "reset_look" | "update_restart", ...}
+    POST /api/background-upload?name=<file>&slot=day|night   raw file body
 
 It listens on 127.0.0.1 only: the control page has no password, so don't expose the port.
 """
@@ -110,6 +113,8 @@ def make_handler(app: App):
             if route == "/api/stats":
                 days = int((parse_qs(url.query).get("days") or ["7"])[0] or 7)
                 return self._json({"days": days, "rows": app.compare(max(1, min(days, 365)))})
+            if route == "/api/backgrounds":
+                return self._json(app.looks_public())
             if route == "/api/music":
                 return self._json({"profile": app.active, "tracks": app.music()})
             if route.startswith("/music/"):
@@ -131,12 +136,23 @@ def make_handler(app: App):
             self._json({"error": "not found"}, 404)
 
         def do_POST(self):  # noqa: N802
-            if urlparse(self.path).path != "/api/control":
-                return self._json({"error": "not found"}, 404)
+            url = urlparse(self.path)
             # Browsers send Origin on cross-site POSTs: only accept the control page itself.
             origin = self.headers.get("Origin")
             if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost"):
                 return self._json({"error": "forbidden"}, 403)
+            if url.path == "/api/background-upload":
+                try:
+                    name = (parse_qs(url.query).get("name") or [""])[0]
+                    saved = app.save_upload(name, self.rfile, int(self.headers.get("Content-Length") or 0))
+                    slot = (parse_qs(url.query).get("slot") or ["day"])[0]
+                    app.control("set_background", slot=slot, name=saved)
+                    return self._json({"ok": True, "name": saved})
+                except (ControlError, ValueError) as e:
+                    self.close_connection = True  # the rest of the body was not read
+                    return self._json({"error": str(e)}, 400)
+            if url.path != "/api/control":
+                return self._json({"error": "not found"}, 404)
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 10_000)
                 body = json.loads(self.rfile.read(length) or b"{}")

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from chat import ChatMessage, ChatSource, DemoChat
-from config import DAYS, MEDIA_EXT, Profile, Settings
+from config import DAYS, EFFECTS, MEDIA_EXT, Profile, Settings
 from stats import Stats
 from study import StudyEngine
 from trivia import QuestionBank, TriviaGame
@@ -43,6 +43,8 @@ class App:
         self.used: dict[str, set[str]] = {k: set(v) for k, v in saved.get("used", {}).items()}
         self.alltime: dict[str, dict] = saved.get("alltime", {})
         self.history: list[dict] = saved.get("history", [])[-50:]
+        # background/effects chosen on the control page, per profile: {"day": name, "night": name, "effects": [...]}
+        self.looks: dict[str, dict] = saved.get("looks", {})
         self.studies: dict[str, StudyEngine] = {}
         self.stats = Stats(settings.data_root / "stats.json", settings.tz)
         self.game: TriviaGame | None = None
@@ -94,7 +96,8 @@ class App:
     def save(self) -> None:
         with self.lock:
             self._write(self.app_file, {"active": self.active, "used": {k: sorted(v) for k, v in self.used.items()},
-                                        "alltime": self.alltime, "history": self.history[-50:]})
+                                        "alltime": self.alltime, "history": self.history[-50:],
+                                        "looks": self.looks})
             for pid, eng in self.studies.items():
                 self._write(self._study_file(pid), eng.to_dict())
             self.stats.save()
@@ -280,6 +283,31 @@ class App:
                     raise ControlError("updates need the program started with start.bat / start-demo.bat")
                 self.restart_requested = True
                 return {"ok": True}
+            if action == "set_background":
+                slot, name = args.get("slot", "day"), str(args.get("name") or "")
+                if slot not in ("day", "night"):
+                    raise ControlError("slot must be day or night")
+                if name and name not in self.backgrounds():
+                    raise ControlError(f"no background called {name!r}")
+                self.looks.setdefault(self.active, {})[slot] = name
+                self.save()
+                return {"ok": True}
+            if action == "set_effects":
+                effects = args.get("effects")
+                look = self.looks.setdefault(self.active, {})
+                if effects is None:
+                    look.pop("effects", None)   # back to the profile / scene defaults
+                else:
+                    bad = set(effects) - set(EFFECTS)
+                    if bad:
+                        raise ControlError(f"unknown effect(s): {', '.join(sorted(bad))}")
+                    look["effects"] = [e for e in EFFECTS if e in effects]
+                self.save()
+                return {"ok": True}
+            if action == "reset_look":
+                self.looks.pop(self.active, None)
+                self.save()
+                return {"ok": True}
             if action == "clear_tasks":
                 self.study().tasks.clear()
                 return {"ok": True}
@@ -304,16 +332,59 @@ class App:
             return []
         return sorted(f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in MUSIC_EXT)
 
+    def save_upload(self, filename: str, body, length: int, limit: int = 2 * 1024 ** 3) -> str:
+        """Store an uploaded photo/video in backgrounds/ and return its (safe, unique) name."""
+        stem, ext = Path(filename).stem, Path(filename).suffix.lower()
+        if ext not in MEDIA_EXT:
+            raise ControlError(f"use a photo or video ({', '.join(sorted(MEDIA_EXT))})")
+        if length <= 0 or length > limit:
+            raise ControlError("file is empty or bigger than 2 GB")
+        stem = "".join(c if c.isalnum() or c in "-_" else "-" for c in stem).strip("-")[:60] or "background"
+        folder = self.s.backgrounds_dir
+        folder.mkdir(parents=True, exist_ok=True)
+        name, n = stem + ext, 2
+        while (folder / name).exists():
+            name, n = f"{stem}-{n}{ext}", n + 1
+        tmp = folder / (name + ".part")
+        left = length
+        try:
+            with tmp.open("wb") as f:
+                while left > 0:
+                    chunk = body.read(min(1 << 20, left))
+                    if not chunk:
+                        raise ControlError("upload was interrupted")
+                    f.write(chunk)
+                    left -= len(chunk)
+            tmp.replace(folder / name)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return name
+
+    def looks_public(self) -> dict:
+        with self.lock:
+            p = self.profile
+            look = self.look(p)
+            return {"profile": p.id, "scene": p.scene, "files": self.backgrounds(), "day": look["day"],
+                    "night": look["night"], "effects": look["effects"], "all_effects": list(EFFECTS),
+                    "custom": p.id in self.looks}
+
     def backgrounds(self) -> list[str]:
         folder = self.s.backgrounds_dir
         if not folder.is_dir():
             return []
         return sorted(f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in MEDIA_EXT)
 
+    def look(self, p: Profile) -> dict:
+        """The profile's background + effects: control-page choices first, then the profile file."""
+        chosen = self.looks.get(p.id, {})
+        return {"day": chosen.get("day", p.background), "night": chosen.get("night", p.background_night),
+                "effects": list(chosen.get("effects", p.effects))}
+
     def _background(self, p: Profile) -> dict:
         """URLs of the profile's background files that exist (missing ones fall back to the scene)."""
         out = {}
-        for key, name in (("day", p.background), ("night", p.background_night)):
+        look = self.look(p)
+        for key, name in (("day", look["day"]), ("night", look["night"])):
             if name and (self.s.backgrounds_dir / name).is_file():
                 out[key] = "/backgrounds/" + name
         return out
@@ -327,6 +398,7 @@ class App:
                 "now": now, "mode": mode, "profile": p.to_public(), "events": self.events[-6:],
                 "chat": self.chat.status(), "study": self.study().snapshot(now),
                 "background": self._background(p),
+                "effects": self.look(p)["effects"],
                 "timezone": str(self.s.tz),
                 "update_available": self.update_available,
                 "can_update": bool(os.environ.get("BBL_LAUNCHER")),
@@ -344,7 +416,7 @@ class App:
         with self.lock:
             return {"active": self.active, "profiles": [
                 {"id": pid, "name": pr.name, "niche": pr.niche, "scene": pr.scene,
-                 "background": pr.background or "", "has_background": bool(self._background(pr)),
+                 "background": self.look(pr)["day"] or "", "has_background": bool(self._background(pr)),
                  "trivia": pr.trivia.enabled, "always_on": pr.trivia.always_on, "pomodoro": pr.pomodoro,
                  "music_tracks": len(self._tracks(pr)), "broadcast_match": pr.broadcast_match}
                 for pid, pr in self.profiles.items()]}

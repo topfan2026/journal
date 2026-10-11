@@ -46,7 +46,7 @@
       const s = await r.json();
       offset = s.now - Date.now() / 1000;
       state = s; lastOk = Date.now();
-      look = { scene: s.profile.scene, background: s.background || {}, effects: s.profile.effects || [] };
+      look = { scene: s.profile.scene, background: s.background || {}, effects: s.effects || s.profile.effects || [] };
       applyProfile(s.profile);
     } catch (e) { /* server restarting; keep the last picture */ }
     show("offline", Date.now() - lastOk > 5000);
