@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
+import threading
 import time
 
 from config import ConfigError, Settings, env, load_profiles, save_env
 
 log = logging.getLogger("brainbreak")
+RESTART = 75  # tells launcher.py to update and start again
 
 
 def build(args) -> "tuple":
@@ -50,17 +53,30 @@ def run(args) -> int:
     log.info("time zone: %s (set TIMEZONE in .env if this is wrong)", settings.tz)
     log.info("overlay for OBS:  %s/", base)
     log.info("control page:     %s/control", base)
+    if os.environ.get("BBL_LAUNCHER"):
+        threading.Thread(target=watch_for_updates, args=(app,), name="update-check", daemon=True).start()
+    code = 0
     try:
-        while True:
+        while not app.restart_requested:
             app.tick()
             time.sleep(0.25)
+        log.info("restarting to install the update")
+        code = RESTART
     except KeyboardInterrupt:
         log.info("stopping")
     finally:
         chat.stop()
         app.save()
         httpd.shutdown()
-    return 0
+    return code
+
+
+def watch_for_updates(app) -> None:
+    """Every 3 hours: is there a newer version on GitHub? (shown on the control page)"""
+    import update
+    while True:
+        app.update_available = update.update_available()
+        time.sleep(3 * 3600)
 
 
 def check(args) -> int:

@@ -96,6 +96,12 @@
         <p class="note">Switching changes the scene, music and features within a second. With a real chat, the bot then follows the live broadcast whose title contains the profile's <code>broadcast_match</code>.</p>
       </section>
 
+      <section class="panel" id="update-panel" hidden>
+        <h2>Update</h2>
+        <p class="note" id="update-text" style="margin-top:0"></p>
+        <button class="btn primary" type="button" id="update-btn">Update now</button>
+      </section>
+
       <section class="panel">
         <h2>Trivia</h2>
         <div class="row">
@@ -173,6 +179,11 @@
         ["API quota left today", null, c.quota_left == null ? "demo" : c.quota_left.toLocaleString()],
         ["Time zone", null, s.timezone || "?"],
       ];
+      $("update-panel").hidden = !s.can_update;
+      $("update-text").textContent = s.update_available
+        ? "A new version is on GitHub. Updating restarts the program; the stream page reconnects by itself in a few seconds."
+        : "You have the latest version (checked every 3 hours and at every start). You can still restart to check now.";
+      $("update-btn").textContent = s.update_available ? "Update now" : "Check & restart";
       if (s.next_show) parts.push(["Next show", null, `${s.next_show.theme}, ${new Date(s.next_show.starts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`]);
       $("status").replaceChildren(...parts.map(([label, pre, value]) => {
         const span = el("span"); if (pre) span.append(pre);
@@ -225,6 +236,10 @@
     } catch (e) { msg(e.message, true); }
   }));
   $("days").addEventListener("change", loadStats);
+  $("update-btn").addEventListener("click", async () => {
+    try { await control("update_restart"); msg("Updating and restarting… this page comes back in a few seconds."); }
+    catch (e) { msg(e.message, true); }
+  });
 
   loadProfiles(); loadQuick(); loadStatus(); loadStats();
   setInterval(loadStatus, 3000); setInterval(loadStats, 30000);

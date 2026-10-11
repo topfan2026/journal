@@ -9,3 +9,6 @@ venv/
 .pytest_cache/
 backgrounds/*
 !backgrounds/README.md
+.update.json
+*.new
+*.tmp-update

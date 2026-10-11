@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import threading
 import time
@@ -53,6 +54,8 @@ class App:
         self.last_save = clock()
         self.last_viewers = 0.0
         self.last_affiliate = clock()
+        self.restart_requested = False
+        self.update_available = False
         if isinstance(chat, DemoChat):
             chat.correct_letter = lambda: self.game.correct_letter() if self.game else None
             chat.profile = self.profile
@@ -272,6 +275,11 @@ class App:
                 if self.game:
                     self._end_game(now)
                 return {"ok": True}
+            if action == "update_restart":
+                if not os.environ.get("BBL_LAUNCHER"):
+                    raise ControlError("updates need the program started with start.bat / start-demo.bat")
+                self.restart_requested = True
+                return {"ok": True}
             if action == "clear_tasks":
                 self.study().tasks.clear()
                 return {"ok": True}
@@ -320,6 +328,8 @@ class App:
                 "chat": self.chat.status(), "study": self.study().snapshot(now),
                 "background": self._background(p),
                 "timezone": str(self.s.tz),
+                "update_available": self.update_available,
+                "can_update": bool(os.environ.get("BBL_LAUNCHER")),
             }
             win = self.next_window(now)
             if win and p.trivia.enabled:
