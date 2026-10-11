@@ -64,11 +64,13 @@
   let config = null, key = "", timers = [], frames = [];
 
   // ---------------------------------------------------------------- scale the 1920x1080 stage to the window
+  // Sizes in the settings are for a 1080-pixel-tall stream. Scale by height, and make the stage as
+  // wide as the window so the bars always reach both edges (16:9, ultrawide, 4:3, any OBS canvas).
   function fit() {
-    const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+    const k = innerHeight / 1080 || 1;
     stage.style.transform = `scale(${k})`;
-    stage.style.left = `${(innerWidth - 1920 * k) / 2}px`;
-    stage.style.top = `${(innerHeight - 1080 * k) / 2}px`;
+    stage.style.width = `${innerWidth / k}px`;
+    stage.style.left = stage.style.top = "0px";
   }
   addEventListener("resize", fit); fit();
 

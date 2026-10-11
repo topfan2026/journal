@@ -17,8 +17,13 @@ No install and no program to run: OBS opens `banner.html` straight from this fol
 1. Open the scene that shows your chart (the `OBS_SCENE` your live bot uses).
 2. **Sources → + → Browser**, name it "Banner".
 3. Tick **Local file**, **Browse…** and pick `banner.html` in this folder.
-4. Width **1920**, Height **1080** (or your canvas size from Settings → Video). Leave the rest as it is.
+4. Width and Height = your OBS canvas size (**Settings → Video → Base (Canvas) Resolution**, e.g.
+   1920×1080, or 2560×1080 / 3440×1440 on an ultrawide). Leave the rest as it is.
 5. In the Sources list, drag **Banner** to the **top** so it sits above the chart.
+6. Right-click **Banner → Transform → Fit to screen** (Ctrl+F) so it fills the whole canvas.
+
+The bars always stretch edge to edge, whatever the screen shape; their height follows the
+canvas height (the sizes in the editor are for a 1080-pixel-tall stream).
 
 If the bars cover the chart's price or time labels, fit the chart between them: right-click the chart
 source → **Transform → Edit Transform**, set *Position* Y to the top bar height (96 by default) and the
