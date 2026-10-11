@@ -86,6 +86,11 @@ def capture_target(title: str, exe: str, window_class: str = CHROMIUM_WINDOW_CLA
     return f"{esc(title)}:{esc(window_class)}:{esc(exe)}"
 
 
+def pick_monitor(items: list[dict], number: int) -> dict | None:
+    """The `number`-th (1 = first) monitor in OBS's own list, which follows Windows' display numbers."""
+    return items[number - 1] if 1 <= number <= len(items) else None
+
+
 def frame_is_black(data_uri: str) -> bool:
     import base64
     import io
@@ -192,6 +197,45 @@ class OBS:
                 "boundsWidth": video.get("baseWidth", 1920), "boundsHeight": video.get("baseHeight", 1080)}})
         log.info("obs: added Window Capture %r to scene %r", CAPTURE_INPUT, scene)
         return CAPTURE_INPUT
+
+    def ensure_screen_capture(self, scene: str, monitor: int = 1, source: str = "Screen capture") -> str:
+        """Make `scene` (created if missing) show a whole monitor: Display Capture of monitor number `monitor`
+        (1 = Windows display 1), scaled to fit OBS's canvas. Returns which display OBS says it picked."""
+        scenes = {x["sceneName"] for x in self.req("GetSceneList").get("scenes", [])}
+        if scene not in scenes:
+            self.req("CreateScene", {"sceneName": scene})
+        settings = {"monitor": max(0, monitor - 1), "capture_cursor": True}
+        items = self.req("GetSceneItemList", {"sceneName": scene}).get("sceneItems", [])
+        found = [i for i in items if i.get("inputKind") == "monitor_capture"]
+        item_id = None
+        if found:
+            name, item_id = found[0]["sourceName"], found[0].get("sceneItemId")
+        else:
+            name = source
+            inputs = {i["inputName"] for i in self.req("GetInputList").get("inputs", [])}
+            if name in inputs:
+                item_id = self.req("CreateSceneItem", {"sceneName": scene, "sourceName": name}).get("sceneItemId")
+            else:
+                item_id = self.req("CreateInput", {"sceneName": scene, "inputName": name, "inputKind": "monitor_capture",
+                                                   "inputSettings": settings, "sceneItemEnabled": True}).get("sceneItemId")
+        label = f"monitor {monitor}"
+        try:  # newer OBS lists its displays by name: pick the one with that number
+            listed = self.req("GetInputPropertiesListPropertyItems", {"inputName": name, "propertyName": "monitor_id"})
+            chosen = pick_monitor(listed.get("propertyItems", []), monitor)
+            if chosen:
+                settings["monitor_id"] = chosen.get("itemValue")
+                label = chosen.get("itemName") or label
+        except Exception as e:  # older OBS: the plain monitor number is all it has
+            log.debug("obs: no monitor list (%s)", e)
+        self.req("SetInputSettings", {"inputName": name, "inputSettings": settings, "overlay": True})
+        if item_id is not None:
+            video = self.req("GetVideoSettings")
+            self.req("SetSceneItemEnabled", {"sceneName": scene, "sceneItemId": item_id, "sceneItemEnabled": True})
+            self.req("SetSceneItemTransform", {"sceneName": scene, "sceneItemId": item_id, "sceneItemTransform": {
+                "positionX": 0, "positionY": 0, "boundsType": "OBS_BOUNDS_SCALE_INNER",
+                "boundsWidth": video.get("baseWidth", 1920), "boundsHeight": video.get("baseHeight", 1080)}})
+        log.info("obs: scene %r shows %s", scene, label)
+        return label
 
     def remove_input(self, name: str) -> bool:
         """Delete a source (e.g. one an older version of the bot added); False if it isn't there."""

@@ -310,6 +310,9 @@ STREAM_PHASES = ("setup", "ready", "live", "ending", "test")
 
 class YouTubeAgent:
     name = "youtube"
+    title_key, title_default = "LIVE_TITLE", "LIVE Stock Scanner | {weekday} {date}"
+    description_key, description_default = "LIVE_DESCRIPTION", "Live stock scanner, every trading morning."
+    tags_key, thumbnail_key, privacy_key = "LIVE_TAGS", "LIVE_THUMBNAIL", "LIVE_PRIVACY"
 
     def __init__(self, settings: Settings, session: Session, start: datetime):
         self.settings, self.session, self.start = settings, session, start
@@ -326,20 +329,20 @@ class YouTubeAgent:
             log.info("[youtube] reusing today's broadcast %s", cached["broadcast_id"])
             return {**cached, "stream": stream}
         from metadata import _no_angle, truncate
-        title = truncate(_no_angle(render(env("LIVE_TITLE", "LIVE Stock Scanner | {weekday} {date}"), self.start)), 100)
+        title = truncate(_no_angle(render(env(self.title_key, self.title_default), self.start)), 100)
         description = "\n\n".join(p for p in (
-            render(env("LIVE_DESCRIPTION", "Live stock scanner, every trading morning.") or "", self.start),
+            render(env(self.description_key, self.description_default) or "", self.start),
             self.settings.disclaimer) if p)
         scheduled = max(self.start, datetime.now(tz()) + timedelta(minutes=1))
         bid = yl.create_broadcast(self.yt, title=title, description=_no_angle(description),
                                   start_iso=scheduled.isoformat(), privacy=self.start_privacy)
         yl.bind(self.yt, bid, stream["id"])
-        tags = [t.strip() for t in (env("LIVE_TAGS", "") or "").split(",") if t.strip()]
+        tags = [t.strip() for t in (env(self.tags_key, "") or "").split(",") if t.strip()]
         try:
             yl.tag(self.yt, bid, title=title, description=_no_angle(description), tags=tags)
         except Exception as e:
             log.warning("[youtube] couldn't set tags/category: %s", e)
-        thumb = env("LIVE_THUMBNAIL")
+        thumb = env(self.thumbnail_key)
         if thumb:
             try:
                 yl.set_thumbnail(self.yt, bid, Path(thumb).expanduser())
@@ -352,7 +355,7 @@ class YouTubeAgent:
 
     @property
     def final_privacy(self) -> str:
-        return env("LIVE_PRIVACY", "public") or "public"
+        return env(self.privacy_key, "public") or "public"
 
     @property
     def start_privacy(self) -> str:
@@ -1180,6 +1183,12 @@ def stop(settings: Settings) -> int:
     if (yesterday / "session.json").exists():
         Session(yesterday).stop_file.touch()
         Session(yesterday).set("stop", {"by": "you"})
+    # The screen stream keeps its own day folders (screen_live.py).
+    for day in (now, now - timedelta(days=1)):
+        folder = live_root(settings) / (day.strftime("%Y-%m-%d") + "-screen")
+        if (folder / "session.json").exists() or day is now:
+            Session(folder).stop_file.touch()
+            Session(folder).set("stop", {"by": "you"})
     log.info("asked today's stream to stop (%s)", session.stop_file)
     return 0
 
@@ -1347,7 +1356,7 @@ def main(argv: list[str] | None = None) -> int:
     from watcher import setup_logging
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["daemon", "run", "stop", "check", "check-autopilot", "site-login", "site-test", "data"])
+    ap.add_argument("command", choices=["daemon", "run", "screen", "stop", "check", "check-autopilot", "site-login", "site-test", "data"])
     ap.add_argument("--dry-run", action="store_true", default=None)
     ap.add_argument("--to", choices=["youtube", "tiktok", "both"], default=None,
                     help="run: where this stream goes (default: STREAM_TO)")
@@ -1368,6 +1377,9 @@ def main(argv: list[str] | None = None) -> int:
             return daemon(settings)
         if args.command == "run":
             return LiveShow(settings, to=args.to).run()
+        if args.command == "screen":
+            import screen_live
+            return screen_live.ScreenShow(settings).run()
         if args.command == "stop":
             return stop(settings)
         if args.command == "data":

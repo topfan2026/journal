@@ -148,6 +148,20 @@ TABS: dict[str, list[Field]] = {
         Field("YOUTUBE_CLIENT_ID", "Google OAuth client ID"),
         Field("YOUTUBE_CLIENT_SECRET", "Google OAuth client secret", "secret"),
     ],
+    "Screen stream": [
+        Field("SCREEN_MONITOR", "Monitor to stream", default="1",
+              help="Windows display number: 1 = your main 1920x1080 screen. Whatever you open there is what viewers see"),
+        Field("SCREEN_TITLE", "Title", default="LIVE | My screen | {weekday} {date}",
+              help="{weekday} and {date} are filled in"),
+        Field("SCREEN_DESCRIPTION", "Description", default=""),
+        Field("SCREEN_TAGS", "Tags (comma separated)", default=""),
+        Field("SCREEN_PRIVACY", "Who can watch", "choice", default="unlisted", choices=["public", "unlisted", "private"],
+              help="unlisted = only people with the link. Your whole screen is shown, so check before choosing public"),
+        Field("SCREEN_DURATION_MIN", "Stop after (minutes)", default="0", help="0 = keep going until you click End screen stream"),
+        Field("SCREEN_SCENE", "OBS scene it uses", default="AiAlgobot Screen",
+              help="created for you; your normal scene is switched back when the stream ends"),
+        Field("SCREEN_THUMBNAIL", "Thumbnail (1280x720 jpg)", "file"),
+    ],
 }
 
 DAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -281,7 +295,7 @@ class App:
             frame = ttk.Frame(nb, padding=12)
             frame.columnconfigure(1, weight=1)
             nb.add(frame, text=tab)
-            top_rows = 1 if tab in ("Scanner site", "YouTube") else 0  # its two buttons sit on top: the tab is taller than the window
+            top_rows = 1 if tab in ("Scanner site", "YouTube", "Screen stream") else 0  # its two buttons sit on top: the tab is taller than the window
             for row, f in enumerate(fields):
                 self._field(frame, row + top_rows, f, values.get(f.key, ""))
             extra = len(fields) + top_rows
@@ -305,6 +319,12 @@ class App:
                             "update_connector").pack(side="left", padx=(6, 0))
                 make_button(row_btns, "Add FMP key (Stock Analyzer)", lambda: self.spawn("fundamentals_key.py"),
                             "fmp_key").pack(side="left", padx=(6, 0))
+            if tab == "Screen stream":
+                row_btns = ttk.Frame(frame)
+                row_btns.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+                make_button(row_btns, "Go live now (my screen)", self.go_live_screen, "go_live_screen").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "Test (no stream)", lambda: self.spawn("live.py", "screen", "--dry-run"), "test").pack(side="left", padx=(0, 6))
+                make_button(row_btns, "End screen stream", self.end_screen, "end_stream").pack(side="left")
             if tab == "TikTok":
                 row_btns = ttk.Frame(frame)
                 row_btns.grid(row=extra, column=1, sticky="w", pady=(10, 0))
@@ -706,6 +726,21 @@ class App:
             (self.vars["STREAM_TO"].get() if "STREAM_TO" in self.vars else "youtube").lower(), "YouTube")
         if messagebox.askyesno("Go live now", f"Start streaming to {where} now?\n\n(Set where it goes in the TikTok tab.)"):
             self.spawn("live.py", "run")
+
+    def go_live_screen(self):
+        """Stream the PC screen (one monitor) to YouTube: no website, no IB Gateway."""
+        from tkinter import messagebox
+        monitor = (self.vars["SCREEN_MONITOR"].get() if "SCREEN_MONITOR" in self.vars else "1") or "1"
+        who = (self.vars["SCREEN_PRIVACY"].get() if "SCREEN_PRIVACY" in self.vars else "unlisted") or "unlisted"
+        if messagebox.askyesno("Go live now (my screen)",
+                               f"Start streaming monitor {monitor} to YouTube now?\n\nWho can watch: {who}.\n"
+                               "Everything you open on that monitor is shown, including notifications and passwords on screen."):
+            self.spawn("live.py", "screen")
+
+    def end_screen(self):
+        from tkinter import messagebox
+        if messagebox.askyesno("End screen stream", "End the screen stream now?"):
+            self.spawn("live.py", "stop")
 
     def tiktok_live_now(self):
         """TikTok on its own, whatever the scheduled stream is set to: no YouTube broadcast."""
@@ -1174,6 +1209,7 @@ BUTTONS: dict[str, tuple[str, str]] = {
     "shortcut": ("shortcut", "Puts an AiAlgobot icon on your desktop that opens this app (no console window). Replaces its own older copy."),
     "scheduler_start": ("play", "Starts the scheduler: it goes live at your stream time, runs the Website data schedule (IB Gateway + website + Autopilot) and sends the Market Radar. Keep it running."),
     "scheduler_stop": ("stop", "Stops the scheduler. Nothing starts by itself until you start it again."),
+    "go_live_screen": ("live", "Streams one of your monitors (Screen stream tab) to YouTube right now, without the website or IB Gateway. Whatever you open on that monitor is what viewers see."),
     "go_live": ("live", "Starts the stream now, to where 'Scheduled stream goes to' (TikTok tab) says, and runs it until the end time."),
     "tiktok_live": ("tiktok", "Starts a TikTok-only LIVE now (no YouTube): LIVE Studio opens and you press Go LIVE, or OBS streams with your TikTok key."),
     "end_stream": ("stop", "Ends today's stream now (OBS stops, the YouTube broadcast ends) and keeps it from restarting today."),

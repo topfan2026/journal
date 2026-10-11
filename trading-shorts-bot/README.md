@@ -67,6 +67,20 @@ cp .env.example .env                                    # then fill it in (steps
 ffmpeg comes bundled via `imageio-ffmpeg`. If you already have `ffmpeg` on your PATH
 (`brew install ffmpeg` / `apt install ffmpeg`), that one is used instead.
 
+## Stream your PC screen (no website)
+
+For a live stream of just what you do on one monitor (no aialgopro.com, no IB Gateway, no scanner), use the
+**Screen stream** tab in the app: pick the monitor (1 = Windows display 1, the 1920x1080 one), set the title and who
+can watch (unlisted by default), then click **Go live now (my screen)**. Or run `python live.py screen`.
+
+- OBS gets its own scene (`SCREEN_SCENE`, default "AiAlgobot Screen") with a Display Capture of that monitor; your
+  normal scene is put back when the stream ends, so the daily website stream is untouched.
+- The YouTube broadcast is created and started like the daily one (same YouTube sign-in, same OBS settings).
+- End it with **End screen stream** (or `python live.py stop`), `SCREEN_DURATION_MIN` (0 = until you end it), or in
+  YouTube Studio. **Test (no stream)** only checks OBS shows the right monitor.
+- It refuses to start while the daily stream is on the air (both would use OBS).
+- Your microphone / desktop sound are whatever OBS's own audio settings send.
+
 ## 2. Drop format
 
 One folder per video in `~/TradingShorts/Ready/` (the folders are created on first run):
