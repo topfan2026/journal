@@ -19,7 +19,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from src.common import (ET, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_int, env_str,
+from src.common import (ET, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_float, env_int, env_str,
                         load_positions, load_rules, now_et, read_trades, read_watchlist)
 
 APP_SIGNATURE = "ibkr-trading-bot-app"  # lets us tell our app apart from other programs on the port
@@ -201,6 +201,11 @@ def build_state() -> dict:
         "paper": env_bool("PAPER_TRADING", True),
         "port": env_int("IBKR_PORT", 7497),
         "strategy": rules.get("strategy_name", ""),
+        "rules": rules,
+        "risk_env": {"portfolio": env_float("PORTFOLIO_VALUE_USD", 25000),
+                     "max_trade_usd": env_float("MAX_TRADE_SIZE_USD", 2500),
+                     "risk_pct": env_float("MAX_RISK_PER_TRADE_PCT", float(rules["risk"]["max_risk_per_trade_pct"])),
+                     "max_trades_per_day": env_int("MAX_TRADES_PER_DAY", 5)},
         "live": live,
         "bot_positions": list(positions.values()),
         "bot_perf": performance(read_trades()),

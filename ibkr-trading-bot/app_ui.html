@@ -64,6 +64,14 @@ td.wrap { white-space: normal; color: var(--muted); font-size: 12px; min-width: 
 .chip.bot { background: var(--accent-bg); color: var(--accent); }
 svg text { fill: var(--muted); font-size: 11px; }
 pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; overflow: auto; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.rules h3 { font-size: 13px; margin: 0 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.rules ol, .rules ul { margin: 0; padding-left: 20px; }
+.rules li { margin: 0 0 7px; }
+.rules li b { font-variant-numeric: tabular-nums; }
+.rules .note { color: var(--muted); font-size: 12px; }
+.example { background: var(--chip); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.full { grid-column: 1 / -1; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
 @media (max-width: 700px) { .split { grid-template-columns: 1fr; } header { padding: 10px 16px; } main { padding: 12px 16px 32px; } }
 </style>
@@ -84,6 +92,7 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
     <button data-action="cycle" title="Run one trading cycle now (it only trades 10:05–15:30 ET)">Run cycle now</button>
     <button data-action="summary" title="Send the daily summary to Telegram and rebuild the HTML report">Daily summary</button>
     <button data-action="schedule" id="schedBtn">Install schedule</button>
+    <button id="rulesBtn" title="Jump to the plain-English strategy rules">📖 Strategy rules</button>
     <span id="toast"></span>
   </div>
   <div id="alerts"></div>
@@ -105,6 +114,8 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
     </section>
 
     <section class="card"><h2>Bot activity <small>every decision, newest first</small></h2><div class="scroll" id="events"></div></section>
+    <section class="card full" id="rulesCard"><h2>How the bot trades <small id="rulesNote"></small></h2>
+      <div class="body" id="rules"></div></section>
     <section class="card"><h2>Last command output</h2><div class="body"><pre id="jobs" class="muted">Nothing run from the app yet.</pre></div></section>
   </div>
 </main>
@@ -186,6 +197,8 @@ function render(s) {
     live.connected ? "No fills today." : "");
 
   $("equity").innerHTML = equityChart(s.bot_perf.equity);
+  $("rulesNote").textContent = `${s.strategy} · live from rules.json`;
+  $("rules").innerHTML = rulesHtml(s.rules, s.risk_env);
   $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "P&L#", "R#"],
     s.bot_perf.closed.map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td>${esc(c.symbol)}</td>
       <td class="num">${c.qty}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td>
@@ -201,6 +214,71 @@ function render(s) {
   const jobs = Object.entries(s.jobs);
   if (jobs.length) $("jobs").textContent = jobs.map(([k, j]) =>
     `▶ ${k} ${j.running ? "(running since " + j.started + ")…" : "(finished " + j.finished + ")"}\n${j.output || ""}`).join("\n\n");
+}
+
+// ET "HH:MM" -> the viewer's local time, e.g. "7:05 AM" (handles daylight saving on both sides)
+function etToLocal(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number), now = new Date();
+  const etNow = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+  const d = new Date(now.getTime() + ((h * 60 + m) - (etNow.getHours() * 60 + etNow.getMinutes())) * 60000);
+  return d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+}
+const t = hhmm => `<b>${hhmm} ET</b> <span class="note">(${etToLocal(hhmm)} your time)</span>`;
+
+function rulesHtml(r, env) {
+  const df = r.daily_filters, inf = r.intraday_filters, tf = r.time_filter, ex = r.exit, rk = r.risk;
+  const pct = v => `${+(v * 100).toFixed(1)}%`;
+  const riskUsd = env.portfolio * env.risk_pct / 100, capUsd = Math.min(env.portfolio * rk.max_position_size_pct_of_portfolio / 100, env.max_trade_usd);
+  // worked example: $100 stock, low of day $98
+  const price = 100, lod = 98, stop = +(lod * 0.99).toFixed(2), R = +(price - stop).toFixed(2);
+  const byRisk = Math.floor(riskUsd / R), byCap = Math.floor(capUsd / price), qty = Math.min(byRisk, byCap);
+  const f = (n, d = 2) => Number(n).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+  return `<div class="rules">
+  <div><h3>1 · What it looks at</h3><ul>
+    <li><b>${esc(r.universe_filters.index)}</b> stocks priced above <b>$${r.universe_filters.min_price_usd}</b>, <b>long only</b> (it never shorts).</li>
+    <li>A scanner picks the day's top 20 stocks gapping up <b>${df.D3_min_gap_pct_from_prior_close}%+</b> from yesterday's close. It runs at ${t("09:55")} and every 30 minutes until ${t("12:55")}.</li>
+    <li>Every 5 minutes the bot checks each watchlist stock against the six rules below, using <b>${esc(r.trade_timeframe)}</b> charts.</li>
+  </ul></div>
+
+  <div><h3>2 · Buy only if ALL six pass</h3><ol>
+    <li><b>D1 · Above yesterday's high.</b> Price is higher than yesterday's highest price.</li>
+    <li><b>D2 · Long-term uptrend.</b> Yesterday's close is above the 200-day moving average.</li>
+    <li><b>D3 · Gapped up ${df.D3_min_gap_pct_from_prior_close}%+.</b> Today's open is at least ${df.D3_min_gap_pct_from_prior_close}% above yesterday's close.</li>
+    <li><b>I1 · Above the premarket high.</b> Price is above the highest price traded before 9:30 ET.</li>
+    <li><b>I2 · Making a new high of day.</b> Price breaks above today's high so far (joining strength, not buying a dip).</li>
+    <li><b>I3 · Heavy volume.</b> Volume so far is at least <b>${inf.I3_rvol_min}×</b> normal for this time of day (vs the last ${inf.I3_rvol_lookback_days} days).</li>
+  </ol><p class="note">If even one rule fails, the stock is skipped. The watchlist above shows which one.</p></div>
+
+  <div><h3>3 · When it trades (New York time)</h3><ul>
+    <li>New buys only between ${t(tf.earliest_entry_et)} and ${t(tf.latest_entry_et)}.</li>
+    <li>Before and after that, it only manages trades it already has.</li>
+    <li>At ${t(tf.force_close_et)} it <b>sells everything</b>. It never holds overnight.</li>
+    <li>Weekends: nothing. Market holidays and 1 pm half-days aren't known to the bot (use Pause).</li>
+  </ul></div>
+
+  <div><h3>4 · How it gets out</h3><ol>
+    <li><b>Stop-loss:</b> placed right after buying at <b>today's low − 1%</b>. The distance from entry to stop is called <b>1R</b> (the risk on the trade).</li>
+    <li><b>Partial profit at +${ex.partial_profit_trigger_R}R:</b> sells about <b>${pct(ex.partial_profit_fraction)}</b> of the shares and raises the stop to 1% below the entry.</li>
+    <li><b>Breakeven at +${ex.breakeven_trigger_R}R:</b> moves the stop up to the entry price, so the rest of the trade can't lose money (barring gaps).</li>
+    <li><b>Trailing stop:</b> after breakeven, the stop follows the price up under each new 5-minute swing low (a bar lower than the 2 before and 2 after). Stops only move up.</li>
+    <li><b>End of day:</b> anything still open is sold at ${t(tf.force_close_et)}.</li>
+  </ol></div>
+
+  <div><h3>5 · How much it buys</h3><ul>
+    <li>Risks at most <b>${env.risk_pct}%</b> of $${f(env.portfolio, 0)} = <b>$${f(riskUsd, 0)}</b> per trade (if the stop is hit).</li>
+    <li>Never puts more than <b>$${f(capUsd, 0)}</b> into one stock (${rk.max_position_size_pct_of_portfolio}% of the account, capped by MAX_TRADE_SIZE_USD).</li>
+    <li>At most <b>${env.max_trades_per_day}</b> buys per day and <b>${rk.max_concurrent_positions}</b> positions open at once.</li>
+    <li>Never buys a stock it already holds.</li>
+  </ul><p class="note">Account size and limits come from the .env file; the rules from rules.json.</p></div>
+
+  <div><h3>Example</h3><div class="example">
+    A stock passes all six rules at <b>$${f(price)}</b>; today's low is <b>$${f(lod)}</b>.<br>
+    Stop = $${f(lod)} − 1% = <b>$${f(stop)}</b>, so 1R = <b>$${f(R)}</b> per share.<br>
+    By risk: $${f(riskUsd, 0)} ÷ $${f(R)} = ${byRisk} shares. By size cap: $${f(capUsd, 0)} ÷ $${f(price)} = ${byCap} shares.<br>
+    It buys the smaller: <b>${qty} shares</b> (≈ $${f(qty * price, 0)}), risking ≈ <b>$${f(qty * R)}</b>.<br>
+    Partial at $${f(price + ex.partial_profit_trigger_R * R)} (+${ex.partial_profit_trigger_R}R) · breakeven at $${f(price + ex.breakeven_trigger_R * R)} (+${ex.breakeven_trigger_R}R) · trail after that.
+  </div></div>
+  </div>`;
 }
 
 function equityChart(pts) {
@@ -237,6 +315,7 @@ async function act(name) {
 }
 
 document.querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
+$("rulesBtn").onclick = () => $("rulesCard").scrollIntoView({behavior: "smooth"});
 $("pauseBtn").onclick = () => act(state && state.paused ? "resume" : "pause");
 refresh();
 setInterval(refresh, 5000);
