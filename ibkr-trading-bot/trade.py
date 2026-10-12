@@ -19,6 +19,7 @@ def main() -> int:
     ap.add_argument("--side", required=True, choices=["BUY", "SELL", "buy", "sell"])
     ap.add_argument("--size", required=True, type=int)
     ap.add_argument("--stop-price", type=float, default=None, help="initial stop, logged for R calculations")
+    ap.add_argument("--strategy", default="", help="which strategy opened/closed this trade")
     args = ap.parse_args()
     side = args.side.upper()
 
@@ -50,6 +51,7 @@ def main() -> int:
             "symbol": args.symbol, "side": side, "size": result["filled"] or args.size,
             "fill_price": result["fill_price"], "order_id": result["order_id"], "status": st.status,
             "stop_price": "" if args.stop_price is None else round(args.stop_price, 4),
+            "strategy": args.strategy,
         })
         print("RESULT " + json.dumps(result))
         return 0

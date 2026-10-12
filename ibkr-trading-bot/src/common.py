@@ -29,7 +29,7 @@ LOGS_DIR = PROJECT_DIR / "logs"
 DASHBOARD_DIR = PROJECT_DIR / "dashboard"
 PAUSE_PATH = PROJECT_DIR / "PAUSED"  # exists = no new entries (open trades are still managed)
 
-TRADES_HEADER = ["timestamp_iso", "symbol", "side", "size", "fill_price", "order_id", "status", "stop_price"]
+TRADES_HEADER = ["timestamp_iso", "symbol", "side", "size", "fill_price", "order_id", "status", "stop_price", "strategy"]
 
 PAPER_PORTS = {7497, 4002}
 LIVE_PORTS = {7496, 4001}
@@ -102,11 +102,24 @@ def ensure_trades_csv() -> None:
     if not TRADES_PATH.exists():
         with TRADES_PATH.open("w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(TRADES_HEADER)
+        return
+    with TRADES_PATH.open(newline="", encoding="utf-8") as f:
+        header = next(csv.reader(f), [])
+    if header != TRADES_HEADER:  # file from an older version: add the new columns, keep every row
+        with TRADES_PATH.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        tmp = TRADES_PATH.with_suffix(".csv.tmp")
+        with tmp.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=TRADES_HEADER, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        os.replace(tmp, TRADES_PATH)
 
 
 def read_trades() -> list[dict]:
     if not TRADES_PATH.exists():
         return []
+    ensure_trades_csv()
     with TRADES_PATH.open(newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
@@ -127,10 +140,12 @@ def append_trade(row: dict) -> None:
                 raise
 
 
-def todays_buy_count(trades: list[dict] | None = None) -> int:
+def todays_buy_count(trades: list[dict] | None = None, strategy: str | None = None) -> int:
+    """Today's BUYs; with `strategy`, only that strategy's (untagged old rows count as Trend Join Long)."""
     today = now_et().date().isoformat()
     trades = read_trades() if trades is None else trades
-    return sum(1 for r in trades if r.get("side") == "BUY" and r.get("timestamp_iso", "").startswith(today))
+    return sum(1 for r in trades if r.get("side") == "BUY" and r.get("timestamp_iso", "").startswith(today)
+               and (strategy is None or (r.get("strategy") or "trend_join_long") == strategy))
 
 
 def load_positions() -> list[dict]:

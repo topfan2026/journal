@@ -99,7 +99,7 @@ def test_swing_lows():
 
 
 @pytest.mark.parametrize("hhmm,wd,expected", [
-    ("09:59", 0, "too_early"), ("10:00", 0, "manage_only"), ("10:05", 0, "ok"), ("15:30", 0, "ok"),
+    ("09:29", 0, "too_early"), ("09:59", 0, "manage_only"), ("10:00", 0, "manage_only"), ("10:05", 0, "ok"), ("15:30", 0, "ok"),
     ("15:31", 0, "manage_only"), ("15:51", 0, "force_close"), ("16:00", 0, "closed"), ("12:00", 5, "weekend"),
 ])
 def test_time_gate(hhmm, wd, expected):

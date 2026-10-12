@@ -17,7 +17,7 @@ from src.common import (LOGS_DIR, PAUSE_PATH, SAFETY_LOG_PATH, WATCHLIST_PATH, a
                         env_float, env_int, env_str, load_positions, load_rules, now_et, read_trades, read_watchlist,
                         save_positions, todays_buy_count, ts)
 
-SESSION_START = time(10, 0)
+SESSION_START = time(9, 30)  # strategies like ORB can trade from the open
 SESSION_END = time(16, 0)
 
 
@@ -26,7 +26,16 @@ def _hhmm(s: str) -> time:
     return time(int(h), int(m))
 
 
-def time_gate(now: datetime, rules: dict) -> str:
+def entry_window(rules: dict) -> tuple[time, time]:
+    """Earliest/latest entry across the ACTIVE strategies (each still checks its own window)."""
+    from src import strategies as st
+    cfgs = [st.config(x, rules) for x in st.load() if x.get("enabled")]
+    if not cfgs:
+        return time(23, 59), time(0, 0)  # nothing active: manage only
+    return (min(_hhmm(c["earliest_entry_et"]) for c in cfgs), max(_hhmm(c["latest_entry_et"]) for c in cfgs))
+
+
+def time_gate(now: datetime, rules: dict, window: tuple[time, time] | None = None) -> str:
     tf = rules["time_filter"]
     t = now.time()
     if now.weekday() >= 5:
@@ -37,7 +46,8 @@ def time_gate(now: datetime, rules: dict) -> str:
         return "closed"
     if t >= _hhmm(tf["force_close_et"]):
         return "force_close"
-    if t < _hhmm(tf["earliest_entry_et"]) or t > _hhmm(tf["latest_entry_et"]):
+    earliest, latest = window or (_hhmm(tf["earliest_entry_et"]), _hhmm(tf["latest_entry_et"]))
+    if t < earliest or t > latest:
         return "manage_only"
     return "ok"
 
@@ -147,16 +157,17 @@ def adopt_orphans(ibkr, positions: list[dict], rules: dict) -> None:
             bars = _day(_rth(intraday_bars(sym, period="1d")), now_et().date())
             stop = initial_stop(float(bars["Low"].min()), rules["exit"]["initial_stop_rule"])
         t = ibkr.place_stop(sym, qty, stop)
-        positions.append(new_position(sym, entry, qty, stop, t))
+        positions.append(new_position(sym, entry, qty, stop, t, strategy=row.get("strategy") or "trend_join_long"))
         log("orphan_adopted", symbol=sym, qty=qty, entry=entry, stop=stop, stop_order_id=t.order.orderId)
         safe_notify(f"ADOPTED {sym}", f"{qty} sh had no stop; stop ${stop:.2f} placed", "high")
 
 
-def new_position(sym: str, entry: float, qty: int, stop: float, stop_trade) -> dict:
+def new_position(sym: str, entry: float, qty: int, stop: float, stop_trade,
+                 strategy: str = "trend_join_long", exit_rules: dict | None = None) -> dict:
     return {"symbol": sym, "entry_price": entry, "entry_time_iso": now_et().isoformat(timespec="seconds"),
             "qty": qty, "initial_stop": stop, "stop": stop, "stop_order_id": stop_trade.order.orderId,
             "stop_perm_id": stop_trade.order.permId, "state": "pre_breakeven", "partial_done": False,
-            "R": entry - stop}
+            "R": entry - stop, "strategy": strategy, "exit": exit_rules}
 
 
 # ---------------------------------------------------------------- step 4: manage
@@ -166,13 +177,26 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
     from src.filters import _rth, swing_lows
     from src.marketdata import intraday_bars
 
-    ex = rules["exit"]
     for pos in positions:
+        ex = {"take_profit_R": 0, "trail": True, **rules["exit"], **(pos.get("exit") or {})}
         sym, entry, R = pos["symbol"], pos["entry_price"], pos["R"]
         bars = intraday_bars(sym, period="1d")
         price = current_price(ibkr, sym, bars)
         if math.isnan(price) or R <= 0:
             log("manage_skip", symbol=sym, reason="no price or bad R")
+            continue
+
+        if ex.get("take_profit_R") and price >= entry + float(ex["take_profit_R"]) * R:
+            ibkr.cancel(pos.get("stop_order_id"))
+            result, out = run_trade(sym, "SELL", pos["qty"], strategy=pos.get("strategy", ""))
+            if result and result.get("status") == "Filled":
+                pos["closed"] = True
+                log("take_profit", symbol=sym, qty=pos["qty"], price=result["fill_price"], strategy=pos.get("strategy"))
+                safe_notify(f"TARGET {sym}", f"sold {pos['qty']} @ ${result['fill_price']:.2f} (+{ex['take_profit_R']}R)")
+            else:
+                t = ibkr.place_stop(sym, pos["qty"], pos["stop"])
+                pos.update(stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
+                log("take_profit_failed", symbol=sym, output=out[-500:])
             continue
 
         # 0.75R partial first: checking 1R first (as the original prompt did) means a stock that
@@ -183,15 +207,15 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
             # Shrink the stop BEFORE selling so it can never be larger than the position (which
             # would open a short if it triggered).
             ibkr.modify_stop(sym, pos["stop_order_id"], remaining, pos["stop"])
-            result, out = run_trade(sym, "SELL", sell)
+            result, out = run_trade(sym, "SELL", sell, strategy=pos.get("strategy", ""))
             if result and result.get("filled"):
                 sold = int(result["filled"])
                 pos["qty"] = pos["qty"] - sold
                 pos["partial_done"] = True
                 pos["state"] = "partial_done" if pos["state"] == "pre_breakeven" else pos["state"]
-                # Per the strategy: after the partial, tighten the stop to entry - 1% (ratchet up only).
+                # Trend Join Long: after the partial, tighten the stop to entry - 1% (ratchet up only).
                 tight = round(entry * 0.99, 2)
-                if tight > pos["stop"]:
+                if pos.get("strategy", "trend_join_long") == "trend_join_long" and tight > pos["stop"]:
                     t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], tight)
                     pos.update(stop=tight, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
                 log("partial", symbol=sym, sold=sold, price=result["fill_price"], remaining=pos["qty"], stop=pos["stop"])
@@ -206,7 +230,7 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
             log("breakeven", symbol=sym, new_stop=entry)
             safe_notify(f"BE {sym}", f"stop -> ${entry:.2f}")
 
-        if pos["state"] == "post_breakeven" and bars is not None and not bars.empty:
+        if pos["state"] == "post_breakeven" and ex.get("trail", True) and bars is not None and not bars.empty:
             entry_time = datetime.fromisoformat(pos["entry_time_iso"])
             completed = _rth(bars).iloc[:-1]  # newest bar is still forming
             lows = [(t, low) for t, low in swing_lows(completed, 2, 2) if t >= entry_time]
@@ -218,6 +242,7 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
                     pos.update(stop=new_stop, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
                     log("trail", symbol=sym, old_stop=old, new_stop=new_stop)
                     safe_notify(f"TRAIL {sym}", f"stop ${old:.2f} -> ${new_stop:.2f}")
+    positions[:] = [p for p in positions if not p.get("closed")]
 
 
 # ---------------------------------------------------------------- step 6: force close
@@ -235,7 +260,7 @@ def force_close(ibkr, positions: list[dict]) -> list[dict]:
         if qty <= 0:
             log("force_close_nothing_held", symbol=sym)
             continue
-        result, out = run_trade(sym, "SELL", qty)
+        result, out = run_trade(sym, "SELL", qty, strategy=pos.get("strategy", ""))
         if result and result.get("status") == "Filled":
             log("force_closed", symbol=sym, qty=qty, price=result["fill_price"])
         else:
@@ -251,8 +276,10 @@ def force_close(ibkr, positions: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------- step 8: entries
 
 def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
+    """Run every ACTIVE strategy over its stocks; buy what passes, within global and per-strategy limits."""
+    from src import strategies as st
     from src.executor import run_trade
-    from src.filters import evaluate_filters, initial_stop, position_size
+    from src.filters import position_size
     from src.marketdata import daily_bars, intraday_bars
 
     max_trades = env_int("MAX_TRADES_PER_DAY", 5)
@@ -261,67 +288,87 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
     if buys >= max_trades:
         log("entry_skip", reason=f"daily trade cap {buys}/{max_trades}")
         return
-    if not WATCHLIST_PATH.exists() or datetime.fromtimestamp(WATCHLIST_PATH.stat().st_mtime, now_et().tzinfo).date() != now_et().date():
-        log("entry_skip", reason="watchlist.txt missing or not from today; run morning_prefilter.py")
-        return
 
+    now = now_et()
+    today, now_t = now.date(), now.time()
+    watchlist_fresh = WATCHLIST_PATH.exists() and \
+        datetime.fromtimestamp(WATCHLIST_PATH.stat().st_mtime, now.tzinfo).date() == today
     held = ibkr.held_symbols() | {p["symbol"] for p in positions}  # IBKR first: avoids double entries
     portfolio = env_float("PORTFOLIO_VALUE_USD", 25000)
-    risk_pct = env_float("MAX_RISK_PER_TRADE_PCT", float(rules["risk"]["max_risk_per_trade_pct"]))
-    min_price = float(rules["universe_filters"]["min_price_usd"])
-    today = now_et().date()
+    data_cache: dict[str, tuple] = {}  # one download per symbol per cycle, shared by strategies
 
-    for sym in read_watchlist():
-        if buys >= max_trades or len(positions) >= max_open:
-            log("entry_skip", reason="trade or concurrent-position cap reached")
-            break
-        if sym in held:
-            log("entry_skip", symbol=sym, reason="already held")
+    for strat in [x for x in st.load() if x.get("enabled")]:
+        cfg = st.config(strat, rules)
+        sid = cfg["id"]
+        if not (_hhmm(cfg["earliest_entry_et"]) <= now_t <= _hhmm(cfg["latest_entry_et"])):
             continue
-        try:
-            daily, intra = daily_bars(sym), intraday_bars(sym, period="30d")
-        except Exception as exc:
-            log("entry_skip", symbol=sym, reason=f"data error {exc!r}")
+        s_buys = todays_buy_count(strategy=sid)
+        if s_buys >= cfg["max_trades_per_day"]:
+            log("entry_skip", strategy=sid, reason=f"strategy daily cap {s_buys}/{cfg['max_trades_per_day']}")
             continue
-        price = current_price(ibkr, sym, intra)
-        if math.isnan(price) or price < min_price:
-            log("entry_skip", symbol=sym, reason=f"price {price} below min or missing")
-            continue
-        res = evaluate_filters(daily, intra, price, today, rules)
-        log("evaluate", symbol=sym, passed=bool(res["pass"]), reasons=res["reasons"], metrics=res["metrics"])
-        if not res["pass"]:
-            continue
+        if cfg["universe"] == "gappers":
+            if not watchlist_fresh:
+                log("entry_skip", strategy=sid, reason="watchlist.txt missing or not from today; run morning_prefilter.py")
+                continue
+            symbols = read_watchlist()
+        else:
+            symbols = cfg["tickers"]
+        risk_pct = cfg["risk_pct"] if cfg["type"] != "trend_join" else \
+            env_float("MAX_RISK_PER_TRADE_PCT", float(rules["risk"]["max_risk_per_trade_pct"]))
 
-        stop = initial_stop(res["metrics"]["low_of_day"], rules["exit"]["initial_stop_rule"])
-        size = position_size(price, stop, portfolio, risk_pct,
-                             float(rules["risk"]["max_position_size_pct_of_portfolio"]),
-                             env_float("MAX_TRADE_SIZE_USD", 2500))
-        if size < 1:
-            log("entry_skip", symbol=sym, reason="size < 1", price=price, stop=stop)
-            continue
+        for sym in symbols:
+            if buys >= max_trades or len(positions) >= max_open or s_buys >= cfg["max_trades_per_day"]:
+                break
+            if sym in held:
+                continue
+            try:
+                if sym not in data_cache:
+                    intra = intraday_bars(sym, period="30d")
+                    data_cache[sym] = (daily_bars(sym), intra, current_price(ibkr, sym, intra))
+                daily, intra, price = data_cache[sym]
+            except Exception as exc:
+                log("entry_skip", symbol=sym, strategy=sid, reason=f"data error {exc!r}")
+                continue
+            if math.isnan(price) or price < cfg["min_price"]:
+                log("entry_skip", symbol=sym, strategy=sid, reason=f"price {price} below min or missing")
+                continue
+            res = st.evaluate(cfg, daily, intra, price, today, rules, now_t)
+            log("evaluate", symbol=sym, strategy=sid, passed=bool(res["pass"]), reasons=res["reasons"], metrics=res["metrics"])
+            if not res["pass"]:
+                continue
 
-        result, out = run_trade(sym, "BUY", size, stop_price=stop)
-        buys += 1  # count attempts too: a timed-out order may still fill
-        ibkr.ib.sleep(1)
-        qty = ibkr.position_qty(sym)
-        if qty <= 0:
-            log("entry_unfilled", symbol=sym, result=result, output=out[-500:])
-            continue
-        fill = float(result["fill_price"]) if result and result.get("fill_price") else price
-        t = ibkr.place_stop(sym, qty, stop)
-        pos = new_position(sym, fill, qty, stop, t)
-        positions.append(pos)
-        held.add(sym)
-        save_positions(positions)  # persist right away so a crash later this run can't orphan it
-        log("entry", symbol=sym, qty=qty, price=fill, stop=stop, R=pos["R"], stop_order_id=t.order.orderId)
-        safe_notify(f"BUY {sym}", f"@ ${fill:.2f}, stop ${stop:.2f}, qty {qty}")
+            stop = float(res["metrics"]["stop"])
+            size = position_size(price, stop, portfolio, risk_pct,
+                                 float(rules["risk"]["max_position_size_pct_of_portfolio"]),
+                                 env_float("MAX_TRADE_SIZE_USD", 2500))
+            if size < 1:
+                log("entry_skip", symbol=sym, strategy=sid, reason="size < 1", price=price, stop=stop)
+                continue
+
+            result, out = run_trade(sym, "BUY", size, stop_price=stop, strategy=sid)
+            buys += 1  # count attempts too: a timed-out order may still fill
+            s_buys += 1
+            held.add(sym)
+            ibkr.ib.sleep(1)
+            qty = ibkr.position_qty(sym)
+            if qty <= 0:
+                log("entry_unfilled", symbol=sym, strategy=sid, result=result, output=out[-500:])
+                continue
+            fill = float(result["fill_price"]) if result and result.get("fill_price") else price
+            t = ibkr.place_stop(sym, qty, stop)
+            pos = new_position(sym, fill, qty, stop, t, strategy=sid,
+                               exit_rules=None if cfg["type"] == "trend_join" else cfg["exit"])
+            positions.append(pos)
+            save_positions(positions)  # persist right away so a crash later this run can't orphan it
+            log("entry", symbol=sym, strategy=sid, qty=qty, price=fill, stop=stop, R=pos["R"], stop_order_id=t.order.orderId)
+            safe_notify(f"BUY {sym} · {cfg['name']}", f"@ ${fill:.2f}, stop ${stop:.2f}, qty {qty}")
 
 
 # ---------------------------------------------------------------- main
 
 def main() -> int:
     rules = load_rules()
-    status = time_gate(now_et(), rules)
+    status = time_gate(now_et(), rules, entry_window(rules))
     if status in {"weekend", "too_early", "closed"}:
         print(f"{ts()} {status}: nothing to do")
         return 0

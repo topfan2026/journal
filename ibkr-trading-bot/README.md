@@ -59,6 +59,25 @@ Buttons: **Pause / Resume** (paused = no new entries; open trades keep their sto
 The app's TWS connection is **read-only** (client id 7), so it can't place orders. Its buttons are protected by a
 per-session token, so other websites can't trigger them.
 
+## Strategies
+
+The app's **Strategies** panel lists every strategy with an on/off switch. Switched-on strategies paper trade
+together; every trade is tagged with its strategy, and the performance view can be filtered per strategy.
+
+| Template | Buys when |
+|---|---|
+| Trend Join Long | the original six filters pass (settings live in `rules.json`) |
+| Opening Range Breakout | a fresh break above the first 5/15/30 minutes' high |
+| EMA Cross | the fast EMA crosses above the slow EMA (5-minute bars) |
+| Price crosses EMA | a 5-minute bar closes back above the EMA |
+| EMA Bounce | in an uptrend, price touches the EMA and then takes out the last bar's high |
+
+Every new strategy has: stocks to watch (scanner gappers or your own ticker list), optional filters (gap, relative
+volume, VWAP, daily uptrend), its own entry window, stop rule, partial / breakeven / full take-profit / trailing
+exits, risk per trade and max trades per day. New strategies start **off**. Global limits (max open positions,
+position size cap, `MAX_TRADES_PER_DAY`, the 15:51 force-close) apply to all of them. Long only.
+Settings are stored in `strategies.json` (kept by updates).
+
 ## Sleep and wake
 
 Your PC can sleep. The task **HT_WakeUp** wakes it at 9:00 ET on weekdays, keeps it awake until 16:10 ET (no power

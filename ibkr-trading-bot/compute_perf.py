@@ -35,7 +35,8 @@ def pair_trades(rows: list[dict]) -> list[dict]:
             continue
         sym = r["symbol"]
         if r["side"] == "BUY":
-            lots[sym].append({"qty": qty, "price": px, "time": r["timestamp_iso"], "stop": _f(r.get("stop_price"), 0) or None})
+            lots[sym].append({"qty": qty, "price": px, "time": r["timestamp_iso"], "stop": _f(r.get("stop_price"), 0) or None,
+                              "strategy": r.get("strategy") or "trend_join_long"})
             continue
         while qty > 0 and lots[sym]:
             lot = lots[sym][0]
@@ -47,7 +48,8 @@ def pair_trades(rows: list[dict]) -> list[dict]:
             closed.append({"symbol": sym, "qty": take, "buy": lot["price"], "sell": px, "stop": stop,
                            "pnl": pnl, "pnl_pct": (px / lot["price"] - 1) * 100,
                            "R": (px - lot["price"]) / risk if risk > 0 else 0.0,
-                           "hold_min": round(hold, 1), "exit_time": r["timestamp_iso"], "entry_time": lot["time"]})
+                           "hold_min": round(hold, 1), "exit_time": r["timestamp_iso"], "entry_time": lot["time"],
+                           "strategy": lot["strategy"]})
             lot["qty"] -= take
             qty -= take
             if lot["qty"] == 0:
@@ -60,9 +62,9 @@ def group_trades(pieces: list[dict]) -> list[dict]:
     win rate and averages count trades rather than exit fills."""
     groups: dict[tuple, list[dict]] = {}
     for c in pieces:
-        groups.setdefault((c["symbol"], c["entry_time"], c["buy"]), []).append(c)
+        groups.setdefault((c["symbol"], c["entry_time"], c["buy"], c.get("strategy", "")), []).append(c)
     trades = []
-    for (sym, entry_time, buy), parts in groups.items():
+    for (sym, entry_time, buy, strategy), parts in groups.items():
         qty = sum(p["qty"] for p in parts)
         pnl = sum(p["pnl"] for p in parts)
         sell = sum(p["sell"] * p["qty"] for p in parts) / qty
@@ -70,7 +72,7 @@ def group_trades(pieces: list[dict]) -> list[dict]:
         trades.append({"symbol": sym, "qty": qty, "buy": buy, "sell": sell, "stop": parts[0]["stop"],
                        "pnl": pnl, "pnl_pct": (sell / buy - 1) * 100,
                        "R": pnl / (risk * qty) if risk > 0 else 0.0,
-                       "hold_min": max(p["hold_min"] for p in parts), "exits": len(parts),
+                       "hold_min": max(p["hold_min"] for p in parts), "exits": len(parts), "strategy": strategy,
                        "entry_time": entry_time, "exit_time": max(p["exit_time"] for p in parts)})
     return sorted(trades, key=lambda t: t["exit_time"])
 

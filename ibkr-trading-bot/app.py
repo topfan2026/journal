@@ -282,6 +282,8 @@ def build_state() -> dict:
         "jobs": {k: v for k, v in _jobs.items() if isinstance(v, dict)},
         "update": update_status(),
         "live_perf": live_summary(),
+        "strategies": strategies_state(rules),
+        "templates": templates_state(),
         "autologin": (PROJECT_DIR / "ibc" / "config.ini").exists(),
     }
 
@@ -374,6 +376,61 @@ def live_auto_sync() -> None:
         time.sleep(6 * 3600)
 
 
+def strategies_state(rules: dict) -> list[dict]:
+    from src import strategies as st
+    out = []
+    for x in st.load():
+        t = st.TEMPLATES[x["type"]]
+        values = st.trend_join_values(rules) if x["type"] == "trend_join" else x["params"]
+        out.append({"id": x["id"], "type": x["type"], "name": x.get("name") or t["name"], "enabled": bool(x.get("enabled")),
+                    "values": values, "builtin": x["type"] == "trend_join"})
+    return out
+
+
+def templates_state() -> dict:
+    from src import strategies as st
+    return {k: {"name": t["name"], "summary": t["summary"], "fields": st.fields_for(k)} for k, t in st.TEMPLATES.items()}
+
+
+def strategy_op(data: dict) -> dict:
+    """Add / edit / switch on-off / delete a strategy. Changes apply on the bot's next 5-minute cycle."""
+    from src import strategies as st
+    items = st.load()
+    op, sid = data.get("op"), data.get("id")
+    item = next((x for x in items if x["id"] == sid), None)
+    if op == "add":
+        kind = data.get("type")
+        if kind not in st.TEMPLATES or kind == "trend_join":
+            return {"ok": False, "message": "Unknown strategy type."}
+        new = {"id": st.new_id(kind, items), "type": kind, "name": st.TEMPLATES[kind]["name"], "enabled": False,
+               "params": st.defaults_for(kind)}
+        items.append(new)
+        st.save(items)
+        return {"ok": True, "id": new["id"], "message": f"Added {new['name']} (off). Review its settings, then switch it on."}
+    if item is None:
+        return {"ok": False, "message": "Strategy not found."}
+    if op == "toggle":
+        item["enabled"] = bool(data.get("enabled"))
+        st.save(items)
+        return {"ok": True, "message": f"{item.get('name')} {'ON: it will paper trade from the next cycle' if item['enabled'] else 'OFF'}."}
+    if op == "save":
+        values = st.coerce(item["type"], data.get("values") or {})
+        if data.get("name"):
+            item["name"] = str(data["name"]).strip()[:60]
+        if item["type"] == "trend_join":
+            st.write_trend_join(values)
+        else:
+            item["params"] = {**item["params"], **values}
+        st.save(items)
+        return {"ok": True, "message": f"Saved {item.get('name')}."}
+    if op == "delete":
+        if item["type"] == "trend_join":
+            return {"ok": False, "message": "Trend Join Long can be switched off but not deleted."}
+        st.save([x for x in items if x["id"] != sid])
+        return {"ok": True, "message": f"Deleted {item.get('name')}. Its past trades stay in the history."}
+    return {"ok": False, "message": "Unknown request."}
+
+
 def update_action(name: str) -> str:
     from src import updater
     if name == "check_update":
@@ -464,6 +521,12 @@ class Handler(BaseHTTPRequestHandler):
                 from src.common import set_env_values
                 set_env_values(allowed)
             self._send(200, json.dumps({"message": "Saved." if allowed else "Nothing to save."}).encode(), "application/json")
+        elif self.path == "/api/strategies":
+            try:
+                res = strategy_op(json.loads(body or b"{}"))
+            except Exception as exc:
+                res = {"ok": False, "message": f"Couldn't save: {exc!r}"}
+            self._send(200, json.dumps(res).encode(), "application/json")
         elif self.path.startswith("/api/action/"):
             msg = run_action(self.path.rsplit("/", 1)[-1])
             self._send(200, json.dumps({"message": msg}).encode(), "application/json")

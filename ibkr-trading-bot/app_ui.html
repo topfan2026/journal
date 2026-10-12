@@ -60,6 +60,29 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .steps li { margin-bottom: 4px; }
 .livemeta { color: var(--ink2); font-size: 13px; }
 .hidden { display: none !important; }
+/* Strategies */
+.srow { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.srow:last-child { border-bottom: 0; }
+.srow .sname { font-weight: 700; font-size: 15px; }
+.srow .sdesc { color: var(--ink2); font-size: 12.5px; grid-column: 2 / 4; }
+.srow .sstats { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.switch { position: relative; width: 44px; height: 24px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: var(--axis); border-radius: 99px; cursor: pointer; transition: .15s; }
+.switch span::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+.switch input:checked + span { background: var(--good); }
+.switch input:checked + span::before { transform: translateX(20px); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sform { grid-column: 1 / 4; background: var(--chip); border-radius: 10px; padding: 12px; margin-top: 6px; }
+.sform .fgroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.sform fieldset { border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; margin: 0; background: var(--card); }
+.sform legend { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; padding: 0 4px; }
+.sform label { display: grid; grid-template-columns: 1fr 120px; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
+.sform label.wide { grid-template-columns: 1fr; }
+.sform input[type=number], .sform input[type=text], .sform input[type=time], .sform select { width: 100%; font: inherit; padding: 5px 8px;
+  border-radius: 6px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); }
+.sform .help { color: var(--muted); font-size: 11.5px; grid-column: 1 / -1; margin-top: -4px; }
+.sform .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
 select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); }
 #toast { color: var(--muted); font-size: 13px; }
 .alert { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 14px; border-radius: 10px; margin-bottom: 10px; font-weight: 500;
@@ -160,10 +183,22 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
     <span id="toast"></span>
   </div>
   <div id="alerts"></div>
+  <section class="card" id="stratCard" style="margin-bottom:12px">
+    <h2>Strategies <small>switch on to paper trade · changes apply on the next 5-minute cycle</small></h2>
+    <div id="stratList"></div>
+    <div class="body" style="border-top:1px solid var(--line)">
+      <div class="form-row" style="margin:0">
+        <select id="addType" aria-label="Strategy template"></select>
+        <button class="primary" id="addStrat">＋ Add strategy</button>
+        <span id="stratToast" class="muted"></span>
+      </div>
+    </div>
+  </section>
   <div class="viewbar">
     <div class="seg big" id="source" role="group" aria-label="Which account to analyse">
       <button data-s="bot" class="on">🤖 Bot · paper</button><button data-s="live">💼 My live account</button>
     </div>
+    <select id="stratSel" aria-label="Which strategy"></select>
     <select id="liveAcct" class="hidden" aria-label="Live account"></select>
     <select id="twsAcct" class="hidden" aria-label="TWS account"></select>
     <div class="seg" id="range" role="group" aria-label="Performance period">
@@ -257,8 +292,8 @@ const MARKET = {weekend: ["Weekend: market closed", ""], too_early: ["Before 10:
   closed: ["After close: bot idle", ""], manage_only: ["Managing trades only", "warn"],
   force_close: ["Closing all positions", "warn"], ok: ["Market open: bot hunting", "up"]};
 
-let state = null, range = 0, source = "bot", liveAcct = null, twsAcct = null;
-try { range = +(localStorage.getItem("range") ?? 0); source = localStorage.getItem("source") || "bot"; liveAcct = localStorage.getItem("liveAcct"); twsAcct = localStorage.getItem("twsAcct"); } catch (e) {}
+let state = null, range = 0, source = "bot", liveAcct = null, twsAcct = null, stratFilter = "all", editing = null;
+try { range = +(localStorage.getItem("range") ?? 0); source = localStorage.getItem("source") || "bot"; liveAcct = localStorage.getItem("liveAcct"); twsAcct = localStorage.getItem("twsAcct"); stratFilter = localStorage.getItem("stratFilter") || "all"; } catch (e) {}
 
 /* ---------------------------------------------------------------- tooltip */
 const tip = $("tip");
@@ -459,6 +494,96 @@ function drawCharts(trades, M, isLive) {
 
 }
 
+/* ---------------------------------------------------------------- strategies */
+function describe(type, v, tpl) {
+  if (type === "trend_join") return tpl.summary;
+  const uni = v.universe === "custom" ? `your list (${esc(String(v.tickers).split(",").slice(0, 6).join(", "))}${String(v.tickers).split(",").length > 6 ? "…" : ""})` : "today's gappers";
+  const filt = [v.min_gap_pct > 0 && `gap ≥ ${v.min_gap_pct}%`, v.min_rvol > 0 && `volume ≥ ${v.min_rvol}×`, v.above_vwap && "above VWAP",
+                v.above_sma200 && "daily uptrend"].filter(Boolean);
+  const trig = {
+    orb: `buys a fresh break above the ${v.or_minutes}-minute opening range (range ≤ ${v.max_or_range_pct}%)`,
+    ema_cross: `buys when EMA${v.fast} crosses above EMA${v.slow} on 5-min bars`,
+    price_cross_ema: `buys when a 5-min bar closes back above EMA${v.ema}`,
+    ema_bounce: `in an uptrend (EMA${v.ema} > EMA${v.trend_ema}) buys a bounce after price touches EMA${v.ema}`,
+  }[type] || "";
+  const ex = [v.partial_R > 0 && `sells ${Math.round(v.partial_fraction * 100)}% at +${v.partial_R}R`, v.breakeven_R > 0 && `breakeven at +${v.breakeven_R}R`,
+              v.take_profit_R > 0 && `takes all at +${v.take_profit_R}R`, v.trail_swing && "trails swing lows"].filter(Boolean);
+  return `Watches ${uni}${filt.length ? ", needs " + filt.join(", ") : ""}; ${trig}, ${v.earliest_entry_et}–${v.latest_entry_et} ET. ` +
+         `Risks ${v.risk_pct}% per trade, max ${v.max_trades_per_day}/day${ex.length ? "; " + ex.join(", ") : ""}.`;
+}
+
+function fieldInput(sid, f, val) {
+  const id = `f_${sid}_${f.k}`, v = val ?? f.def;
+  let input;
+  if (f.t === "bool") input = `<input type="checkbox" id="${id}" data-k="${f.k}" data-t="bool"${v ? " checked" : ""}>`;
+  else if (f.t === "select") input = `<select id="${id}" data-k="${f.k}" data-t="select">${f.opts.map(([o, l]) => `<option value="${esc(o)}"${String(v) === o ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  else if (f.t === "time") input = `<input type="time" id="${id}" data-k="${f.k}" data-t="time" value="${esc(v)}">`;
+  else if (f.t === "num") input = `<input type="number" id="${id}" data-k="${f.k}" data-t="num" value="${esc(v)}"${f.min != null ? ` min="${f.min}"` : ""}${f.max != null ? ` max="${f.max}"` : ""} step="${f.step ?? "any"}">`;
+  else input = `<input type="text" id="${id}" data-k="${f.k}" data-t="text" value="${esc(v)}">`;
+  return `<label class="${f.t === "text" ? "wide" : ""}" for="${id}"><span>${esc(f.label)}</span>${input}${f.help ? `<span class="help">${esc(f.help)}</span>` : ""}</label>`;
+}
+
+function strategyForm(x, tpl) {
+  const groups = {};
+  tpl.fields.forEach(f => (groups[f.group || "Setup"] ??= []).push(f));
+  const order = ["Setup", "Filters", "Timing", "Exits", "Risk"];
+  return `<div class="sform" data-form="${esc(x.id)}">
+    <label class="wide"><span>Name</span><input type="text" data-name value="${esc(x.name)}"></label>
+    <div class="fgroups">${order.filter(g => groups[g]).map(g => `<fieldset><legend>${g}</legend>${groups[g].map(f => fieldInput(x.id, f, x.values[f.k])).join("")}</fieldset>`).join("")}</div>
+    <div class="actions"><button class="primary" data-save="${esc(x.id)}">Save</button><button data-cancel>Cancel</button>
+      ${x.builtin ? '<span class="muted" style="font-size:12px">Saved into rules.json</span>' : `<button data-delete="${esc(x.id)}" style="margin-left:auto;color:var(--down)">Delete strategy</button>`}</div>
+  </div>`;
+}
+
+function renderStrategies(s) {
+  const key = JSON.stringify([s.strategies, s.bot_perf.closed.length, editing]);
+  if (key === renderStrategies.key) return;
+  renderStrategies.key = key;
+  const tpls = s.templates;
+  const addSel = $("addType");
+  if (!addSel.options.length) addSel.innerHTML = Object.entries(tpls).filter(([k]) => k !== "trend_join").map(([k, t]) => `<option value="${k}">${esc(t.name)}</option>`).join("");
+  $("stratList").innerHTML = s.strategies.map(x => {
+    const tpl = tpls[x.type], tr = s.bot_perf.closed.filter(t => (t.strategy || "trend_join_long") === x.id), M = metrics(tr);
+    return `<div class="srow">
+      <label class="switch" title="${x.enabled ? "On: paper trading" : "Off"}"><input type="checkbox" data-toggle="${esc(x.id)}"${x.enabled ? " checked" : ""} aria-label="Activate ${esc(x.name)}"><span></span></label>
+      <div><span class="sname">${esc(x.name)}</span> <span class="chip">${esc(tpl.name)}</span> ${x.enabled ? '<span class="chip PASS">ACTIVE</span>' : '<span class="chip">off</span>'}</div>
+      <div class="sstats"><span class="chip">${M.n} trades</span>${M.n ? `<span class="chip">${Math.round(M.winRate)}% win</span><span class="chip ${M.pnl >= 0 ? "PASS" : ""}" style="${M.pnl < 0 ? "color:var(--down)" : ""}">${money(M.pnl)}</span>` : ""}
+        <button data-edit="${esc(x.id)}">${editing === x.id ? "Close" : "Edit"}</button></div>
+      <div class="sdesc">${describe(x.type, x.values, tpl)}</div>
+      ${editing === x.id ? strategyForm(x, tpl) : ""}
+    </div>`;
+  }).join("");
+}
+
+async function strategyOp(body) {
+  const r = await fetch("/api/strategies", {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const res = await r.json();
+  $("stratToast").textContent = res.message;
+  return res;
+}
+
+$("stratList").addEventListener("change", async e => {
+  const id = e.target.dataset.toggle;
+  if (id) { await strategyOp({op: "toggle", id, enabled: e.target.checked}); renderStrategies.key = null; refresh(); }
+});
+$("stratList").addEventListener("click", async e => {
+  const t = e.target;
+  if (t.dataset.edit) { editing = editing === t.dataset.edit ? null : t.dataset.edit; renderStrategies.key = null; render(state); }
+  else if (t.dataset.cancel !== undefined) { editing = null; renderStrategies.key = null; render(state); }
+  else if (t.dataset.delete) {
+    if (confirm("Delete this strategy? Its past trades stay in the history.")) { await strategyOp({op: "delete", id: t.dataset.delete}); editing = null; renderStrategies.key = null; refresh(); }
+  } else if (t.dataset.save) {
+    const form = t.closest("[data-form]"), values = {};
+    form.querySelectorAll("[data-k]").forEach(el => values[el.dataset.k] = el.dataset.t === "bool" ? el.checked : el.value);
+    const res = await strategyOp({op: "save", id: t.dataset.save, name: form.querySelector("[data-name]").value, values});
+    if (res.ok) { editing = null; renderStrategies.key = null; refresh(); }
+  }
+});
+$("addStrat").onclick = async () => {
+  const res = await strategyOp({op: "add", type: $("addType").value});
+  if (res.ok) { editing = res.id; renderStrategies.key = null; refresh(); }
+};
+
 /* ---------------------------------------------------------------- live account card */
 function fillSelect(sel, options, value, show) {
   const html = options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("");
@@ -530,7 +655,14 @@ function render(s) {
   if (!acctList.some(a => a.key === liveAcct)) liveAcct = acctList.length ? acctList[0].key : null;
   fillSelect($("liveAcct"), acctList.map(a => [a.key, `${a.account}${a.currency ? " · " + a.currency : ""} (${a.fills} fills)`]), liveAcct, isLive && acctList.length > 1);
   const liveCur = (acctList.find(a => a.key === liveAcct) || {}).currency || "";
-  const all = isLive ? lp.closed.filter(t => liveAcct == null || (t.account || "") === liveAcct) : s.bot_perf.closed;
+  const sNames = Object.fromEntries((s.strategies || []).map(x => [x.id, x.name]));
+  if (stratFilter !== "all" && !(stratFilter in sNames) && !s.bot_perf.closed.some(t => t.strategy === stratFilter)) stratFilter = "all";
+  fillSelect($("stratSel"), [["all", "All strategies"], ...(s.strategies || []).map(x => [x.id, x.name + (x.enabled ? "" : " (off)")])],
+             stratFilter, !isLive);
+  const all = isLive ? lp.closed.filter(t => liveAcct == null || (t.account || "") === liveAcct)
+                     : s.bot_perf.closed.filter(t => stratFilter === "all" || (t.strategy || "trend_join_long") === stratFilter);
+  $("stratCard").classList.toggle("hidden", isLive);
+  if (!isLive) renderStrategies(s);
   const trades = inRange(all), M = metrics(trades);
   // TWS: pick which connected account the value tile shows
   const tdet = live.account_details || [];
@@ -586,7 +718,7 @@ function render(s) {
     + `<div class="hint muted" style="font-size:12px">Each trade risks up to ${money0(riskPer)} (${s.risk_env.risk_pct}% of ${money0(s.risk_env.portfolio)}). Avg hold time: ${M.hold == null ? "—" : Math.round(M.hold) + " min"}.</div>`;
 
   // charts: only redraw when the data or period changed, so hovering isn't interrupted every 5 s
-  const chartKey = JSON.stringify([source, liveAcct, range, all.length, all.length && all[all.length - 1].exit_time]);
+  const chartKey = JSON.stringify([source, liveAcct, stratFilter, range, all.length, all.length && all[all.length - 1].exit_time]);
   if (chartKey !== render.chartKey) { render.chartKey = chartKey; drawCharts(trades, M, isLive); }
 
   // open positions ladder
@@ -596,10 +728,11 @@ function render(s) {
   $("posNote").textContent = live.connected ? `${port.length} open` : "from bot records (TWS offline)";
   $("positions").innerHTML = rows.length ? rows.map(p => {
     const b = botBy[p.symbol], entry = p.entry ?? p.avg_cost;
-    return `<div class="lrow"><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${p.bot || b ? '<span class="chip bot">BOT</span>' : '<span class="chip">manual</span>'}
+    return `<div class="lrow"><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${p.bot || b ? `<span class="chip bot">BOT${b && b.strategy ? " · " + esc(sNames[b.strategy] || b.strategy) : ""}</span>` : '<span class="chip">manual</span>'}
       <span class="meta">${p.qty} sh @ ${num(entry)}${p.price ? ` · now ${num(p.price)}` : ""}${b ? ` · stop ${num(b.stop)} · ${esc(b.state.replace(/_/g, " "))}` : ""}</span>
       <span class="pnl ${cls(p.unrealized)}">${p.unrealized != null ? money(p.unrealized) : ""}${p.r_now != null ? ` · ${num(p.r_now)}R` : ""}</span></div>
-      ${b ? ladder({symbol: p.symbol, entry: b.entry_price, stop: b.stop, R: b.R, initial_stop: b.initial_stop, price: p.price}, ex.partial_profit_trigger_R, ex.breakeven_trigger_R) : ""}</div>`;
+      ${b ? ladder({symbol: p.symbol, entry: b.entry_price, stop: b.stop, R: b.R, initial_stop: b.initial_stop, price: p.price},
+                   +((b.exit || {}).partial_profit_trigger_R ?? ex.partial_profit_trigger_R), +((b.exit || {}).breakeven_trigger_R ?? ex.breakeven_trigger_R)) : ""}</div>`;
   }).join("") : `<div class="empty">No open positions.</div>`;
 
   // filter stats
@@ -626,7 +759,7 @@ function render(s) {
 
   $("closedNote").textContent = `${rangeName} · ${M.n}`;
   $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "Held#", "P&L#", isLive ? "Return#" : "R#"],
-    trades.slice().reverse().slice(0, 200).map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b>${c.side === "short" ? ' <span class="chip">short</span>' : ""}</td>
+    trades.slice().reverse().slice(0, 200).map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b>${c.side === "short" ? ' <span class="chip">short</span>' : ""}${!isLive && stratFilter === "all" ? ` <span class="chip bot">${esc(sNames[c.strategy || "trend_join_long"] || c.strategy || "")}</span>` : ""}</td>
       <td class="num">${+c.qty.toFixed(4)}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td><td class="num muted">${c.hold_min == null ? "—" : Math.round(c.hold_min) + "m"}</td>
       <td class="num ${cls(c.pnl)}">${money(c.pnl)}</td><td class="num ${cls(c.R ?? c.pnl_pct)}"><b>${c.R != null ? num(c.R) + "R" : c.pnl_pct != null ? num(c.pnl_pct) + "%" : "—"}</b></td></tr>`),
     isLive ? "No closed live trades in this period. Upload an IBKR file or sync above." : "No closed bot trades in this period.");
@@ -729,6 +862,7 @@ async function act(name) {
   setTimeout(refresh, 400);
 }
 document.querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
+$("stratSel").onchange = e => { stratFilter = e.target.value; try { localStorage.setItem("stratFilter", stratFilter); } catch (x) {} render(state); };
 $("liveAcct").onchange = e => { liveAcct = e.target.value; try { localStorage.setItem("liveAcct", liveAcct); } catch (x) {} render.chartKey = null; render(state); };
 $("twsAcct").onchange = e => { twsAcct = e.target.value; try { localStorage.setItem("twsAcct", twsAcct); } catch (x) {} render(state); };
 document.querySelectorAll("#source button").forEach(b => b.onclick = () => {

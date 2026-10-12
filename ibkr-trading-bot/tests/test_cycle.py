@@ -58,15 +58,18 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(cycle, "now_et", lambda: datetime(2026, 10, 12, 11, 0, tzinfo=ET))
     monkeypatch.setattr(common, "now_et", lambda: datetime(2026, 10, 12, 11, 0, tzinfo=ET))
     monkeypatch.setattr(cycle, "safe_notify", lambda *a, **k: None)
+    from src import strategies
+    monkeypatch.setattr(strategies, "STORE", tmp_path / "strategies.json")
     fake = FakeIBKR()
     trades = []
 
-    def run_trade(sym, side, size, stop_price=None, timeout=30):
+    def run_trade(sym, side, size, stop_price=None, timeout=30, strategy=""):
         trades.append((side, sym, size))
         fill = fake.prices[sym]
         fake.held[sym] = fake.held.get(sym, 0) + (size if side == "BUY" else -size)
         common.append_trade({"timestamp_iso": "2026-10-12T11:00:00-04:00", "symbol": sym, "side": side,
-                             "size": size, "fill_price": fill, "order_id": 1, "status": "Filled", "stop_price": stop_price or ""})
+                             "size": size, "fill_price": fill, "order_id": 1, "status": "Filled", "stop_price": stop_price or "",
+                             "strategy": strategy})
         return {"status": "Filled", "filled": size, "fill_price": fill}, ""
 
     monkeypatch.setattr(executor, "run_trade", run_trade)
@@ -159,3 +162,61 @@ def test_force_close_flattens_and_cancels(env, monkeypatch):
     f.held["AAA"], f.prices["AAA"] = 20, 103.0
     left = cycle.force_close(f, [pos(qty=20, oid=t.order.orderId)])
     assert left == [] and ("cancel", t.order.orderId) in f.calls and env.trades == [("SELL", "AAA", 20)]
+
+
+def _strategies(tmp_path, items):
+    from src import strategies
+    strategies.save(items)
+    return strategies
+
+
+def test_custom_strategy_buys_with_its_own_tag_exits_and_cap(env, monkeypatch):
+    from src import strategies as st
+    f = env.fake
+    f.prices.update(AAA=50.0, BBB=60.0, CCC=70.0)
+    orb = {"id": "orb_1", "type": "orb", "name": "My ORB", "enabled": True,
+           "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA,BBB,CCC",
+                      "max_trades_per_day": 2, "take_profit_R": 2.0, "earliest_entry_et": "09:45", "latest_entry_et": "11:30"}}
+    st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "name": "Trend Join Long", "enabled": False}, orb])
+    monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
+    monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d": make_intraday())
+    monkeypatch.setattr(st, "evaluate", lambda cfg, d, i, price, today, rules, t: {"pass": True, "reasons": [], "metrics": {"stop": price - 1}})
+    positions = []
+    cycle.entry_scan(f, positions, RULES)  # 11:00 ET in the fixture: inside ORB's window
+    assert [p["symbol"] for p in positions] == ["AAA", "BBB"]  # per-strategy cap of 2
+    assert all(p["strategy"] == "orb_1" and p["exit"]["take_profit_R"] == 2.0 for p in positions)
+    assert {r["strategy"] for r in common.read_trades()} == {"orb_1"}
+
+
+def test_strategy_outside_its_window_does_nothing(env, monkeypatch):
+    from src import strategies as st
+    orb = {"id": "orb_1", "type": "orb", "enabled": True,
+           "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "10:30"}}
+    st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False}, orb])
+    monkeypatch.setattr(st, "evaluate", lambda *a: pytest.fail("should not evaluate outside the window"))
+    cycle.entry_scan(env.fake, [], RULES)  # fixture time is 11:00 ET
+
+
+def test_take_profit_sells_everything(env, monkeypatch):
+    f = env.fake
+    t = f.place_stop("AAA", 30, 98.0)
+    f.held["AAA"], f.prices["AAA"] = 30, 104.5  # +2.25R with R = 2
+    flat_bars(monkeypatch)
+    p = pos(oid=t.order.orderId)
+    p.update(strategy="orb_1", exit={"partial_profit_trigger_R": 999, "partial_profit_fraction": .5,
+                                     "breakeven_trigger_R": 999, "take_profit_R": 2.0, "trail": True})
+    positions = [p]
+    cycle.manage(f, positions, RULES)
+    assert env.trades == [("SELL", "AAA", 30)] and positions == []
+    assert ("cancel", t.order.orderId) in f.calls
+
+
+def test_old_trades_csv_is_migrated(env):
+    common.TRADES_PATH.write_text("timestamp_iso,symbol,side,size,fill_price,order_id,status,stop_price\n"
+                                  "2026-10-12T10:10:00-04:00,AAA,BUY,10,100,1,Filled,98\n")
+    rows = common.read_trades()
+    assert rows[0]["symbol"] == "AAA" and rows[0]["strategy"] == ""
+    common.append_trade({"timestamp_iso": "2026-10-12T11:00:00-04:00", "symbol": "AAA", "side": "SELL", "size": 10,
+                         "fill_price": 101, "strategy": "trend_join_long"})
+    assert [r["strategy"] for r in common.read_trades()] == ["", "trend_join_long"]
+    assert common.todays_buy_count(strategy="trend_join_long") == 1  # untagged old BUY counts as Trend Join

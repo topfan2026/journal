@@ -16,3 +16,5 @@ PAUSED
 live_trades.csv
 live_trades.csv.tmp
 ibc/
+strategies.json
+strategies.json.tmp

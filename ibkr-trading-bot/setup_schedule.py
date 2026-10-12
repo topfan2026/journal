@@ -21,7 +21,7 @@ VENV_PY = (PROJECT_DIR / ".venv" / "Scripts" / "python.exe").resolve()
 ET = ZoneInfo("America/New_York")
 
 WEEKDAYS = "MON,TUE,WED,THU,FRI"
-PREFILTER_TIMES = ["09:55", "10:25", "10:55", "11:25", "11:55", "12:25", "12:55"]
+PREFILTER_TIMES = ["09:35", "09:55", "10:25", "10:55", "11:25", "11:55", "12:25", "12:55"]  # 09:35 for ORB-style strategies
 
 
 def et_to_local(hhmm: str) -> datetime:
