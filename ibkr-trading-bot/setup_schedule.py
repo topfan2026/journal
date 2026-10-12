@@ -49,6 +49,10 @@ def tasks() -> list[dict]:
         t.append({"name": f"HT_Prefilter_{i:02d}", "tr": script_cmd("morning_prefilter.py"), "et": hhmm})
     t.append({"name": "HT_Cycle", "tr": script_cmd("cycle.py"), "et": "10:00", "minute": True})
     t.append({"name": "HT_Dashboard", "tr": script_cmd("compute_perf.py"), "et": "16:05"})
+    if (PROJECT_DIR / "ibc" / "config.ini").exists():  # automatic TWS login is set up (SETUP_AUTOLOGIN.bat)
+        pyw = VENV_PY.with_name("pythonw.exe")
+        t.append({"name": "HT_TWSLogin", "et": "09:00",
+                  "tr": f'"{pyw if pyw.exists() else VENV_PY}" "{PROJECT_DIR / "tws_login.py"}"'})
     return t
 
 

@@ -513,10 +513,13 @@ function render(s) {
   if (up.updated_this_session) alerts.push(`<div class="alert info">✓ Updated. Close this window and open IBKR Trading Bot again to load the new version.</div>`);
   else if (up.available) alerts.push(`<div class="alert info">⬆ A new version is available (${esc(up.date || "")}: ${esc(up.message || "")})
      <button class="primary" id="updateBtn">Update now</button></div>`);
-  if (!live.connected) alerts.push(`<div class="alert">${esc(live.error || "Waiting for TWS…")}. Account data appears once you're logged in.</div>`);
+  if (!live.connected) alerts.push(`<div class="alert">${esc(live.error || "Waiting for TWS…")}. Account data appears once you're logged in.
+    ${s.autologin ? `<button class="primary" data-action="tws_login">Start TWS now (auto login)</button>`
+                  : `<span class="muted">Tip: double-click SETUP_AUTOLOGIN.bat in the bot folder to have TWS log in by itself.</span>`}</div>`);
   if (s.schedule.installed === false) alerts.push(`<div class="alert">The bot isn't scheduled yet, so it won't trade on its own. Click “Install schedule” once.</div>`);
   if (s.paused) alerts.push(`<div class="alert">Paused: no new trades; open trades keep their stops managed.</div>`);
   $("alerts").innerHTML = alerts.join("");
+  $("alerts").querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
   const ub = $("updateBtn");
   if (ub) ub.onclick = () => { if (confirm("Update the bot now? Your settings, strategy rules and trade history are kept.")) act("update"); };
 

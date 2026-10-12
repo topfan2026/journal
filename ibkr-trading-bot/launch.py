@@ -44,6 +44,11 @@ def port_open(host: str, port: int) -> bool:
 def main() -> int:
     host, port = env_str("IBKR_HOST", "127.0.0.1"), env_int("IBKR_PORT", 7497)
     if not port_open(host, port):
+        from src import autologin
+        if autologin.start_tws():  # automatic login set up: IBC logs in for you
+            print("Starting TWS with automatic paper login (IBC)...")
+            import app as bot_app
+            return bot_app.main()
         app = find_tws()
         if app:
             print(f"Opening {app}\n>>> Log in to your PAPER account in the IBKR window.")

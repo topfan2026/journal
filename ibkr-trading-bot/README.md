@@ -59,6 +59,18 @@ Buttons: **Pause / Resume** (paused = no new entries; open trades keep their sto
 The app's TWS connection is **read-only** (client id 7), so it can't place orders. Its buttons are protected by a
 per-session token, so other websites can't trigger them.
 
+## Automatic TWS paper login
+
+Double-click **SETUP_AUTOLOGIN.bat** (after SETUP.bat). It downloads [IBC](https://github.com/IbcAlpha/IBC) (free,
+open source) into `ibc/`, asks for your **paper** username and password (saved in `ibc/config.ini`, readable only by
+your Windows user, never uploaded, untouched by app updates), and adds a weekday task `HT_TWSLogin` at 9:00 ET that
+starts and logs in TWS if it isn't running, then messages you on Telegram. IBC also clicks "accept incoming
+connection", sets the API to read/write, restarts TWS nightly at 11:45 PM, and logs in again for the weekly
+re-authentication. The desktop shortcut uses it too.
+
+Requirements: the **standalone ("Offline") TWS** installed in `C:\Jts\<version>` (IBC can't drive the self-updating
+edition). Paper logins normally don't ask for IBKR Mobile approval; if yours does, approve it on your phone.
+
 ## Your live account (read-only analysis)
 
 In the app, switch **🤖 Bot · paper / 💼 My live account**. The live view shows the same charts and gauges for your real

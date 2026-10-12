@@ -282,6 +282,7 @@ def build_state() -> dict:
         "jobs": {k: v for k, v in _jobs.items() if isinstance(v, dict)},
         "update": update_status(),
         "live_perf": live_summary(),
+        "autologin": (PROJECT_DIR / "ibc" / "config.ini").exists(),
     }
 
 
@@ -293,6 +294,7 @@ ACTIONS = {
     "cycle": ["cycle.py"],
     "summary": ["compute_perf.py"],
     "schedule": ["setup_schedule.py"],
+    "tws_login": ["tws_login.py"],
 }
 
 

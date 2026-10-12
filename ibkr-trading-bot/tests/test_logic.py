@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from datetime import date, datetime, timedelta
 
 import numpy as np
@@ -167,3 +168,23 @@ def test_group_trades_merges_partial_exits():
     assert second["R"] == pytest.approx(-1.0)
     agg = compute_perf.aggregate(trades)
     assert agg["total_trades"] == 2 and agg["wins"] == 1 and agg["win_rate_pct"] == 50.0
+
+
+def test_autologin_config_and_bat_editing(tmp_path):
+    from src import autologin as al
+    ini = "# IBC settings\nIbLoginId=\nIbPassword=\nTradingMode=\n# comment AcceptIncomingConnectionAction=x\n"
+    out = al.set_ini_values(ini, {"IbLoginId": "paperuser", "IbPassword": "pw", "TradingMode": "paper", "ReadOnlyApi": "no"})
+    assert "IbLoginId=paperuser" in out and "TradingMode=paper" in out and out.endswith("ReadOnlyApi=no\n")
+    assert "# comment AcceptIncomingConnectionAction=x" in out
+    bat = Path("/home/user/ibcalpha/ibc/resources/StartTWS.bat").read_text() if Path("/home/user/ibcalpha/ibc/resources/StartTWS.bat").exists() else "@echo off\nset TWS_MAJOR_VRSN=1019\nset CONFIG=%USERPROFILE%\\Documents\\IBC\\config.ini\nset TRADING_MODE=\n"
+    new, missing = al.set_bat_vars(bat, {"TWS_MAJOR_VRSN": "1030", "CONFIG": r"C:\bot\ibc\config.ini",
+                                         "TRADING_MODE": "paper", "NOPE": "x"})
+    assert "set TWS_MAJOR_VRSN=1030" in new and r"set CONFIG=C:\bot\ibc\config.ini" in new
+    assert "set TRADING_MODE=paper" in new and missing == ["NOPE"]
+    jts = tmp_path / "Jts"
+    (jts / "1019").mkdir(parents=True); (jts / "1019" / "tws.exe").write_text("")
+    (jts / "1030").mkdir(); (jts / "1030" / "tws.exe").write_text("")
+    assert al.find_tws_version(jts)[0] == "1030"
+    selfupdating = tmp_path / "Jts2"; selfupdating.mkdir(); (selfupdating / "tws.exe").write_text("")
+    v, note = al.find_tws_version(selfupdating)
+    assert v is None and "Offline" in note
