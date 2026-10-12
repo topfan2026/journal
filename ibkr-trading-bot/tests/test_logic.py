@@ -188,3 +188,20 @@ def test_autologin_config_and_bat_editing(tmp_path):
     selfupdating = tmp_path / "Jts2"; selfupdating.mkdir(); (selfupdating / "tws.exe").write_text("")
     v, note = al.find_tws_version(selfupdating)
     assert v is None and "Offline" in note
+
+
+def test_wake_up_does_nothing_on_weekends_or_after_hours(monkeypatch):
+    import wake_up
+    calls = []
+    monkeypatch.setattr(wake_up, "hold_awake", lambda on: calls.append(on))
+    monkeypatch.setattr(wake_up, "now_et", lambda: datetime(2026, 10, 17, 9, 0, tzinfo=ET))  # Saturday
+    assert wake_up.main() == 0 and calls == []
+    monkeypatch.setattr(wake_up, "now_et", lambda: datetime(2026, 10, 16, 16, 30, tzinfo=ET))  # Friday after hours
+    assert wake_up.main() == 0 and calls == []
+
+
+def test_schedule_wakes_pc_only_for_wake_up_task():
+    import setup_schedule
+    tasks = {t["name"]: t for t in setup_schedule.tasks()}
+    assert [n for n, t in tasks.items() if t.get("wake")] == ["HT_WakeUp"]
+    assert "HT_KeepAwake" not in tasks and tasks["HT_WakeUp"]["et"] == "09:00"

@@ -1,4 +1,6 @@
-"""Register the bot's 11 Windows Task Scheduler tasks (user context, no admin). Idempotent (/F).
+"""Register the bot's Windows Task Scheduler tasks (user context, no admin). Idempotent (/F).
+
+HT_WakeUp wakes the PC from sleep at 9:00 ET and keeps it awake until 16:10 ET (wake_up.py).
 
 ET times are converted to this PC's local time when you run this script. If your local
 timezone has different daylight-saving dates than New York, re-run it after either side
@@ -37,23 +39,45 @@ def short_date_format() -> str:
 
 
 def script_cmd(script: str) -> str:
-    return f'"{VENV_PY}" "{PROJECT_DIR / script}"'
+    # pythonw.exe: no console window flashing up every 5 minutes (output goes to the bot's log files)
+    pyw = VENV_PY.with_name("pythonw.exe")
+    return f'"{pyw if pyw.exists() else VENV_PY}" "{PROJECT_DIR / script}"'
 
 
 def tasks() -> list[dict]:
     t = [
         {"name": "HT_LogRotate", "tr": script_cmd("rotate_logs.py"), "et": "09:25"},
-        {"name": "HT_KeepAwake", "tr": "powercfg /change standby-timeout-ac 0", "et": "09:30"},
+        {"name": "HT_WakeUp", "tr": script_cmd("wake_up.py"), "et": "09:00", "wake": True},
     ]
     for i, hhmm in enumerate(PREFILTER_TIMES, 1):
         t.append({"name": f"HT_Prefilter_{i:02d}", "tr": script_cmd("morning_prefilter.py"), "et": hhmm})
     t.append({"name": "HT_Cycle", "tr": script_cmd("cycle.py"), "et": "10:00", "minute": True})
     t.append({"name": "HT_Dashboard", "tr": script_cmd("compute_perf.py"), "et": "16:05"})
-    if (PROJECT_DIR / "ibc" / "config.ini").exists():  # automatic TWS login is set up (SETUP_AUTOLOGIN.bat)
-        pyw = VENV_PY.with_name("pythonw.exe")
-        t.append({"name": "HT_TWSLogin", "et": "09:00",
-                  "tr": f'"{pyw if pyw.exists() else VENV_PY}" "{PROJECT_DIR / "tws_login.py"}"'})
     return t
+
+
+OBSOLETE = ["HT_KeepAwake", "HT_TWSLogin"]  # replaced by HT_WakeUp
+
+
+def tune_tasks(names: list[str], wake: list[str]) -> None:
+    """schtasks can't set these, PowerShell can: wake the PC for HT_WakeUp only (the 5-minute cycle must not
+    wake it all night), run on battery too, and catch up if a start time was missed while asleep/off."""
+    for name in names:
+        ps = (f"$t = Get-ScheduledTask -TaskName '{name}'; $s = $t.Settings; "
+              f"$s.WakeToRun = ${'true' if name in wake else 'false'}; $s.DisallowStartIfOnBatteries = $false; "
+              f"$s.StopIfGoingOnBatteries = $false; $s.StartWhenAvailable = $true; Set-ScheduledTask -InputObject $t | Out-Null")
+        r = subprocess.run(["powershell", "-NoProfile", "-c", ps], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"WARN {name}: couldn't set wake/battery options: {(r.stderr or r.stdout).strip()[:200]}")
+
+
+def allow_wake_timers() -> None:
+    """Power Options > Sleep > Allow wake timers = Enable (plugged in and on battery)."""
+    for flag in ("/SETACVALUEINDEX", "/SETDCVALUEINDEX"):
+        subprocess.run(["powercfg", flag, "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE", "1"], capture_output=True)
+    r = subprocess.run(["powercfg", "/SETACTIVE", "SCHEME_CURRENT"], capture_output=True, text=True)
+    print("Wake timers: enabled." if r.returncode == 0 else
+          "Wake timers: couldn't enable automatically. Turn on 'Allow wake timers' in Power Options > Sleep.")
 
 
 def main() -> int:
@@ -64,6 +88,12 @@ def main() -> int:
         print(f"Missing {VENV_PY}. Create the venv first: python -m venv .venv")
         return 1
 
+    for old in OBSOLETE:
+        r = subprocess.run(["schtasks", "/delete", "/tn", old, "/f"], capture_output=True)
+        if old == "HT_KeepAwake" and r.returncode == 0:
+            # the old task set "never sleep when plugged in"; put back a normal 30-minute sleep timer
+            subprocess.run(["powercfg", "/change", "standby-timeout-ac", "30"], capture_output=True)
+            print("Removed the old 'never sleep' task; PC sleeps after 30 idle minutes again (HT_WakeUp wakes it).")
     date_fmt = short_date_format()
     ok = 0
     for task in tasks():
@@ -79,6 +109,9 @@ def main() -> int:
             print(f"OK   {task['name']:<16} {task['et']} ET = {local:%H:%M} local")
         else:
             print(f"FAIL {task['name']:<16} {r.stderr.strip() or r.stdout.strip()}")
+
+    tune_tasks([t["name"] for t in tasks()], wake=[t["name"] for t in tasks() if t.get("wake")])
+    allow_wake_timers()
 
     r = subprocess.run(["schtasks", "/query", "/fo", "TABLE"], capture_output=True, text=True)
     lines = r.stdout.splitlines()

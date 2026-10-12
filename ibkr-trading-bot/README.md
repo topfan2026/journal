@@ -59,6 +59,14 @@ Buttons: **Pause / Resume** (paused = no new entries; open trades keep their sto
 The app's TWS connection is **read-only** (client id 7), so it can't place orders. Its buttons are protected by a
 per-session token, so other websites can't trigger them.
 
+## Sleep and wake
+
+Your PC can sleep. The task **HT_WakeUp** wakes it at 9:00 ET on weekdays, keeps it awake until 16:10 ET (no power
+settings changed; it simply asks Windows not to sleep while it runs), and starts/logs in TWS if it isn't running.
+Requirements: the PC must be **asleep, not shut down or signed out** (TWS needs your Windows desktop; a locked screen
+is fine), plugged in is safest, and "Allow wake timers" must be on (setup enables it). Re-run the schedule (app button
+"Re-install schedule") after updating so the new task is created.
+
 ## Automatic TWS paper login
 
 Double-click **SETUP_AUTOLOGIN.bat** (after SETUP.bat). It downloads [IBC](https://github.com/IbcAlpha/IBC) (free,
