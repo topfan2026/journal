@@ -751,6 +751,7 @@ function renderLiveCard(s, isLive) {
     ? `<b>${lp.fills}</b> fills imported · <b>${lp.closed.length}</b> closed trades · ${esc(lp.first)} → ${esc(lp.last)}` +
       (lp.accounts && lp.accounts.length ? ` · account ${esc(lp.accounts.join(", "))}` : "") +
       (lp.open && lp.open.length ? ` · still open: ${lp.open.map(o => esc(o.symbol) + " " + (+o.qty.toFixed(4)) + (o.side === "short" ? " short" : "")).join(", ")}` : "") +
+      (lp.duplicates_ignored ? ` · <b>${lp.duplicates_ignored}</b> duplicate fills ignored (same trades from sync and upload)` : "") +
       ` · updated ${esc(lp.updated || "")}`
     : `No live-account trades yet. Upload an IBKR export below, or set up automatic sync. Your live account is only <b>read</b>; the bot never trades it.`;
   $("syncBtn").classList.toggle("hidden", !lp.flex_configured);

@@ -96,3 +96,35 @@ def test_activity_statement_picks_up_account_number():
     text = 'Account Information,Header,Field Name,Field Value\nAccount Information,Data,Account,U7654321 (Custom Consolidated)\n' + ACTIVITY
     li.import_text(text)
     assert {f["account"] for f in li.load_fills()} == {"U7654321"}
+
+
+def test_same_trades_from_flex_and_activity_statement_count_once():
+    # Activity Statement: one row per ORDER, no trade ids
+    stmt = 'Account Information,Header,Field Name,Field Value\nAccount Information,Data,Account,U123\n' + \
+        'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,Comm/Fee,Realized P/L\n' + \
+        'Trades,Data,Order,Stocks,USD,NVDA,"2026-10-05, 10:15:00",20,120,-1,0\n' + \
+        'Trades,Data,Order,Stocks,USD,NVDA,"2026-10-05, 15:00:00",-20,119.75,-1,7\n' + \
+        'Trades,Data,Order,Stocks,USD,AMD,"2026-10-06, 10:00:00",10,150,-1,0\n' + \
+        'Trades,Data,Order,Stocks,USD,AMD,"2026-10-06, 11:00:00",-10,152,-1,18\n'
+    li.import_text(FLEX_XML)  # the same NVDA day, as 3 executions with ids (synced)
+    li.import_text(stmt)
+    assert len(li.load_fills()) == 7  # both stored...
+    s = li.summary()
+    nv = [t for t in s["closed"] if t["symbol"] == "NVDA"]
+    assert len(nv) == 1 and nv[0]["pnl"] == pytest.approx(7.0)  # ...but NVDA counted once (Flex wins)
+    assert [t["symbol"] for t in s["closed"]].count("AMD") == 1  # AMD only in the statement: kept
+    assert s["duplicates_ignored"] == 2
+
+
+def test_csv_without_account_does_not_double_a_synced_day():
+    li.import_text(FLEX_XML)
+    li.import_text("Date,Symbol,Side,Qty,Price\n2026-10-05 10:15:00,NVDA,BUY,20,120\n2026-10-05 15:00:00,NVDA,SELL,20,119.75\n")
+    s = li.summary()
+    assert [t["symbol"] for t in s["closed"]] == ["NVDA"] and s["duplicates_ignored"] == 2
+
+
+def test_two_accounts_same_stock_same_day_both_kept():
+    li.import_text(FLEX_XML)  # account U123
+    li.import_text("Date,Symbol,Side,Qty,Price,Account\n2026-10-05 10:00:00,NVDA,BUY,5,121,U999\n2026-10-05 11:00:00,NVDA,SELL,5,122,U999\n")
+    s = li.summary()
+    assert sorted(t["account"] for t in s["closed"]) == ["U123", "U999"] and s["duplicates_ignored"] == 0

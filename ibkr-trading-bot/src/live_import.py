@@ -358,8 +358,38 @@ def _finish(ep: dict, exit_time: str) -> dict:
             "partial_history": False}
 
 
+SOURCE_PRIORITY = {"flex": 3, "activity_statement": 2, "csv": 1}
+
+
+def dedupe_sources(fills: list[dict]) -> tuple[list[dict], int]:
+    """The same trades can arrive twice from different sources (Flex sync lists each execution with IBKR
+    trade ids; an Activity Statement merges them into one row per order, without ids), so ids can't match.
+    For each account + stock + day, keep only the best source: Flex > Activity Statement > other CSV.
+    Fills without an account number are dropped when an account-tagged, better source covers that stock/day.
+    Returns (kept, number dropped)."""
+    best: dict[tuple, int] = {}
+    best_any: dict[tuple, int] = {}
+    for f in fills:
+        pr = SOURCE_PRIORITY.get(f.get("source"), 1)
+        day = f["time"][:10]
+        k = (f.get("account") or "", f["symbol"], day)
+        best[k] = max(best.get(k, 0), pr)
+        if f.get("account"):
+            best_any[(f["symbol"], day)] = max(best_any.get((f["symbol"], day), 0), pr)
+    kept = []
+    for f in fills:
+        pr = SOURCE_PRIORITY.get(f.get("source"), 1)
+        day = f["time"][:10]
+        if pr < best[(f.get("account") or "", f["symbol"], day)]:
+            continue
+        if not f.get("account") and pr < best_any.get((f["symbol"], day), 0):
+            continue
+        kept.append(f)
+    return kept, len(fills) - len(kept)
+
+
 def summary() -> dict:
-    fills = load_fills()
+    fills, dropped = dedupe_sources(load_fills())
     trades, still_open = round_trips(fills)
     return {"closed": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in t.items()} for t in trades[-5000:]],
             "open": still_open, "fills": len(fills),
@@ -370,6 +400,7 @@ def summary() -> dict:
                                  "fills": sum(1 for f in fills if f["account"] == a)}
                                 for a in sorted({f["account"] for f in fills})],
             "commissions": round(sum(f["commission"] for f in fills), 2),
+            "duplicates_ignored": dropped,
             "flex_configured": flex_configured(),
             "updated": datetime.fromtimestamp(LIVE_PATH.stat().st_mtime, ET).strftime("%Y-%m-%d %H:%M ET")
             if LIVE_PATH.exists() else None,
