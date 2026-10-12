@@ -60,6 +60,32 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .steps li { margin-bottom: 4px; }
 .livemeta { color: var(--ink2); font-size: 13px; }
 .hidden { display: none !important; }
+/* Trade chart */
+[data-chart-symbol] { cursor: pointer; }
+tr[data-chart-symbol]:hover td { background: var(--accent-bg); }
+.lrow[data-chart-symbol]:hover { background: var(--chip); }
+dialog#chartDlg { width: min(1240px, 96vw); max-height: 94vh; padding: 0; border: 1px solid var(--ring); border-radius: 14px;
+  background: var(--card); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+dialog#chartDlg::backdrop { background: rgba(0,0,0,.45); }
+.cd-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.cd-head .sym { font-size: 20px; font-weight: 800; }
+.cd-head .close { margin-left: auto; }
+.cd-body { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+@media (max-width: 900px) { .cd-body { grid-template-columns: 1fr; } }
+.cd-chart { padding: 8px 12px 12px; min-width: 0; }
+#tvChart { height: 470px; width: 100%; }
+.cd-toggles { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink2); padding: 4px 2px 8px; align-items: center; }
+.cd-toggles i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.cd-side { border-left: 1px solid var(--line); padding: 12px 14px; overflow: auto; max-height: 78vh; font-size: 13px; }
+@media (max-width: 900px) { .cd-side { border-left: 0; border-top: 1px solid var(--line); max-height: none; } }
+.cd-side h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); margin: 14px 0 6px; }
+.cd-side h3:first-child { margin-top: 0; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.kv span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+.cd-ev { border-left: 3px solid var(--line); padding: 2px 0 2px 8px; margin: 6px 0; font-size: 12.5px; }
+.cd-ev b { text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.cd-attr { font-size: 11px; color: var(--muted); padding: 0 12px 10px; }
 /* Strategies */
 .srow { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .srow:last-child { border-bottom: 0; }
@@ -275,6 +301,15 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
   </div>
 </main>
 <div id="tip" role="tooltip"></div>
+<dialog id="chartDlg" aria-label="Trade chart">
+  <div class="cd-head"><span class="sym" id="cdSym"></span><span id="cdName" class="muted"></span><span id="cdMeta" class="chip"></span>
+    <button class="close" id="cdClose" aria-label="Close chart">✕ Close</button></div>
+  <div class="cd-body">
+    <div class="cd-chart"><div class="cd-toggles" id="cdToggles"></div><div id="tvChart"></div><div id="cdMsg" class="empty hidden"></div></div>
+    <aside class="cd-side" id="cdSide"></aside>
+  </div>
+  <div class="cd-attr">Times in New York (ET). Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™. Prices: Yahoo Finance.</div>
+</dialog>
 <script>
 const TOKEN = "__TOKEN__";
 const $ = id => document.getElementById(id);
@@ -584,7 +619,116 @@ $("addStrat").onclick = async () => {
   if (res.ok) { editing = res.id; renderStrategies.key = null; refresh(); }
 };
 
+/* ---------------------------------------------------------------- trade chart (TradingView Lightweight Charts) */
+let tvChart = null;
+function loadLWC() {
+  if (window.LightweightCharts) return Promise.resolve();
+  return loadLWC.p ??= new Promise((ok, fail) => {
+    const sc = document.createElement("script"); sc.src = "/vendor/lightweight-charts.js"; sc.onload = ok; sc.onerror = () => fail(new Error("chart library failed to load"));
+    document.head.appendChild(sc);
+  });
+}
+const LINE_COLORS = () => ({"EMA 9": css("--accent"), "EMA 20": "#eb6834", "EMA 50": "#6250d6", "SMA 20": css("--accent"), "SMA 50": "#eb6834", "SMA 200": "#6250d6", "VWAP": "#d58e00"});
+const big = v => v == null ? "—" : Math.abs(v) >= 1e12 ? (v / 1e12).toFixed(2) + "T" : Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + "B" : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(0) + "K" : String(v);
+
+function infoHtml(i) {
+  if (!i || !Object.keys(i).length) return `<div class="muted">No company details available.</div>`;
+  const rows = [["Exchange", i.exchange], ["Sector", i.sector], ["Industry", i.industry], ["Country", i.country],
+    ["Market cap", big(i.marketCap)], ["Avg volume", big(i.averageVolume)], ["Avg vol (10d)", big(i.averageVolume10days)],
+    ["Float", big(i.floatShares)], ["Shares out", big(i.sharesOutstanding)],
+    ["Short % float", i.shortPercentOfFloat != null ? (i.shortPercentOfFloat * 100).toFixed(1) + "%" : null],
+    ["52-week range", i.fiftyTwoWeekLow != null ? `${num(i.fiftyTwoWeekLow)} – ${num(i.fiftyTwoWeekHigh)}` : null],
+    ["Beta", i.beta != null ? num(i.beta) : null], ["P/E (trailing)", i.trailingPE != null ? num(i.trailingPE, 1) : null],
+    ["P/E (forward)", i.forwardPE != null ? num(i.forwardPE, 1) : null],
+    ["Next earnings", i.earningsTimestamp ? new Date(i.earningsTimestamp * 1000).toLocaleDateString() : null],
+    ["Employees", i.fullTimeEmployees ? i.fullTimeEmployees.toLocaleString() : null]].filter(r => r[1] != null && r[1] !== "—");
+  return `<div class="kv">${rows.map(([k, v]) => `<span>${k}</span><span>${esc(v)}</span>`).join("")}</div>
+    ${i.website ? `<p style="margin:8px 0 0"><a href="${esc(i.website)}" target="_blank" rel="noopener">${esc(i.website.replace(/^https?:\/\//, ""))}</a></p>` : ""}
+    ${i.longBusinessSummary ? `<p class="muted" style="font-size:12px;line-height:1.5">${esc(i.longBusinessSummary)}${i.longBusinessSummary.length >= 700 ? "…" : ""}</p>` : ""}`;
+}
+
+async function openChart(o) {
+  const dlg = $("chartDlg");
+  $("cdSym").textContent = o.chartSymbol; $("cdName").textContent = ""; $("cdMeta").textContent = `${o.chartDate} · loading…`;
+  $("cdSide").innerHTML = `<div class="muted">Loading…</div>`; $("cdToggles").innerHTML = ""; $("cdMsg").classList.add("hidden");
+  if (!dlg.open) dlg.showModal();
+  if (tvChart) { tvChart.remove(); tvChart = null; }
+  let d;
+  try {
+    const q = new URLSearchParams({symbol: o.chartSymbol, date: o.chartDate, source: o.chartSource || "bot", account: o.chartAccount || "", strategy: o.chartStrategy || ""});
+    [d] = await Promise.all([fetch("/api/chart?" + q).then(r => r.json()), loadLWC()]);
+  } catch (e) { $("cdMsg").textContent = "Couldn't load the chart: " + e.message; $("cdMsg").classList.remove("hidden"); return; }
+  $("cdName").textContent = d.info?.longName || d.info?.shortName || "";
+  $("cdMeta").textContent = `${d.date} · ${{"5m": "5-minute", "60m": "1-hour", "1d": "daily"}[d.interval] || ""} bars`;
+  if (d.error && !(d.candles || []).length) { $("cdMsg").textContent = d.error; $("cdMsg").classList.remove("hidden"); $("cdSide").innerHTML = `<h3>Ticker details</h3>${infoHtml(d.info)}`; return; }
+
+  const L = LightweightCharts;
+  tvChart = L.createChart($("tvChart"), {autoSize: true, localization: {locale: "en-US"},
+    layout: {background: {type: "solid", color: css("--card")}, textColor: css("--ink2"), fontFamily: "system-ui, Segoe UI, sans-serif"},
+    grid: {vertLines: {color: css("--line")}, horzLines: {color: css("--line")}},
+    rightPriceScale: {borderColor: css("--axis")}, timeScale: {borderColor: css("--axis"), timeVisible: d.interval !== "1d", secondsVisible: false},
+    crosshair: {mode: L.CrosshairMode.Normal}});
+  const candles = tvChart.addCandlestickSeries({upColor: css("--good"), downColor: css("--bad"), borderVisible: false,
+    wickUpColor: css("--good"), wickDownColor: css("--bad")});
+  candles.setData(d.candles);
+  const vol = tvChart.addHistogramSeries({priceFormat: {type: "volume"}, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false});
+  vol.priceScale().applyOptions({scaleMargins: {top: 0.82, bottom: 0}});
+  vol.setData(d.volume.map(v => ({time: v.time, value: v.value, color: v.up ? css("--good") + "66" : css("--bad") + "66"})));
+
+  const colors = LINE_COLORS(), series = {};
+  Object.entries(d.lines).forEach(([name, pts]) => {
+    if (!pts.length) return;
+    series[name] = tvChart.addLineSeries({color: colors[name] || css("--muted"), lineWidth: name === "VWAP" ? 2 : 1,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: name});
+    series[name].setData(pts);
+  });
+  const levelColor = {"Initial stop": css("--bad"), "Opening range high": css("--accent"), "Opening range low": css("--accent"),
+    "Premarket high": "#d58e00", "Yesterday high": css("--muted"), "Yesterday close": css("--muted")};
+  const levels = {};
+  Object.entries(d.levels).forEach(([name, price]) => {
+    levels[name] = candles.createPriceLine({price, color: levelColor[name] || css("--muted"), lineWidth: 1,
+      lineStyle: name === "Initial stop" ? L.LineStyle.Solid : L.LineStyle.Dashed, axisLabelVisible: true, title: name});
+  });
+  candles.setMarkers(d.markers.slice().sort((a, b) => a.time - b.time).map(m => ({time: m.time,
+    position: m.side === "BUY" ? "belowBar" : "aboveBar", color: m.side === "BUY" ? css("--good") : css("--bad"),
+    shape: m.side === "BUY" ? "arrowUp" : "arrowDown", text: `${m.side} ${+(+m.qty).toFixed(4)}`})));
+  tvChart.timeScale().fitContent();
+
+  // indicator / level toggles
+  $("cdToggles").innerHTML = Object.keys(series).map(n => `<label><input type="checkbox" data-series="${esc(n)}" checked> <i style="background:${colors[n] || css("--muted")}"></i>${esc(n)}</label>`).join("")
+    + (Object.keys(levels).length ? `<label><input type="checkbox" data-levels checked> key levels</label>` : "");
+  $("cdToggles").onchange = e => {
+    if (e.target.dataset.series) series[e.target.dataset.series].applyOptions({visible: e.target.checked});
+    if (e.target.dataset.levels !== undefined) Object.entries(levels).forEach(([name, pl]) => pl.applyOptions({lineVisible: e.target.checked, axisLabelVisible: e.target.checked}));
+  };
+
+  // side panel: trades, the bot's reasons, ticker details
+  const fills = d.markers.map(m => `<div class="cd-ev" style="border-color:${m.side === "BUY" ? css("--good") : css("--bad")}"><b>${m.side}</b> ${esc(m.at)} · ${esc(m.text)}${m.stop ? ` · stop ${num(m.stop)}` : ""}</div>`).join("");
+  const why = (d.reasons || []).map(e => {
+    const {ts, event, symbol, ...rest} = e;
+    const detail = Object.entries(rest).map(([k, v]) => Array.isArray(v) ? v.map(esc).join("<br>")
+      : `${esc(k)}: ${esc(typeof v === "object" ? JSON.stringify(v) : v)}`).join(" · ");
+    return `<div class="cd-ev"><b>${esc(event)}</b> ${esc(String(ts || "").slice(11, 19))}<br><span class="muted">${detail}</span></div>`;
+  }).join("");
+  const lv = Object.entries(d.levels).map(([k, v]) => `<span>${esc(k)}</span><span>${num(v)}</span>`).join("");
+  $("cdSide").innerHTML = `<h3>Trades on this chart</h3>${fills || '<div class="muted">No trades by the bot in this stock that day.</div>'}
+    ${why ? `<h3>What the bot saw</h3>${why}` : ""}
+    ${lv ? `<h3>Key levels</h3><div class="kv">${lv}</div>` : ""}
+    <h3>Ticker details</h3>${infoHtml(d.info)}`;
+}
+$("cdClose").onclick = () => $("chartDlg").close();
+$("chartDlg").addEventListener("close", () => { if (tvChart) { tvChart.remove(); tvChart = null; } });
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-chart-symbol]");
+  if (el && !e.target.closest("button, a, input, select, label")) openChart(el.dataset);
+});
+
 /* ---------------------------------------------------------------- live account card */
+const etToday = () => new Date().toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+const chartAttrs = (symbol, date, source = "bot", extra = {}) =>
+  ` data-chart-symbol="${esc(symbol)}" data-chart-date="${esc(date)}" data-chart-source="${source}"` +
+  Object.entries(extra).map(([k, v]) => v ? ` data-chart-${k}="${esc(v)}"` : "").join("") + ` title="Click for chart"`;
+
 function fillSelect(sel, options, value, show) {
   const html = options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("");
   if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
@@ -728,7 +872,7 @@ function render(s) {
   $("posNote").textContent = live.connected ? `${port.length} open` : "from bot records (TWS offline)";
   $("positions").innerHTML = rows.length ? rows.map(p => {
     const b = botBy[p.symbol], entry = p.entry ?? p.avg_cost;
-    return `<div class="lrow"><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${p.bot || b ? `<span class="chip bot">BOT${b && b.strategy ? " · " + esc(sNames[b.strategy] || b.strategy) : ""}</span>` : '<span class="chip">manual</span>'}
+    return `<div class="lrow"${chartAttrs(p.symbol, b ? b.entry_time_iso.slice(0, 10) : etToday(), "bot", {strategy: b && b.strategy})}><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${p.bot || b ? `<span class="chip bot">BOT${b && b.strategy ? " · " + esc(sNames[b.strategy] || b.strategy) : ""}</span>` : '<span class="chip">manual</span>'}
       <span class="meta">${p.qty} sh @ ${num(entry)}${p.price ? ` · now ${num(p.price)}` : ""}${b ? ` · stop ${num(b.stop)} · ${esc(b.state.replace(/_/g, " "))}` : ""}</span>
       <span class="pnl ${cls(p.unrealized)}">${p.unrealized != null ? money(p.unrealized) : ""}${p.r_now != null ? ` · ${num(p.r_now)}R` : ""}</span></div>
       ${b ? ladder({symbol: p.symbol, entry: b.entry_price, stop: b.stop, R: b.R, initial_stop: b.initial_stop, price: p.price},
@@ -746,7 +890,7 @@ function render(s) {
 
   $("wlNote").textContent = s.watchlist_time ? `scanned ${s.watchlist_time}` : "no scan yet";
   $("watchlist").innerHTML = table(["Ticker", "Status", "Gap", "Why"],
-    s.watchlist.map(w => `<tr><td><b>${esc(w.symbol)}</b></td><td><span class="chip ${w.verdict}">${w.verdict}</span></td>
+    s.watchlist.map(w => `<tr${chartAttrs(w.symbol, etToday())}><td><b>${esc(w.symbol)}</b></td><td><span class="chip ${w.verdict}">${w.verdict}</span></td>
       <td class="muted">${esc(w.gap.split("open")[0].replace("gap", "").trim())}</td><td class="wrap">${esc(w.detail)}</td></tr>`),
     "No watchlist yet. The scanner runs at 9:55 ET and every 30 minutes until 12:55, or click “Scan now”.");
 
@@ -754,12 +898,12 @@ function render(s) {
     s.account_perf.by_symbol.map(r => `<tr><td><b>${esc(r.symbol)}</b></td><td class="num ${cls(r.pnl)}">${money(r.pnl)}</td></tr>`),
     live.connected ? "No closed round trips today." : "Connect TWS to see your trades.");
   $("acctFills").innerHTML = (live.fills || []).length ? table(["Time", "Side", "Symbol", "Qty#", "Price#"],
-    live.fills.slice().reverse().map(f => `<tr><td class="muted">${esc(f.time.slice(11, 16))}</td>
+    live.fills.slice().reverse().map(f => `<tr${chartAttrs(f.symbol, f.time.slice(0, 10))}><td class="muted">${esc(f.time.slice(11, 16))}</td>
       <td class="${f.side === "BUY" ? "up" : "down"}">${f.side}</td><td>${esc(f.symbol)}</td><td class="num">${f.qty}</td><td class="num">${num(f.price)}</td></tr>`), "") : "";
 
-  $("closedNote").textContent = `${rangeName} · ${M.n}`;
+  $("closedNote").textContent = `${rangeName} · ${M.n} · click a trade for its chart`;
   $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "Held#", "P&L#", isLive ? "Return#" : "R#"],
-    trades.slice().reverse().slice(0, 200).map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b>${c.side === "short" ? ' <span class="chip">short</span>' : ""}${!isLive && stratFilter === "all" ? ` <span class="chip bot">${esc(sNames[c.strategy || "trend_join_long"] || c.strategy || "")}</span>` : ""}</td>
+    trades.slice().reverse().slice(0, 200).map(c => `<tr${chartAttrs(c.symbol, c.entry_time.slice(0, 10), isLive ? "live" : "bot", {account: c.account, strategy: c.strategy})}><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b>${c.side === "short" ? ' <span class="chip">short</span>' : ""}${!isLive && stratFilter === "all" ? ` <span class="chip bot">${esc(sNames[c.strategy || "trend_join_long"] || c.strategy || "")}</span>` : ""}</td>
       <td class="num">${+c.qty.toFixed(4)}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td><td class="num muted">${c.hold_min == null ? "—" : Math.round(c.hold_min) + "m"}</td>
       <td class="num ${cls(c.pnl)}">${money(c.pnl)}</td><td class="num ${cls(c.R ?? c.pnl_pct)}"><b>${c.R != null ? num(c.R) + "R" : c.pnl_pct != null ? num(c.pnl_pct) + "%" : "—"}</b></td></tr>`),
     isLive ? "No closed live trades in this period. Upload an IBKR file or sync above." : "No closed bot trades in this period.");

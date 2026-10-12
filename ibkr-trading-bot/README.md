@@ -78,6 +78,15 @@ exits, risk per trade and max trades per day. New strategies start **off**. Glob
 position size cap, `MAX_TRADES_PER_DAY`, the 15:51 force-close) apply to all of them. Long only.
 Settings are stored in `strategies.json` (kept by updates).
 
+## Trade charts
+
+Click any trade, open position, watchlist stock or fill in the app to open its chart (TradingView Lightweight
+Charts™, bundled in `vendor/`, Apache-2.0): 5-minute candles with volume, EMA 9/20/50 and VWAP (toggle each),
+key levels (opening range, premarket high, yesterday's high/close, initial stop), BUY/SELL markers, the bot's own
+log for that stock ("what the bot saw": the passing filter check, entry, partial, breakeven, exit) and ticker
+details (sector, market cap, float, short interest, 52-week range, earnings date…). Yahoo keeps 5-minute bars for
+about 60 days; older trades use hourly, then daily bars.
+
 ## Sleep and wake
 
 Your PC can sleep. The task **HT_WakeUp** wakes it at 9:00 ET on weekdays, keeps it awake until 16:10 ET (no power

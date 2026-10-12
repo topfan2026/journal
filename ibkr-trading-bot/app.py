@@ -29,6 +29,8 @@ UI_PATH = PROJECT_DIR / "app_ui.html"
 ICON_PATH = PROJECT_DIR / "icon.ico"
 UI_HTML = UI_PATH.read_text(encoding="utf-8")  # read once: after an update, the old server keeps serving its own page
 ICON_BYTES = ICON_PATH.read_bytes() if ICON_PATH.exists() else b""
+LWC_PATH = PROJECT_DIR / "vendor" / "lightweight-charts.js"  # TradingView Lightweight Charts (Apache-2.0)
+LWC_JS = LWC_PATH.read_bytes() if LWC_PATH.exists() else b""
 WINDOW_PROFILE = PROJECT_DIR / ".appwindow"  # Edge profile just for the app window
 TOKEN = secrets.token_urlsafe(16)  # blocks other websites from POSTing actions to localhost
 
@@ -431,6 +433,30 @@ def strategy_op(data: dict) -> dict:
     return {"ok": False, "message": "Unknown request."}
 
 
+def chart_payload(path: str) -> dict:
+    """GET /api/chart?symbol=NVDA&date=2026-10-12&source=bot|live&account=U123"""
+    from datetime import date as _date
+    from urllib.parse import parse_qs, urlparse
+    from src import chartdata
+    from src import strategies as st
+    q = {k: v[0] for k, v in parse_qs(urlparse(path).query).items()}
+    symbol = q.get("symbol", "").upper().strip()
+    if not symbol:
+        return {"error": "no symbol"}
+    try:
+        day = _date.fromisoformat(q.get("date") or now_et().date().isoformat())
+    except ValueError:
+        return {"error": "bad date"}
+    or_minutes = 15
+    for x in st.load():  # use the ORB's own range length if an ORB strategy traded this stock
+        if x["type"] == "orb" and x["id"] == q.get("strategy"):
+            or_minutes = int(x["params"].get("or_minutes", 15))
+    try:
+        return chartdata.chart(symbol, day, q.get("source", "bot"), q.get("account") or None, or_minutes)
+    except Exception as exc:
+        return {"error": f"Couldn't load the chart: {exc!r}", "symbol": symbol}
+
+
 def update_action(name: str) -> str:
     from src import updater
     if name == "check_update":
@@ -484,8 +510,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             html = UI_HTML.replace("__TOKEN__", TOKEN)
             self._send(200, html.encode(), "text/html; charset=utf-8")
+        elif self.path == "/vendor/lightweight-charts.js":
+            self._send(200, LWC_JS, "application/javascript; charset=utf-8")
         elif self.path == "/favicon.ico":
             self._send(200, ICON_BYTES, "image/x-icon")
+        elif self.path.startswith("/api/chart"):
+            self._send(200, json.dumps(chart_payload(self.path), default=str).encode(), "application/json")
         elif self.path == "/api/ping":
             self._send(200, json.dumps({"app": APP_SIGNATURE}).encode(), "application/json")
         elif self.path == "/api/state":
