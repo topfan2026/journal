@@ -8,6 +8,7 @@ Its IBKR connection is READ-ONLY: the app can't place orders. Trading stays with
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -27,6 +28,17 @@ FIRST_PORT = 18765  # tries this and the next 19 ports; set APP_PORT in .env to 
 APP_CLIENT_ID = 7
 UI_PATH = PROJECT_DIR / "app_ui.html"
 ICON_PATH = PROJECT_DIR / "icon.ico"
+def _code_version() -> str:
+    """Fingerprint of the app's code; a running copy with a different one is outdated."""
+    import hashlib
+    h = hashlib.sha1()
+    for f in [PROJECT_DIR / "app.py", UI_PATH, *sorted((PROJECT_DIR / "src").glob("*.py"))]:
+        if f.exists():
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+APP_VERSION = _code_version()
 UI_HTML = UI_PATH.read_text(encoding="utf-8")  # read once: after an update, the old server keeps serving its own page
 ICON_BYTES = ICON_PATH.read_bytes() if ICON_PATH.exists() else b""
 LWC_PATH = PROJECT_DIR / "vendor" / "lightweight-charts.js"  # TradingView Lightweight Charts (Apache-2.0)
@@ -518,7 +530,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/chart"):
             self._send(200, json.dumps(chart_payload(self.path), default=str).encode(), "application/json")
         elif self.path == "/api/ping":
-            self._send(200, json.dumps({"app": APP_SIGNATURE}).encode(), "application/json")
+            self._send(200, json.dumps({"app": APP_SIGNATURE, "version": APP_VERSION, "pid": os.getpid()}).encode(),
+                       "application/json")
         elif self.path == "/api/state":
             try:
                 body = json.dumps(build_state(), default=str).encode()
@@ -579,14 +592,44 @@ class AppServer(ThreadingHTTPServer):
     allow_reuse_address = sys.platform != "win32"
 
 
-def is_our_app(port: int) -> bool:
+def running_app(port: int) -> dict | None:
+    """Our app's /api/ping answer on this port ({'app', 'version', 'pid'}), or None."""
     import urllib.request
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(f"http://127.0.0.1:{port}/api/ping", timeout=2) as r:
-            return json.loads(r.read()).get("app") == APP_SIGNATURE
+            info = json.loads(r.read())
+            return info if info.get("app") == APP_SIGNATURE else None
     except Exception:
+        return None
+
+
+def is_our_app(port: int) -> bool:
+    return running_app(port) is not None
+
+
+def stop_old_copy(port: int, info: dict) -> bool:
+    """An older copy of the app is still serving (e.g. after an update): stop it so the new code loads."""
+    pid = info.get("pid")
+    if not pid and sys.platform == "win32":  # copies from before this version don't report their pid
+        r = subprocess.run(["powershell", "-NoProfile", "-c",
+                            f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue).OwningProcess"],
+                           capture_output=True, text=True)
+        pid = int(r.stdout.split()[0]) if r.stdout.split() and r.stdout.split()[0].isdigit() else None
+    if not pid or pid == os.getpid():
         return False
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
+        else:
+            os.kill(int(pid), 15)
+    except OSError:
+        return False
+    for _ in range(20):  # wait for the port to be released
+        if running_app(port) is None:
+            return True
+        time.sleep(0.25)
+    return False
 
 
 def find_app_browser() -> str | None:
@@ -646,10 +689,17 @@ def main() -> int:
     first = env_int("APP_PORT", FIRST_PORT)
     server = None
     for port in range(first, first + 20):
-        if is_our_app(port):
+        other = running_app(port)
+        if other and other.get("version") == APP_VERSION:
             print(f"The app is already running — showing http://127.0.0.1:{port}")
             open_window(f"http://127.0.0.1:{port}")
             return 0
+        if other:
+            print(f"An older copy of the app is running on port {port}; restarting it with the new version…")
+            if not stop_old_copy(port, other):
+                print("Couldn't stop the old copy; showing it instead. Restart the PC to load the update.")
+                open_window(f"http://127.0.0.1:{port}")
+                return 0
         try:
             server = AppServer(("127.0.0.1", port), Handler)
             break
