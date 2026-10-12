@@ -180,7 +180,7 @@ def test_custom_strategy_buys_with_its_own_tag_exits_and_cap(env, monkeypatch):
     st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "name": "Trend Join Long", "enabled": False}, orb])
     monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
     monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d": make_intraday())
-    monkeypatch.setattr(st, "evaluate", lambda cfg, d, i, price, today, rules, t: {"pass": True, "reasons": [], "metrics": {"stop": price - 1}})
+    monkeypatch.setattr(st, "evaluate", lambda cfg, d, i, price, today, rules, t, symbol="": {"pass": True, "reasons": [], "metrics": {"stop": price - 1}})
     positions = []
     cycle.entry_scan(f, positions, RULES)  # 11:00 ET in the fixture: inside ORB's window
     assert [p["symbol"] for p in positions] == ["AAA", "BBB"]  # per-strategy cap of 2
@@ -193,7 +193,7 @@ def test_strategy_outside_its_window_does_nothing(env, monkeypatch):
     orb = {"id": "orb_1", "type": "orb", "enabled": True,
            "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "10:30"}}
     st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False}, orb])
-    monkeypatch.setattr(st, "evaluate", lambda *a: pytest.fail("should not evaluate outside the window"))
+    monkeypatch.setattr(st, "evaluate", lambda *a, **k: pytest.fail("should not evaluate outside the window"))
     cycle.entry_scan(env.fake, [], RULES)  # fixture time is 11:00 ET
 
 

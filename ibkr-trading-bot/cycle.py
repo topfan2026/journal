@@ -332,7 +332,7 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
             if math.isnan(price) or price < cfg["min_price"]:
                 log("entry_skip", symbol=sym, strategy=sid, reason=f"price {price} below min or missing")
                 continue
-            res = st.evaluate(cfg, daily, intra, price, today, rules, now_t)
+            res = st.evaluate(cfg, daily, intra, price, today, rules, now_t, symbol=sym)
             log("evaluate", symbol=sym, strategy=sid, passed=bool(res["pass"]), reasons=res["reasons"], metrics=res["metrics"])
             if not res["pass"]:
                 continue

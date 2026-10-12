@@ -115,3 +115,75 @@ def test_store_defaults_and_coercion(tmp_path, monkeypatch):
 def test_trend_join_values_roundtrip():
     vals = st.trend_join_values(RULES)
     assert vals["D3_min_gap_pct_from_prior_close"] == 3.0 and vals["earliest_entry_et"] == "10:05"
+
+
+def frame(closes, vols, start=T0, spread=0.15):
+    rows, prev = [], closes[0]
+    for i, (c, v) in enumerate(zip(closes, vols)):
+        rows.append((start + timedelta(minutes=5 * i), prev, max(prev, c) + spread, min(prev, c) - spread, c, v))
+        prev = c
+    return pd.DataFrame(rows, columns=["t", "Open", "High", "Low", "Close", "Volume"]).set_index("t")
+
+
+def ht(kind, df, price, symbol="TST", daily=None, **params):
+    return st.evaluate(cfg(kind, **params), daily if daily is not None else make_daily(), df, price, TODAY, RULES,
+                       time(11, 0), symbol=symbol)
+
+
+def test_ht_vwap_reclaim_on_volume_push():
+    closes = [100 + i * 0.02 for i in range(6)] + [99.2 - i * 0.05 for i in range(8)] + [100.6, 100.8]
+    vols = [1000] * 14 + [3000, 1500]  # the reclaim bar trades 3x the average
+    df = frame(closes + [100.9], vols + [800])
+    res = ht("ht_vwap_reclaim", df, 100.95, mode="reclaim")
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["stop"] < res["metrics"]["vwap"]  # never right on VWAP
+    weak = frame(closes + [100.9], [1000] * 14 + [1100, 1000] + [800])  # same move without the volume push
+    assert not ht("ht_vwap_reclaim", weak, 100.95, mode="reclaim")["pass"]
+
+
+def test_ht_vwap_pullback_as_selling_dries_up():
+    run_up = [100 + i * 0.25 for i in range(14)]           # trending above VWAP
+    dip = [102.1, 101.75, 102.05]  # quiet pullback toward VWAP (~101.6), then a green bar back up
+    closes = run_up + dip
+    vols = [2000] * 14 + [700, 600, 900]
+    df = frame(closes + [closes[-1] + 0.05], vols + [500])
+    vw = st.vwap(df)
+    res = ht("ht_vwap_reclaim", df, closes[-1] + 0.1, mode="pullback", touch_pct=0.3)
+    assert res["pass"], (res["reasons"], vw)
+    assert res["metrics"]["stop"] < vw
+    loud = frame(closes + [closes[-1] + 0.05], [2000] * 14 + [4000, 3800, 3000] + [500])  # heavy selling into VWAP
+    assert not ht("ht_vwap_reclaim", loud, closes[-1] + 0.1, mode="pullback", touch_pct=0.3)["pass"]
+
+
+def test_ht_buy_dip_at_marked_support():
+    closes = [104, 103, 102, 101.2, 100.6, 100.4, 100.5, 100.6]  # sells off into support, then stops making lows
+    df = frame(closes + [100.6], [1000] * 9, spread=0.1)
+    res = ht("ht_buy_dip", df, 100.6, symbol="NVDA", levels="NVDA:100.3, AMD:150", stable_bars=2)
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["support"] == 100.3 and res["metrics"]["stop"] == pytest.approx(100.2)
+    far = ht("ht_buy_dip", df, 101.8, symbol="NVDA", levels="NVDA:100.3")
+    assert not far["pass"] and any(r.startswith("near support FAIL") for r in far["reasons"])
+    none = ht("ht_buy_dip", df, 100.6, symbol="MSFT", levels="NVDA:100.3", auto_level=False)
+    assert not none["pass"] and "no support level" in " ".join(none["reasons"])
+
+
+def test_ht_buy_dip_auto_breakout_level_needs_a_runup():
+    days = pd.bdate_range(end=TODAY - timedelta(days=1), periods=40)
+    base = [100 + (i % 3) * 0.5 for i in range(30)]               # base topping at ~101.4
+    run = [102, 106, 110, 115, 121, 124, 120, 114, 108, 102.5]   # +20%+ run, then the dip back
+    closes = base + run
+    daily = pd.DataFrame({"Open": closes, "High": [c + 0.4 for c in closes], "Low": [c - 0.4 for c in closes],
+                          "Close": closes, "Volume": 1e6}, index=days)
+    df = frame([103, 102.4, 101.9, 101.6, 101.7, 101.8, 101.8], [1000] * 7, spread=0.1)
+    res = ht("ht_buy_dip", df, 101.8, daily=daily, symbol="XYZ", levels="", runup_days=10, base_days=30, stable_bars=2)
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["support"] == pytest.approx(101.4)
+    flat = daily.copy()
+    flat[["Open", "High", "Low", "Close"]] = 101
+    assert not ht("ht_buy_dip", df, 101.8, daily=flat, symbol="XYZ", runup_days=10, base_days=30)["pass"]
+
+
+def test_levels_parse_and_watch_list():
+    assert st.parse_levels("nvda:182.5; PLTR : 171, bad, AMD:x") == {"NVDA": 182.5, "PLTR": 171.0}
+    c = cfg("ht_buy_dip", tickers="META", levels="NVDA:182.5")
+    assert c["tickers"] == ["META", "NVDA"] and c["universe"] == "custom"

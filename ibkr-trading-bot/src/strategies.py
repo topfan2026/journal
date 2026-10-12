@@ -119,6 +119,42 @@ TEMPLATES = {
         ],
         "overrides": {"earliest_entry_et": "10:00"},
     },
+    # ---- HumbledTrader strategies (from the user's summary; every judgement word is a setting)
+    "ht_vwap_reclaim": {
+        "name": "HT_VWAP_Reclaim_Long",
+        "summary": "HumbledTrader: price above VWAP means buyers are in control. Buys when price reclaims VWAP on a "
+                   "volume push, or pulls back to VWAP as selling dries up. Stop below the pullback low, never on VWAP.",
+        "fields": [
+            _f("mode", "Setups to take", "select", "both",
+               opts=[["both", "Reclaim and pullback"], ["reclaim", "Reclaim on a volume push"], ["pullback", "Pullback as selling dries up"]]),
+            _f("vol_push", "Volume push = reclaim bar volume ≥ × average", "num", 1.5, "Average of the previous 10 bars", step=0.1, min=1),
+            _f("dry_up", "Selling dried up = pullback volume ≤ × average", "num", 0.8, "Average of the 10 bars before the pullback", step=0.05, min=0.1),
+            _f("touch_pct", "Counts as a VWAP touch within %", "num", 0.2, step=0.05, min=0),
+            _f("lookback", "Pullback / reclaim within the last N bars", "num", 3, step=1, min=1, max=10),
+            _f("stop_below_vwap_pct", "Stop at least this % below VWAP", "num", 0.1, "Never right on VWAP", group="Exits", step=0.05, min=0.05),
+        ],
+        "overrides": {"above_vwap": False, "earliest_entry_et": "09:45", "latest_entry_et": "15:00"},
+    },
+    "ht_buy_dip": {
+        "name": "HT_BuyTheDip_Support",
+        "summary": "HumbledTrader: a catalyst stock that ran up on the daily chart pulls back to a pre-marked breakout or "
+                   "consolidation level. Buys as close to that support as possible once it stabilizes. Stop slightly below "
+                   "support (10-15 cents for volatile stocks).",
+        "fields": [
+            _f("levels", "Support levels (TICKER:PRICE, …)", "text", "", "Your pre-marked supports, e.g. NVDA:182.50, PLTR:171. "
+               "Pick stocks that ran on a catalyst: the bot can't check news. Leave empty to use the automatic level below."),
+            _f("auto_level", "If no level given: use the breakout level automatically", "bool", True,
+               "Breakout level = highest high of the base before the run-up"),
+            _f("runup_pct", "Daily run-up of at least %", "num", 20.0, "Low-to-high within the run-up window", step=5, min=5),
+            _f("runup_days", "Run-up window (days)", "num", 10, step=1, min=3, max=60),
+            _f("base_days", "Base before the run-up (days)", "num", 20, step=1, min=5, max=120),
+            _f("near_pct", "Buy only within % above support", "num", 0.75, "As close to support as possible", step=0.25, min=0.1),
+            _f("stable_bars", "Stabilized = no new low for N bars", "num", 2, step=1, min=1, max=6),
+            _f("stop_cents", "Stop this many $ below support", "num", 0.10, "0.10-0.15 for volatile stocks", group="Exits", step=0.01, min=0.01),
+        ],
+        "overrides": {"universe": "custom", "tickers": "", "above_vwap": False, "earliest_entry_et": "09:45",
+                      "latest_entry_et": "15:30"},
+    },
 }
 
 
@@ -238,7 +274,7 @@ def config(s: dict, rules: dict) -> dict:
     p = s["params"]
     return {"id": s["id"], "name": s.get("name") or TEMPLATES[s["type"]]["name"], "type": s["type"], "params": p,
             "universe": p["universe"],
-            "tickers": [t.strip().upper() for t in str(p.get("tickers", "")).replace(";", ",").split(",") if t.strip()],
+            "tickers": _tickers(p),
             "earliest_entry_et": p["earliest_entry_et"], "latest_entry_et": p["latest_entry_et"],
             "min_price": float(p["min_price"]), "risk_pct": float(p["risk_pct"]),
             "max_trades_per_day": int(p["max_trades_per_day"]),
@@ -246,6 +282,27 @@ def config(s: dict, rules: dict) -> dict:
                      "partial_profit_fraction": float(p["partial_fraction"]),
                      "breakeven_trigger_R": float(p["breakeven_R"]) or 999,
                      "take_profit_R": float(p["take_profit_R"]), "trail": bool(p["trail_swing"])}}
+
+
+def parse_levels(text: str) -> dict[str, float]:
+    """'NVDA:182.5, PLTR:171' -> {'NVDA': 182.5, 'PLTR': 171.0}"""
+    out = {}
+    for part in str(text or "").replace(";", ",").split(","):
+        if ":" in part:
+            sym, _, val = part.partition(":")
+            try:
+                out[sym.strip().upper()] = float(val.strip())
+            except ValueError:
+                pass
+    return out
+
+
+def _tickers(p: dict) -> list[str]:
+    syms = [t.strip().upper() for t in str(p.get("tickers", "")).replace(";", ",").split(",") if t.strip()]
+    for sym in parse_levels(p.get("levels", "")):  # stocks with a marked support are watched too
+        if sym not in syms:
+            syms.append(sym)
+    return syms
 
 
 def hhmm(s: str) -> time:
@@ -276,7 +333,7 @@ def _crossed_within(above: pd.Series, bars: int) -> bool:
 # ---------------------------------------------------------------- evaluation
 
 def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: float, today: date,
-             rules: dict, now_t: time) -> dict:
+             rules: dict, now_t: time, symbol: str = "") -> dict:
     """{'pass', 'reasons', 'metrics' (incl. 'stop')}: every check is listed so the app shows why."""
     if cfg["type"] == "trend_join":
         res = evaluate_filters(daily, intraday, price, today, rules)
@@ -363,13 +420,99 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
                        f"price {price:.2f} above last bar high {last_high:.2f}"))
         level = {"ema": float(e.iloc[-1])}.get(p["stop_rule"])
 
-    if p.get("stop_rule") == "lod":
-        level = m["low_of_day"]
-    if level is None:  # signal_low
-        level = float(completed["Low"].iloc[-3:].min()) if len(completed) else m["low_of_day"]
-    stop = round(level * (1 - float(p["stop_buffer_pct"]) / 100), 2)
+    stop = None
+    if kind == "ht_vwap_reclaim":
+        stop = _ht_vwap_reclaim(p, today_rth, completed, price, checks, m)
+    elif kind == "ht_buy_dip":
+        stop = _ht_buy_dip(p, prior, completed, price, symbol, checks, m)
+
+    if stop is None:
+        if p.get("stop_rule") == "lod":
+            level = m["low_of_day"]
+        if level is None:  # signal_low
+            level = float(completed["Low"].iloc[-3:].min()) if len(completed) else m["low_of_day"]
+        stop = round(level * (1 - float(p["stop_buffer_pct"]) / 100), 2)
     m["stop"] = stop
     checks.append(("stop", stop < price, f"stop {stop:.2f} below price {price:.2f}"))
 
     reasons = [f"{name} {'ok' if ok else 'FAIL'}: {detail}" for name, ok, detail in checks]
     return {"pass": bool(all(ok for _, ok, _ in checks)), "reasons": reasons, "metrics": m}
+
+
+# ---------------------------------------------------------------- HumbledTrader setups
+
+def _ht_vwap_reclaim(p, today_rth, completed, price, checks, m) -> float | None:
+    """Reclaim: a bar closes back above VWAP (after closing below) on volume >= vol_push x the prior 10-bar average.
+    Pullback: price was above VWAP, dipped to within touch_pct of it on volume <= dry_up x average, and the last
+    bar closed back above VWAP and green. Stop: below the pullback/reclaim low AND at least stop_below_vwap_pct
+    under VWAP."""
+    lb = int(p["lookback"])
+    if len(completed) < lb + 11:
+        checks.append(("setup", False, "not enough bars yet today"))
+        return None
+    tp = (completed["High"] + completed["Low"] + completed["Close"]) / 3
+    vwap_s = (tp * completed["Volume"]).cumsum() / completed["Volume"].cumsum().replace(0, float("nan"))
+    vw_now = vwap(today_rth)
+    m["vwap"] = vw_now
+    recent, rv = completed.iloc[-lb:], vwap_s.iloc[-lb:]
+    base_vol = float(completed["Volume"].iloc[-(lb + 10):-lb].mean()) or 1.0
+    last = completed.iloc[-1]
+
+    reclaim = False
+    if p["mode"] in ("both", "reclaim"):
+        for i in range(1, len(recent) + 1):  # any bar in the window that crossed back above VWAP on a volume push
+            j = len(completed) - i
+            bar, prev = completed.iloc[j], completed.iloc[j - 1]
+            if prev["Close"] < vwap_s.iloc[j - 1] and bar["Close"] > vwap_s.iloc[j] and bar["Volume"] >= float(p["vol_push"]) * base_vol:
+                reclaim = True
+                m["reclaim_volume_x"] = round(float(bar["Volume"]) / base_vol, 2)
+                break
+    pullback = False
+    if p["mode"] in ("both", "pullback"):
+        was_above = bool((completed["Close"].iloc[-(lb + 10):-lb] > vwap_s.iloc[-(lb + 10):-lb]).mean() >= 0.6)
+        touched = bool((recent["Low"] <= rv * (1 + float(p["touch_pct"]) / 100)).any())
+        dried = float(recent["Volume"].mean()) <= float(p["dry_up"]) * base_vol
+        holding = last["Close"] > vwap_s.iloc[-1] and last["Close"] >= last["Open"]
+        pullback = was_above and touched and dried and holding
+        m["pullback_volume_x"] = round(float(recent["Volume"].mean()) / base_vol, 2)
+    which = "reclaim on a volume push" if reclaim else "pullback as selling dried up" if pullback else "no reclaim or pullback"
+    checks.append(("setup", reclaim or pullback, which))
+    checks.append(("above VWAP", price > vw_now, f"price {price:.2f} vs VWAP {vw_now:.2f}"))
+    low = float(recent["Low"].min())
+    stop = round(min(low, vw_now * (1 - float(p["stop_below_vwap_pct"]) / 100)) - 0.01, 2)
+    m["pullback_low"] = low
+    return stop
+
+
+def _ht_buy_dip(p, prior, completed, price, symbol, checks, m) -> float | None:
+    """Support = your marked level for the stock, or (auto) the highest high of the base before a daily run-up of
+    runup_pct. Buy when price is within near_pct above support and the 5-minute bars stopped making new lows.
+    Stop = support - stop_cents."""
+    support = parse_levels(p.get("levels", "")).get(symbol.upper())
+    source = "your marked level"
+    if support is None and p["auto_level"]:
+        rd, bd = int(p["runup_days"]), int(p["base_days"])
+        if prior is None or len(prior) < rd + bd:
+            checks.append(("support", False, "not enough daily history"))
+            return None
+        run, base = prior.iloc[-rd:], prior.iloc[-(rd + bd):-rd]
+        runup = (float(run["High"].max()) / float(run["Low"].min()) - 1) * 100
+        m["runup_pct"] = runup
+        checks.append(("daily run-up", runup >= float(p["runup_pct"]), f"{runup:.1f}% in {rd} days vs min {float(p['runup_pct']):.0f}%"))
+        support, source = float(base["High"].max()), "breakout level of the base"
+    if support is None:
+        checks.append(("support", False, "no support level marked for this stock"))
+        return None
+    m["support"] = support
+    dist = (price / support - 1) * 100
+    checks.append(("near support", 0 <= dist <= float(p["near_pct"]),
+                   f"price {price:.2f} is {dist:+.2f}% from {source} {support:.2f} (max +{float(p['near_pct'])}%)"))
+    n = int(p["stable_bars"])
+    if len(completed) <= n:
+        checks.append(("stabilized", False, "not enough bars yet"))
+    else:
+        low_before = float(completed["Low"].iloc[:-n].min())
+        recent_low = float(completed["Low"].iloc[-n:].min())
+        checks.append(("stabilized", recent_low >= low_before and recent_low >= support - float(p["stop_cents"]),
+                       f"no new low in the last {n} bars ({recent_low:.2f} vs {low_before:.2f})"))
+    return round(support - float(p["stop_cents"]), 2)

@@ -71,6 +71,8 @@ together; every trade is tagged with its strategy, and the performance view can 
 | EMA Cross | the fast EMA crosses above the slow EMA (5-minute bars) |
 | Price crosses EMA | a 5-minute bar closes back above the EMA |
 | EMA Bounce | in an uptrend, price touches the EMA and then takes out the last bar's high |
+| HT_VWAP_Reclaim_Long | HumbledTrader: a VWAP reclaim on a volume push, or a pullback to VWAP as selling dries up; stop below the pullback low, never on VWAP |
+| HT_BuyTheDip_Support | HumbledTrader: a stock that ran up pulls back to your marked support (or the auto breakout level) and stops making new lows; stop 10-15¢ below support |
 
 Every new strategy has: stocks to watch (scanner gappers or your own ticker list), optional filters (gap, relative
 volume, VWAP, daily uptrend), its own entry window, stop rule, partial / breakeven / full take-profit / trailing

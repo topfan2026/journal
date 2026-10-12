@@ -532,7 +532,7 @@ function drawCharts(trades, M, isLive) {
 /* ---------------------------------------------------------------- strategies */
 function describe(type, v, tpl) {
   if (type === "trend_join") return tpl.summary;
-  const uni = v.universe === "custom" ? `your list (${esc(String(v.tickers).split(",").slice(0, 6).join(", "))}${String(v.tickers).split(",").length > 6 ? "…" : ""})` : "today's gappers";
+  const uni = type === "ht_buy_dip" ? "your list" + (v.tickers ? ` (${esc(v.tickers)})` : "") : v.universe === "custom" ? `your list (${esc(String(v.tickers).split(",").slice(0, 6).join(", "))}${String(v.tickers).split(",").length > 6 ? "…" : ""})` : "today's gappers";
   const filt = [v.min_gap_pct > 0 && `gap ≥ ${v.min_gap_pct}%`, v.min_rvol > 0 && `volume ≥ ${v.min_rvol}×`, v.above_vwap && "above VWAP",
                 v.above_sma200 && "daily uptrend"].filter(Boolean);
   const trig = {
@@ -540,6 +540,8 @@ function describe(type, v, tpl) {
     ema_cross: `buys when EMA${v.fast} crosses above EMA${v.slow} on 5-min bars`,
     price_cross_ema: `buys when a 5-min bar closes back above EMA${v.ema}`,
     ema_bounce: `in an uptrend (EMA${v.ema} > EMA${v.trend_ema}) buys a bounce after price touches EMA${v.ema}`,
+    ht_vwap_reclaim: `${{both: "takes both setups", reclaim: "only the reclaim", pullback: "only the pullback"}[v.mode]}: a VWAP reclaim on ≥ ${v.vol_push}× volume, or a pullback to VWAP on ≤ ${v.dry_up}× volume that closes back above; stop below the pullback low and ≥ ${v.stop_below_vwap_pct}% under VWAP`,
+    ht_buy_dip: `buys within ${v.near_pct}% above ${v.levels ? "your marked support (" + esc(v.levels) + ")" : "the automatic breakout level (after a ≥ " + v.runup_pct + "% run-up)"} once there's no new low for ${v.stable_bars} bars; stop $${v.stop_cents} below support`,
   }[type] || "";
   const ex = [v.partial_R > 0 && `sells ${Math.round(v.partial_fraction * 100)}% at +${v.partial_R}R`, v.breakeven_R > 0 && `breakeven at +${v.breakeven_R}R`,
               v.take_profit_R > 0 && `takes all at +${v.take_profit_R}R`, v.trail_swing && "trails swing lows"].filter(Boolean);
