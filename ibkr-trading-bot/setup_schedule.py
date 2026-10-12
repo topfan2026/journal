@@ -78,7 +78,8 @@ def main() -> int:
 
     r = subprocess.run(["schtasks", "/query", "/fo", "TABLE"], capture_output=True, text=True)
     lines = r.stdout.splitlines()
-    print("\n".join(l for l in lines if "HT_" in l or l.startswith(("TaskName", "====="))))
+    print("\nBot tasks (name, next run, status):")
+    print("\n".join(l for l in lines if l.startswith("HT_")))
     print(f"SCHEDULED: {ok}/{len(tasks())} tasks created. The bot will fire on its own starting next market open. Watch Telegram.")
     return 0 if ok == len(tasks()) else 1
 
