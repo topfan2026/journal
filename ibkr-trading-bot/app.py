@@ -2,7 +2,7 @@
 
     python app.py            (the desktop shortcut runs this via launch.py)
 
-Serves a page on http://127.0.0.1:8765 (this PC only) and opens it in your browser.
+Serves a page on http://127.0.0.1:18765 (this PC only; the next free port if that's taken) and opens it in your browser.
 Its IBKR connection is READ-ONLY: the app can't place orders. Trading stays with cycle.py.
 """
 from __future__ import annotations
@@ -21,7 +21,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from src.common import (ET, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_int, env_str,
                         load_positions, load_rules, now_et, read_trades, read_watchlist)
 
-PORT = 8765
+APP_SIGNATURE = "ibkr-trading-bot-app"  # lets us tell our app apart from other programs on the port
+FIRST_PORT = 18765  # tries this and the next 19 ports; set APP_PORT in .env to change
 APP_CLIENT_ID = 7
 UI_PATH = PROJECT_DIR / "app_ui.html"
 TOKEN = secrets.token_urlsafe(16)  # blocks other websites from POSTing actions to localhost
@@ -265,6 +266,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             html = UI_PATH.read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
             self._send(200, html.encode(), "text/html; charset=utf-8")
+        elif self.path == "/api/ping":
+            self._send(200, json.dumps({"app": APP_SIGNATURE}).encode(), "application/json")
         elif self.path == "/api/state":
             try:
                 body = json.dumps(build_state(), default=str).encode()
@@ -282,15 +285,42 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"message": msg}).encode(), "application/json")
 
 
-def main() -> int:
+class AppServer(ThreadingHTTPServer):
+    # On Windows, SO_REUSEADDR lets a second program bind a port that's already in use, so the
+    # browser could end up talking to someone else's server. Require the port to be truly free.
+    allow_reuse_address = sys.platform != "win32"
+
+
+def is_our_app(port: int) -> bool:
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:
-        print(f"The app is already running — opening http://127.0.0.1:{PORT}")
-        webbrowser.open(f"http://127.0.0.1:{PORT}")
-        return 0
+        with opener.open(f"http://127.0.0.1:{port}/api/ping", timeout=2) as r:
+            return json.loads(r.read()).get("app") == APP_SIGNATURE
+    except Exception:
+        return False
+
+
+def main() -> int:
+    first = env_int("APP_PORT", FIRST_PORT)
+    server = None
+    for port in range(first, first + 20):
+        if is_our_app(port):
+            print(f"The app is already running — opening http://127.0.0.1:{port}")
+            webbrowser.open(f"http://127.0.0.1:{port}")
+            return 0
+        try:
+            server = AppServer(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            print(f"Port {port} is used by another program, trying the next one…")
+    if server is None:
+        print(f"No free port between {first} and {first + 19}. Set APP_PORT=... in .env to another number.")
+        input("Press Enter to close...")
+        return 1
+    port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{PORT}"
+    url = f"http://127.0.0.1:{port}"
     print(f"IBKR Trading Bot app running at {url}\nKeep this window open. Close it to quit the app "
           f"(the scheduled bot keeps trading either way).")
     webbrowser.open(url)

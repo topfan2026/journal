@@ -37,7 +37,7 @@ flattens everything at 15:51 ET, sends Telegram alerts and builds an HTML dashbo
 
 1. TWS opens if it isn't already running, so you can **log in** to your paper account (TWS's own login: the bot never
    stores your password). It looks in `C:\Jts\...`; set `TWS_PATH=` in `.env` if yours is elsewhere.
-2. The **app** opens in your browser at `http://127.0.0.1:8765` (this PC only). Keep its black window open; close it
+2. The **app** opens in your browser at `http://127.0.0.1:18765` (this PC only). Keep its black window open; close it
    to quit the app. The scheduled bot keeps trading either way.
 
 The app refreshes every 5 seconds and shows:
