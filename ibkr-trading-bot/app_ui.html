@@ -588,7 +588,8 @@ function renderStrategies(s) {
       <label class="switch" title="${x.enabled ? "On: paper trading" : "Off"}"><input type="checkbox" data-toggle="${esc(x.id)}"${x.enabled ? " checked" : ""} aria-label="Activate ${esc(x.name)}"><span></span></label>
       <div><span class="sname">${esc(x.name)}</span> <span class="chip">${esc(tpl.name)}</span> ${x.enabled ? '<span class="chip PASS">ACTIVE</span>' : '<span class="chip">off</span>'}</div>
       <div class="sstats"><span class="chip">${M.n} trades</span>${M.n ? `<span class="chip">${Math.round(M.winRate)}% win</span><span class="chip ${M.pnl >= 0 ? "PASS" : ""}" style="${M.pnl < 0 ? "color:var(--down)" : ""}">${money(M.pnl)}</span>` : ""}
-        <button data-edit="${esc(x.id)}">${editing === x.id ? "Close" : "Edit"}</button></div>
+        <button data-edit="${esc(x.id)}">${editing === x.id ? "Close" : "Edit"}</button>
+        ${x.builtin ? "" : `<button data-delete="${esc(x.id)}" title="Delete ${esc(x.name)}" style="color:var(--down)">🗑 Delete</button>`}</div>
       <div class="sdesc">${describe(x.type, x.values, tpl)}</div>
       ${editing === x.id ? strategyForm(x, tpl) : ""}
     </div>`;
@@ -611,7 +612,9 @@ $("stratList").addEventListener("click", async e => {
   if (t.dataset.edit) { editing = editing === t.dataset.edit ? null : t.dataset.edit; renderStrategies.key = null; render(state); }
   else if (t.dataset.cancel !== undefined) { editing = null; renderStrategies.key = null; render(state); }
   else if (t.dataset.delete) {
-    if (confirm("Delete this strategy? Its past trades stay in the history.")) { await strategyOp({op: "delete", id: t.dataset.delete}); editing = null; renderStrategies.key = null; refresh(); }
+    const nm = ((state.strategies || []).find(x => x.id === t.dataset.delete) || {}).name || "this strategy";
+    const open = ((state.bot_positions || []).filter(p => p.strategy === t.dataset.delete)).length;
+    if (confirm(`Delete "${nm}"?${open ? `\n\nIt has ${open} open position(s): they keep their stop orders and are still managed and closed at 3:51 pm.` : ""}\n\nIts past trades stay in the history.`)) { await strategyOp({op: "delete", id: t.dataset.delete}); editing = null; renderStrategies.key = null; refresh(); }
   } else if (t.dataset.save) {
     const form = t.closest("[data-form]"), values = {};
     form.querySelectorAll("[data-k]").forEach(el => values[el.dataset.k] = el.dataset.t === "bool" ? el.checked : el.value);
