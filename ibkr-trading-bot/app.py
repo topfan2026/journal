@@ -287,6 +287,7 @@ def build_state() -> dict:
         "strategies": strategies_state(rules),
         "templates": templates_state(),
         "autologin": (PROJECT_DIR / "ibc" / "config.ini").exists(),
+        "allowed_account": env_str("ALLOWED_ACCOUNT"),
     }
 
 
@@ -546,7 +547,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(res).encode(), "application/json")
         elif self.path == "/api/settings":
             data = json.loads(body or b"{}")
-            allowed = {k: str(v).strip() for k, v in data.items() if k in ("FLEX_TOKEN", "FLEX_QUERY_ID")}
+            allowed = {k: str(v).strip() for k, v in data.items() if k in ("FLEX_TOKEN", "FLEX_QUERY_ID", "ALLOWED_ACCOUNT")}
+            if "ALLOWED_ACCOUNT" in allowed:  # only a paper account TWS is actually logged in to
+                with _lock:
+                    connected = list(_live.get("accounts") or [])
+                acct = allowed["ALLOWED_ACCOUNT"].upper()
+                if acct not in connected or not acct.startswith("D"):
+                    self._send(200, json.dumps({"message": f"{acct} isn't a connected paper account."}).encode(), "application/json")
+                    return
+                allowed["ALLOWED_ACCOUNT"] = acct
             if allowed:
                 from src.common import set_env_values
                 set_env_values(allowed)

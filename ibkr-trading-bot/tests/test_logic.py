@@ -205,3 +205,16 @@ def test_schedule_wakes_pc_only_for_wake_up_task():
     tasks = {t["name"]: t for t in setup_schedule.tasks()}
     assert [n for n, t in tasks.items() if t.get("wake")] == ["HT_WakeUp"]
     assert "HT_KeepAwake" not in tasks and tasks["HT_WakeUp"]["et"] == "09:00"
+
+
+def test_account_lock():
+    from src.ibkr_client import AccountLockError, resolve_account
+    assert resolve_account(["DU617561"], "DU617561", True) == "DU617561"
+    assert resolve_account(["DU617561"], "", True) == "DU617561"          # single paper account: fine
+    assert resolve_account(["DU617561", "DU999000"], "DU617561", True) == "DU617561"
+    for managed, allowed, paper in [(["U1234567"], "DU617561", True),        # logged in to a live account
+                                    (["DU617561", "DU999000"], "", True),     # ambiguous: must pick one
+                                    (["U1234567"], "", True),                 # live id while in paper mode
+                                    ([], "DU617561", True)]:
+        with pytest.raises(AccountLockError):
+            resolve_account(managed, allowed, paper)

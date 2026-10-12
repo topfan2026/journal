@@ -774,6 +774,8 @@ function render(s) {
     `<span class="pill ${s.paper ? "accent" : "down"}">${s.paper ? "PAPER" : "LIVE MONEY"} · port ${s.port}</span>`,
     live.connected ? `<span class="pill up">● TWS connected · ${esc((live.accounts || []).join(", "))}</span>` : `<span class="pill down">○ TWS not connected</span>`,
     `<span class="pill ${m[1]}">${m[0]}</span>`,
+    s.allowed_account ? `<span class="pill up" title="The bot only sends orders to this account">🔒 trades only ${esc(s.allowed_account)}</span>`
+                      : `<span class="pill warn">🔓 account not locked</span>`,
     `<span class="pill ${s.paused ? "warn" : "up"}">Bot ${s.paused ? "PAUSED" : "active"}</span>`,
   ].join("");
   $("pauseBtn").textContent = s.paused ? "Resume bot" : "Pause bot";
@@ -787,10 +789,22 @@ function render(s) {
   if (!live.connected) alerts.push(`<div class="alert">${esc(live.error || "Waiting for TWS…")}. Account data appears once you're logged in.
     ${s.autologin ? `<button class="primary" data-action="tws_login">Start TWS now (auto login)</button>`
                   : `<span class="muted">Tip: double-click SETUP_AUTOLOGIN.bat in the bot folder to have TWS log in by itself.</span>`}</div>`);
+  const paperAccts = (live.accounts || []).filter(a => a.toUpperCase().startsWith("D"));
+  if (!s.allowed_account) alerts.push(`<div class="alert">The bot isn't locked to one account yet. ${paperAccts.length
+      ? paperAccts.map(a => `<button class="primary" data-lock="${esc(a)}">🔒 Trade only in ${esc(a)}</button>`).join(" ")
+      : "Connect TWS (paper) to choose the account."}</div>`);
+  else if (live.connected && !(live.accounts || []).includes(s.allowed_account))
+    alerts.push(`<div class="alert" style="background:var(--down-bg);color:var(--down)">TWS is logged in to ${esc((live.accounts || []).join(", "))}, but the bot is locked to ${esc(s.allowed_account)}: it will NOT trade until TWS is logged in to ${esc(s.allowed_account)}.</div>`);
   if (s.schedule.installed === false) alerts.push(`<div class="alert">The bot isn't scheduled yet, so it won't trade on its own. Click “Install schedule” once.</div>`);
   if (s.paused) alerts.push(`<div class="alert">Paused: no new trades; open trades keep their stops managed.</div>`);
   $("alerts").innerHTML = alerts.join("");
   $("alerts").querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
+  $("alerts").querySelectorAll("button[data-lock]").forEach(b => b.onclick = async () => {
+    if (!confirm(`Lock the bot to ${b.dataset.lock}? It will only ever send orders to this account.`)) return;
+    const r = await fetch("/api/settings", {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"},
+                                            body: JSON.stringify({ALLOWED_ACCOUNT: b.dataset.lock})});
+    $("toast").textContent = (await r.json()).message; refresh();
+  });
   const ub = $("updateBtn");
   if (ub) ub.onclick = () => { if (confirm("Update the bot now? Your settings, strategy rules and trade history are kept.")) act("update"); };
 

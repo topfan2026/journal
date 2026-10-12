@@ -98,7 +98,7 @@ def stop_fills(ibkr, pos: dict) -> tuple[int, float]:
     shares, notional = 0.0, 0.0
     for f in ibkr.ib.fills():
         ex = f.execution
-        if f.contract.symbol != pos["symbol"] or ex.side != "SLD":
+        if f.contract.symbol != pos["symbol"] or ex.side != "SLD" or getattr(ex, "acctNumber", "") not in ("", getattr(ibkr, "account", getattr(ex, "acctNumber", ""))):
             continue
         if ex.orderId != pos.get("stop_order_id") and (not pos.get("stop_perm_id") or ex.permId != pos["stop_perm_id"]):
             continue
@@ -400,6 +400,11 @@ def main() -> int:
         log("cycle_done", status=status, open_positions=len(positions))
         return 0
     except Exception as exc:
+        if type(exc).__name__ == "AccountLockError":
+            log("account_lock", reason=str(exc))
+            safe_notify("BOT STOPPED: wrong account", str(exc), "high")
+            print(f"{ts()} {exc}")
+            return 1
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         with (LOGS_DIR / "cycle_errors.log").open("a", encoding="utf-8") as f:
             f.write(f"--- {now_et().isoformat(timespec='seconds')}\n{traceback.format_exc()}\n")
