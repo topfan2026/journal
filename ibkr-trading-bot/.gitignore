@@ -11,3 +11,5 @@ watchlist.txt
 dashboard/
 PAUSED
 .appwindow/
+.version
+*.updating

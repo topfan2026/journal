@@ -149,3 +149,21 @@ def test_sp500_list():
     assert 495 <= len(SP500_TICKERS) <= 510
     assert "BRK B" in SP500_TICKERS and "BRK-B" not in SP500_TICKERS
     assert SP500_TICKERS == sorted(SP500_TICKERS)
+
+
+def test_group_trades_merges_partial_exits():
+    rows = [
+        {"timestamp_iso": "2026-10-12T10:10:00-04:00", "symbol": "AAA", "side": "BUY", "size": "30", "fill_price": "100", "stop_price": "98"},
+        {"timestamp_iso": "2026-10-12T10:40:00-04:00", "symbol": "AAA", "side": "SELL", "size": "10", "fill_price": "101.5"},
+        {"timestamp_iso": "2026-10-12T15:52:00-04:00", "symbol": "AAA", "side": "SELL", "size": "20", "fill_price": "104"},
+        {"timestamp_iso": "2026-10-13T10:10:00-04:00", "symbol": "AAA", "side": "BUY", "size": "10", "fill_price": "50", "stop_price": "49"},
+        {"timestamp_iso": "2026-10-13T11:00:00-04:00", "symbol": "AAA", "side": "SELL", "size": "10", "fill_price": "49"},
+    ]
+    trades = compute_perf.group_trades(compute_perf.pair_trades(rows))
+    assert len(trades) == 2
+    first, second = trades
+    assert first["qty"] == 30 and first["exits"] == 2
+    assert first["pnl"] == pytest.approx(95.0) and first["R"] == pytest.approx(95 / 60)
+    assert second["R"] == pytest.approx(-1.0)
+    agg = compute_perf.aggregate(trades)
+    assert agg["total_trades"] == 2 and agg["wins"] == 1 and agg["win_rate_pct"] == 50.0

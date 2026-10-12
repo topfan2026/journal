@@ -93,17 +93,42 @@ def ibkr_snapshot(ib) -> dict:
 # ------------------------------------------------------------------ files -> state
 
 def performance(rows: list[dict]) -> dict:
-    """FIFO P&L for any list of {timestamp_iso, symbol, side, size, fill_price, stop_price?} rows."""
-    from compute_perf import aggregate, pair_trades
-    closed = pair_trades(rows)
+    """Closed trades (partial exits merged into one trade) for any list of
+    {timestamp_iso, symbol, side, size, fill_price, stop_price?} rows. The page computes the
+    metrics and charts from these, so its date-range buttons work instantly."""
+    from compute_perf import aggregate, group_trades, pair_trades
+    trades = group_trades(pair_trades(rows))
     today = now_et().date().isoformat()
-    equity, total = [], 0.0
-    for c in sorted(closed, key=lambda c: c["exit_time"]):
-        total += c["pnl"]
-        equity.append({"t": c["exit_time"], "v": round(total, 2)})
-    return {"all": aggregate(closed), "today": aggregate([c for c in closed if c["exit_time"].startswith(today)]),
-            "closed": [{k: (round(v, 3) if isinstance(v, float) else v) for k, v in c.items()} for c in closed[-50:]][::-1],
-            "equity": equity}
+    return {"all": aggregate(trades), "today": aggregate([c for c in trades if c["exit_time"].startswith(today)]),
+            "closed": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in c.items()} for c in trades[-3000:]]}
+
+
+def filter_stats(days: int = 30) -> dict:
+    """How often each entry rule failed in the last N days: shows which filter blocks most trades."""
+    from datetime import timedelta
+    since = (now_et() - timedelta(days=days)).isoformat()
+    fails: dict[str, int] = defaultdict(int)
+    evaluated = passed = 0
+    for e in recent_events(limit=0):
+        if e.get("event") != "evaluate" or str(e.get("ts", "")) < since:
+            continue
+        evaluated += 1
+        passed += bool(e.get("passed"))
+        for r in e.get("reasons", []):
+            if " FAIL" in r:
+                fails[r.split(" ", 1)[0]] += 1
+            elif r.startswith("insufficient"):
+                fails["data"] += 1
+    return {"days": days, "evaluated": evaluated, "passed": passed, "fails": dict(fails)}
+
+
+def risk_limits(rules: dict) -> dict:
+    from src.common import todays_buy_count
+    positions = load_positions()
+    at_risk = sum(max(0.0, (p["entry_price"] - p["stop"]) * p["qty"]) for p in positions)
+    return {"trades_today": todays_buy_count(), "max_trades": env_int("MAX_TRADES_PER_DAY", 5),
+            "open": len(positions), "max_open": int(rules["risk"]["max_concurrent_positions"]),
+            "at_risk": round(at_risk, 2)}
 
 
 def account_performance(fills: list[dict]) -> dict:
@@ -211,11 +236,14 @@ def build_state() -> dict:
         "bot_perf": performance(read_trades()),
         "account_perf": account_performance(live.get("fills", [])),
         "watchlist": watchlist_verdicts(),
+        "filter_stats": filter_stats(),
+        "limits": risk_limits(rules),
         "watchlist_time": datetime.fromtimestamp(WATCHLIST_PATH.stat().st_mtime, ET).strftime("%H:%M ET %b %d")
         if WATCHLIST_PATH.exists() else None,
         "events": recent_events(),
         "schedule": schedule_status(),
-        "jobs": dict(_jobs),
+        "jobs": {k: v for k, v in _jobs.items() if isinstance(v, dict)},
+        "update": update_status(),
     }
 
 
@@ -237,6 +265,8 @@ def run_action(name: str) -> str:
     if name == "resume":
         PAUSE_PATH.unlink(missing_ok=True)
         return "Resumed."
+    if name in ("update", "check_update"):
+        return update_action(name)
     if name not in ACTIONS:
         return f"unknown action {name}"
     if _jobs.get(name, {}).get("running"):
@@ -255,6 +285,42 @@ def run_action(name: str) -> str:
 
     threading.Thread(target=worker, daemon=True).start()
     return f"Started {name}"
+
+
+def update_action(name: str) -> str:
+    from src import updater
+    if name == "check_update":
+        info = updater.check(force=True)
+        return info.get("error") or ("Update available." if info["available"] else "You're on the latest version.")
+    if _jobs.get("update", {}).get("running"):
+        return "Update already running"
+
+    def worker():
+        _jobs["update"] = {"running": True, "output": "", "started": now_et().strftime("%H:%M:%S")}
+        try:
+            out = updater.apply()
+            _jobs["update_done"] = True
+        except Exception as exc:
+            out = f"Update failed: {exc!r}. Nothing you rely on was deleted; try again later."
+        _jobs["update"] = {"running": False, "output": out, "finished": now_et().strftime("%H:%M:%S")}
+
+    threading.Thread(target=worker, daemon=True).start()
+    return "Updating…"
+
+
+def update_checker() -> None:
+    """Check GitHub for a newer version at start-up and every 30 minutes (in the background)."""
+    from src import updater
+    while True:
+        updater.check(force=True)
+        time.sleep(updater.CHECK_EVERY)
+
+
+def update_status() -> dict:
+    from src import updater
+    info = dict(updater._cache["info"] or {"available": False, "checking": True})
+    info["updated_this_session"] = bool(_jobs.get("update_done"))
+    return info
 
 
 # ------------------------------------------------------------------ HTTP
@@ -382,6 +448,7 @@ def main() -> int:
         return 1
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=update_checker, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     print(f"{now_et():%Y-%m-%d %H:%M:%S} IBKR Trading Bot app running at {url}. "
           f"Closing the app window quits it; the scheduled bot keeps trading either way.")
