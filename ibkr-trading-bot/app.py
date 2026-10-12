@@ -331,7 +331,8 @@ def open_window(url: str):
     if browser:
         try:
             return subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={WINDOW_PROFILE}",
-                                     "--window-size=1400,900", "--no-first-run", "--no-default-browser-check"])
+                                     "--window-size=1400,900", "--no-first-run", "--no-default-browser-check",
+                                     "--disable-sync"])  # the app window is not a browsing profile; never sync it
         except OSError:
             pass
     webbrowser.open(url)
