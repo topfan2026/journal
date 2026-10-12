@@ -1,4 +1,4 @@
-"""Create a desktop shortcut "IBKR Trading Bot" that runs launch.py (log in to TWS + check + dashboard).
+"""Create "IBKR Trading Bot" shortcuts (desktop + Start menu) that open TWS and the app window.
 
 Run once from the project folder, with the venv created:
     python make_desktop_shortcut.py
@@ -24,20 +24,27 @@ def windows() -> Path:
     def q(x) -> str:  # PowerShell single-quoted string literal
         return "'" + str(x).replace("'", "''") + "'"
 
-    py, launcher = venv_python(), PROJECT_DIR / "launch.py"
+    # pythonw.exe = no black console window; the app shows in its own window instead.
+    pyw = venv_python().with_name("pythonw.exe")
+    py = pyw if pyw.exists() else venv_python()
+    launcher, icon = PROJECT_DIR / "launch.py", PROJECT_DIR / "icon.ico"
     ps = f"""
-$desktop = [Environment]::GetFolderPath('Desktop')
-$lnk = Join-Path $desktop {q(NAME + '.lnk')}
-$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
-$s.TargetPath = {q(py)}
-$s.Arguments = {q(f'"{launcher}"')}
-$s.WorkingDirectory = {q(PROJECT_DIR)}
-$s.Description = 'Open TWS and the IBKR Trading Bot app'
-$s.Save()
-Write-Output $lnk
+$made = @()
+foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {{
+  $lnk = Join-Path $dir {q(NAME + '.lnk')}
+  $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+  $s.TargetPath = {q(py)}
+  $s.Arguments = {q(f'"{launcher}"')}
+  $s.WorkingDirectory = {q(PROJECT_DIR)}
+  $s.IconLocation = {q(f'{icon},0')}
+  $s.Description = 'Open TWS and the IBKR Trading Bot app'
+  $s.Save()
+  $made += $lnk
+}}
+Write-Output ($made -join "`n")
 """
     out = subprocess.run(["powershell", "-NoProfile", "-c", ps], capture_output=True, text=True, check=True)
-    return Path(out.stdout.strip())
+    return Path(out.stdout.strip().splitlines()[0])
 
 
 def mac_or_linux() -> Path:
@@ -61,6 +68,8 @@ def main() -> int:
         return 1
     path = windows() if sys.platform == "win32" else mac_or_linux()
     print(f"Shortcut created: {path}")
+    if sys.platform == "win32":
+        print("Also added to the Start menu. Tip: right-click it there > Pin to taskbar.")
     return 0
 
 

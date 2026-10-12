@@ -37,8 +37,9 @@ flattens everything at 15:51 ET, sends Telegram alerts and builds an HTML dashbo
 
 1. TWS opens if it isn't already running, so you can **log in** to your paper account (TWS's own login: the bot never
    stores your password). It looks in `C:\Jts\...`; set `TWS_PATH=` in `.env` if yours is elsewhere.
-2. The **app** opens in your browser at `http://127.0.0.1:18765` (this PC only). Keep its black window open; close it
-   to quit the app. The scheduled bot keeps trading either way.
+2. The **app** opens in its own window (an Edge app window: no tabs or address bar, its own taskbar icon), served
+   from `http://127.0.0.1:18765` on this PC only. Close the window to quit the app; the scheduled bot keeps trading
+   either way. The shortcut is also in the Start menu (right-click > Pin to taskbar). App messages go to `logs/app.log`.
 
 The app refreshes every 5 seconds and shows:
 
@@ -70,7 +71,7 @@ per-session token, so other websites can't trigger them.
 | `compute_perf.py` | Daily summary (JSON + Telegram) and `dashboard/index.html` with R-multiple histogram |
 | `rotate_logs.py` | Archives old logs, keeps 90 days of `trades.csv` |
 | `setup_schedule.py` / `cleanup_schedule.py` | Windows Task Scheduler install / uninstall |
-| `app.py` + `app_ui.html` | The desktop app: live bot + account view, pause/resume and run buttons |
+| `app.py` + `app_ui.html` + `icon.ico` | The desktop app: live bot + account view, pause/resume and run buttons |
 | `launch.py` / `make_desktop_shortcut.py` | Desktop shortcut: opens TWS for login, then the app |
 | `src/filters.py` | Pure logic: D1–D3, I1–I3, RVOL, swing lows, sizing (unit tested) |
 | `src/ibkr_client.py` | ib_async wrapper: market orders, GTC protective stops, modify/cancel |

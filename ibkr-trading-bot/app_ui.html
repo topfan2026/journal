@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>IBKR Trading Bot</title>
+<link rel="icon" href="/favicon.ico">
 <style>
 :root {
   --bg: #f6f7f9; --card: #ffffff; --ink: #14171c; --muted: #646b76; --line: #e3e6eb;
@@ -222,7 +223,7 @@ async function refresh() {
     if (s.error) throw new Error(s.error);
     render(s);
   } catch (e) {
-    $("sub").textContent = "Lost contact with the app. Is its black window still open? (" + e.message + ")";
+    $("sub").textContent = "Lost contact with the app. Close this window and open IBKR Trading Bot again. (" + e.message + ")";
   }
 }
 

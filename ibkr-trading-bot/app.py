@@ -17,6 +17,7 @@ import webbrowser
 from collections import defaultdict, deque
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from src.common import (ET, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_int, env_str,
                         load_positions, load_rules, now_et, read_trades, read_watchlist)
@@ -25,6 +26,8 @@ APP_SIGNATURE = "ibkr-trading-bot-app"  # lets us tell our app apart from other 
 FIRST_PORT = 18765  # tries this and the next 19 ports; set APP_PORT in .env to change
 APP_CLIENT_ID = 7
 UI_PATH = PROJECT_DIR / "app_ui.html"
+ICON_PATH = PROJECT_DIR / "icon.ico"
+WINDOW_PROFILE = PROJECT_DIR / ".appwindow"  # Edge profile just for the app window
 TOKEN = secrets.token_urlsafe(16)  # blocks other websites from POSTing actions to localhost
 
 _lock = threading.Lock()
@@ -266,6 +269,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             html = UI_PATH.read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
             self._send(200, html.encode(), "text/html; charset=utf-8")
+        elif self.path == "/favicon.ico":
+            self._send(200, ICON_PATH.read_bytes(), "image/x-icon")
         elif self.path == "/api/ping":
             self._send(200, json.dumps({"app": APP_SIGNATURE}).encode(), "application/json")
         elif self.path == "/api/state":
@@ -301,13 +306,65 @@ def is_our_app(port: int) -> bool:
         return False
 
 
+def find_app_browser() -> str | None:
+    """Edge (on every Windows 10/11 PC) or Chrome, which can show a page as a standalone app window."""
+    import os
+    import shutil
+    candidates = []
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
+        if base:
+            candidates += [Path(base) / "Microsoft/Edge/Application/msedge.exe",
+                           Path(base) / "Google/Chrome/Application/chrome.exe"]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    for name in ("msedge", "microsoft-edge", "google-chrome", "chromium", "chromium-browser"):
+        if found := shutil.which(name):
+            return found
+    return None
+
+
+def open_window(url: str):
+    """Open the app in its own window (no tabs or address bar). Returns the window's process,
+    or None if it fell back to a normal browser tab."""
+    browser = find_app_browser()
+    if browser:
+        try:
+            return subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={WINDOW_PROFILE}",
+                                     "--window-size=1400,900", "--no-first-run", "--no-default-browser-check"])
+        except OSError:
+            pass
+    webbrowser.open(url)
+    return None
+
+
+def quit_when_window_closes(proc) -> None:
+    started = time.monotonic()
+    proc.wait()
+    # If an app window from an earlier run was still open, Edge hands the new one to it and this
+    # process exits at once. Then keep serving (the open window still needs us) instead of quitting.
+    if time.monotonic() - started > 5:
+        import os
+        os._exit(0)
+
+
+def log_to_file_if_windowless() -> None:
+    """Under pythonw.exe (no console window) print() goes nowhere; send it to logs/app.log instead."""
+    if sys.stdout is None or sys.stderr is None:
+        from src.common import LOGS_DIR
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        f = open(LOGS_DIR / "app.log", "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = f
+
+
 def main() -> int:
+    log_to_file_if_windowless()
     first = env_int("APP_PORT", FIRST_PORT)
     server = None
     for port in range(first, first + 20):
         if is_our_app(port):
-            print(f"The app is already running — opening http://127.0.0.1:{port}")
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            print(f"The app is already running — showing http://127.0.0.1:{port}")
+            open_window(f"http://127.0.0.1:{port}")
             return 0
         try:
             server = AppServer(("127.0.0.1", port), Handler)
@@ -316,14 +373,15 @@ def main() -> int:
             print(f"Port {port} is used by another program, trying the next one…")
     if server is None:
         print(f"No free port between {first} and {first + 19}. Set APP_PORT=... in .env to another number.")
-        input("Press Enter to close...")
         return 1
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
-    print(f"IBKR Trading Bot app running at {url}\nKeep this window open. Close it to quit the app "
-          f"(the scheduled bot keeps trading either way).")
-    webbrowser.open(url)
+    print(f"{now_et():%Y-%m-%d %H:%M:%S} IBKR Trading Bot app running at {url}. "
+          f"Closing the app window quits it; the scheduled bot keeps trading either way.")
+    proc = open_window(url)
+    if proc is not None:
+        threading.Thread(target=quit_when_window_closes, args=(proc,), daemon=True).start()
     try:
         ibkr_loop()
     except KeyboardInterrupt:
