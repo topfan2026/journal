@@ -281,7 +281,7 @@ def round_trips(fills: list[dict]) -> tuple[list[dict], list[dict]]:
             return {"symbol": sym, "asset": asset, "account": account, "currency": currency,
                     "side": "long" if sign > 0 else "short", "entry_time": f["time"],
                     "open_qty": 0.0, "open_value": 0.0, "close_qty": 0.0, "close_value": 0.0, "pnl": 0.0,
-                    "mult": f["mult"], "fills": 0}
+                    "mult": f["mult"], "fills": 0, "stop": f.get("stop"), "strategy": f.get("strategy")}
 
         for f in rows:
             sign = 1 if f["side"] == "BUY" else -1
@@ -346,10 +346,14 @@ def _finish(ep: dict, exit_time: str) -> dict:
     basis = entry_avg * ep["open_qty"] * ep["mult"]
     hold = (datetime.fromisoformat(exit_time) - datetime.fromisoformat(ep["entry_time"])).total_seconds() / 60
     long = ep["side"] == "long"
+    stop = ep.get("stop")
+    risk = abs(entry_avg - stop) * ep["open_qty"] * ep["mult"] if stop else 0
     return {"symbol": ep["symbol"], "asset": ep["asset"], "account": ep["account"], "currency": ep["currency"],
+            "strategy": ep.get("strategy"), "stop": stop, "exits": max(0, ep["fills"] - 1),
+            "R": ep["pnl"] / risk if risk else None,
             "side": ep["side"], "qty": ep["open_qty"],
             "buy": entry_avg if long else exit_avg, "sell": exit_avg if long else entry_avg,
-            "pnl": ep["pnl"], "pnl_pct": ep["pnl"] / basis * 100 if basis else None, "R": None,
+            "pnl": ep["pnl"], "pnl_pct": ep["pnl"] / basis * 100 if basis else None,
             "entry_time": ep["entry_time"], "exit_time": exit_time, "hold_min": round(hold, 1),
             "partial_history": False}
 

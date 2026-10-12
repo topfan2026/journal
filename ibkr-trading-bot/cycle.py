@@ -91,14 +91,25 @@ def current_price(ibkr, symbol: str, bars=None) -> float:
 
 # ---------------------------------------------------------------- step 3: stop-outs / reconcile
 
+def _dir(pos: dict) -> int:
+    """+1 for a long position, -1 for a short."""
+    return -1 if pos.get("side") == "short" else 1
+
+
+def _close_side(pos: dict) -> str:
+    return "BUY" if _dir(pos) < 0 else "SELL"
+
+
 def stop_fills(ibkr, pos: dict) -> tuple[int, float]:
     """Shares and avg price filled on this position's stop order. Matches by order id / permId,
     never by quantity (quantity matching gives false stop-outs after a partial)."""
     since = datetime.now().astimezone() - timedelta(hours=8)
     shares, notional = 0.0, 0.0
+    exec_side = "BOT" if _dir(pos) < 0 else "SLD"  # a short's stop buys to cover
     for f in ibkr.ib.fills():
         ex = f.execution
-        if f.contract.symbol != pos["symbol"] or ex.side != "SLD" or getattr(ex, "acctNumber", "") not in ("", getattr(ibkr, "account", getattr(ex, "acctNumber", ""))):
+        acct = getattr(ex, "acctNumber", "")
+        if f.contract.symbol != pos["symbol"] or ex.side != exec_side or acct not in ("", getattr(ibkr, "account", acct)):
             continue
         if ex.orderId != pos.get("stop_order_id") and (not pos.get("stop_perm_id") or ex.permId != pos["stop_perm_id"]):
             continue
@@ -112,14 +123,15 @@ def stop_fills(ibkr, pos: dict) -> tuple[int, float]:
 def reconcile(ibkr, positions: list[dict]) -> list[dict]:
     keep = []
     for pos in positions:
-        sym = pos["symbol"]
-        held = ibkr.position_qty(sym)
+        sym, d = pos["symbol"], _dir(pos)
+        held = ibkr.position_qty(sym) * d  # >0 while the position (long or short) is still open
         filled, px = stop_fills(ibkr, pos)
         if filled and held <= 0:
-            pnl = (px - pos["entry_price"]) * filled
-            append_trade({"timestamp_iso": now_et().isoformat(timespec="seconds"), "symbol": sym, "side": "SELL",
-                          "size": filled, "fill_price": round(px, 4), "order_id": pos["stop_order_id"], "status": "StopFilled"})
-            log("stopped_out", symbol=sym, qty=filled, exit=px, pnl=pnl)
+            pnl = (px - pos["entry_price"]) * filled * d
+            append_trade({"timestamp_iso": now_et().isoformat(timespec="seconds"), "symbol": sym, "side": _close_side(pos),
+                          "size": filled, "fill_price": round(px, 4), "order_id": pos["stop_order_id"], "status": "StopFilled",
+                          "strategy": pos.get("strategy", "")})
+            log("stopped_out", symbol=sym, side=pos.get("side", "long"), qty=filled, exit=px, pnl=pnl)
             safe_notify(f"STOP {sym}", f"exit ${px:.2f}, P&L ${pnl:+.2f}")
             continue
         if held <= 0:
@@ -130,13 +142,13 @@ def reconcile(ibkr, positions: list[dict]) -> list[dict]:
         if held != pos["qty"]:
             log("qty_mismatch", symbol=sym, state_qty=pos["qty"], ibkr_qty=held)
             pos["qty"] = held
-            ibkr.modify_stop(sym, pos.get("stop_order_id"), held, pos["stop"])
+            ibkr.modify_stop(sym, pos.get("stop_order_id"), held, pos["stop"], action=_close_side(pos))
         keep.append(pos)
     return keep
 
 
 def adopt_orphans(ibkr, positions: list[dict], rules: dict) -> None:
-    """A BUY the bot logged today that IBKR holds but state doesn't know about (e.g. trade.py
+    """An entry the bot logged today that IBKR holds but state doesn't know about (e.g. trade.py
     timed out before the fill came back). Give it a stop instead of leaving it naked."""
     from src.filters import initial_stop
     from src.marketdata import intraday_bars
@@ -144,11 +156,12 @@ def adopt_orphans(ibkr, positions: list[dict], rules: dict) -> None:
 
     known = {p["symbol"] for p in positions}
     today = now_et().date().isoformat()
-    bought = {r["symbol"]: r for r in read_trades() if r["side"] == "BUY" and r["timestamp_iso"].startswith(today)}
-    for sym, row in bought.items():
+    entries = {r["symbol"]: r for r in read_trades() if r["timestamp_iso"].startswith(today) and is_entry_row(r)}
+    for sym, row in entries.items():
         if sym in known:
             continue
-        qty = ibkr.position_qty(sym)
+        side = "short" if row["side"] == "SELL" else "long"
+        qty = ibkr.position_qty(sym) * (-1 if side == "short" else 1)
         if qty <= 0:
             continue
         entry = float(row.get("fill_price") or 0) or current_price(ibkr, sym)
@@ -156,76 +169,85 @@ def adopt_orphans(ibkr, positions: list[dict], rules: dict) -> None:
         if stop is None:
             bars = _day(_rth(intraday_bars(sym, period="1d")), now_et().date())
             stop = initial_stop(float(bars["Low"].min()), rules["exit"]["initial_stop_rule"])
-        t = ibkr.place_stop(sym, qty, stop)
-        positions.append(new_position(sym, entry, qty, stop, t, strategy=row.get("strategy") or "trend_join_long"))
-        log("orphan_adopted", symbol=sym, qty=qty, entry=entry, stop=stop, stop_order_id=t.order.orderId)
-        safe_notify(f"ADOPTED {sym}", f"{qty} sh had no stop; stop ${stop:.2f} placed", "high")
+        t = ibkr.place_stop(sym, qty, stop, action="BUY" if side == "short" else "SELL")
+        positions.append(new_position(sym, entry, qty, stop, t, strategy=row.get("strategy") or "trend_join_long", side=side))
+        log("orphan_adopted", symbol=sym, side=side, qty=qty, entry=entry, stop=stop, stop_order_id=t.order.orderId)
+        safe_notify(f"ADOPTED {sym}", f"{qty} sh {side} had no stop; stop ${stop:.2f} placed", "high")
+
+
+def is_entry_row(r: dict) -> bool:
+    """trades.csv: entries carry the initial stop; old rows (before strategies) were all-long BUYs."""
+    return bool(r.get("stop_price")) or (r.get("side") == "BUY" and not r.get("strategy"))
 
 
 def new_position(sym: str, entry: float, qty: int, stop: float, stop_trade,
-                 strategy: str = "trend_join_long", exit_rules: dict | None = None) -> dict:
-    return {"symbol": sym, "entry_price": entry, "entry_time_iso": now_et().isoformat(timespec="seconds"),
+                 strategy: str = "trend_join_long", exit_rules: dict | None = None, side: str = "long") -> dict:
+    return {"symbol": sym, "side": side, "entry_price": entry, "entry_time_iso": now_et().isoformat(timespec="seconds"),
             "qty": qty, "initial_stop": stop, "stop": stop, "stop_order_id": stop_trade.order.orderId,
             "stop_perm_id": stop_trade.order.permId, "state": "pre_breakeven", "partial_done": False,
-            "R": entry - stop, "strategy": strategy, "exit": exit_rules}
+            "R": abs(entry - stop), "strategy": strategy, "exit": exit_rules}
 
 
 # ---------------------------------------------------------------- step 4: manage
 
 def manage(ibkr, positions: list[dict], rules: dict) -> None:
+    """Partial, breakeven, trailing stop and optional full target. Longs and shorts are mirrored:
+    d = +1 (long) / -1 (short); 'gain' below is always in the trade's favour."""
     from src.executor import run_trade
-    from src.filters import _rth, swing_lows
+    from src.filters import _rth, swing_highs, swing_lows
     from src.marketdata import intraday_bars
 
     for pos in positions:
         ex = {"take_profit_R": 0, "trail": True, **rules["exit"], **(pos.get("exit") or {})}
-        sym, entry, R = pos["symbol"], pos["entry_price"], pos["R"]
+        sym, entry, R, d = pos["symbol"], pos["entry_price"], pos["R"], _dir(pos)
+        close, stop_action, strategy = _close_side(pos), _close_side(pos), pos.get("strategy", "")
         bars = intraday_bars(sym, period="1d")
         price = current_price(ibkr, sym, bars)
         if math.isnan(price) or R <= 0:
             log("manage_skip", symbol=sym, reason="no price or bad R")
             continue
+        gain = (price - entry) * d  # in the trade's favour
 
-        if ex.get("take_profit_R") and price >= entry + float(ex["take_profit_R"]) * R:
+        if ex.get("take_profit_R") and gain >= float(ex["take_profit_R"]) * R:
             ibkr.cancel(pos.get("stop_order_id"))
-            result, out = run_trade(sym, "SELL", pos["qty"], strategy=pos.get("strategy", ""))
+            result, out = run_trade(sym, close, pos["qty"], strategy=strategy)
             if result and result.get("status") == "Filled":
                 pos["closed"] = True
-                log("take_profit", symbol=sym, qty=pos["qty"], price=result["fill_price"], strategy=pos.get("strategy"))
-                safe_notify(f"TARGET {sym}", f"sold {pos['qty']} @ ${result['fill_price']:.2f} (+{ex['take_profit_R']}R)")
+                log("take_profit", symbol=sym, qty=pos["qty"], price=result["fill_price"], strategy=strategy)
+                safe_notify(f"TARGET {sym}", f"closed {pos['qty']} @ ${result['fill_price']:.2f} (+{ex['take_profit_R']}R)")
             else:
-                t = ibkr.place_stop(sym, pos["qty"], pos["stop"])
+                t = ibkr.place_stop(sym, pos["qty"], pos["stop"], action=stop_action)
                 pos.update(stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
                 log("take_profit_failed", symbol=sym, output=out[-500:])
             continue
 
-        # 0.75R partial first: checking 1R first (as the original prompt did) means a stock that
-        # jumps straight past 1R never banks its partial.
-        if not pos["partial_done"] and price >= entry + ex["partial_profit_trigger_R"] * R and pos["qty"] > 1:
-            sell = min(pos["qty"] - 1, math.ceil(pos["qty"] * ex["partial_profit_fraction"]))
-            remaining = pos["qty"] - sell
-            # Shrink the stop BEFORE selling so it can never be larger than the position (which
-            # would open a short if it triggered).
-            ibkr.modify_stop(sym, pos["stop_order_id"], remaining, pos["stop"])
-            result, out = run_trade(sym, "SELL", sell, strategy=pos.get("strategy", ""))
+        # partial first: checking breakeven first means a stock that jumps straight past it never banks its partial
+        if not pos["partial_done"] and gain >= ex["partial_profit_trigger_R"] * R and pos["qty"] > 1:
+            part = min(pos["qty"] - 1, math.ceil(pos["qty"] * ex["partial_profit_fraction"]))
+            remaining = pos["qty"] - part
+            # Shrink the stop BEFORE taking the partial so it can never be larger than the position
+            # (which would flip it if it triggered).
+            ibkr.modify_stop(sym, pos["stop_order_id"], remaining, pos["stop"], action=stop_action)
+            result, out = run_trade(sym, close, part, strategy=strategy)
             if result and result.get("filled"):
-                sold = int(result["filled"])
-                pos["qty"] = pos["qty"] - sold
+                done = int(result["filled"])
+                pos["qty"] = pos["qty"] - done
                 pos["partial_done"] = True
                 pos["state"] = "partial_done" if pos["state"] == "pre_breakeven" else pos["state"]
                 # Trend Join Long: after the partial, tighten the stop to entry - 1% (ratchet up only).
                 tight = round(entry * 0.99, 2)
-                if pos.get("strategy", "trend_join_long") == "trend_join_long" and tight > pos["stop"]:
-                    t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], tight)
+                if strategy in ("", "trend_join_long") and d > 0 and tight > pos["stop"]:
+                    t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], tight, action=stop_action)
                     pos.update(stop=tight, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
-                log("partial", symbol=sym, sold=sold, price=result["fill_price"], remaining=pos["qty"], stop=pos["stop"])
-                safe_notify(f"PARTIAL {sym}", f"sold {sold}/{sold + pos['qty']} @ ${result['fill_price']:.2f}")
+                log("partial", symbol=sym, side=pos.get("side", "long"), qty=done, price=result["fill_price"],
+                    remaining=pos["qty"], stop=pos["stop"])
+                safe_notify(f"PARTIAL {sym}", f"took {done}/{done + pos['qty']} @ ${result['fill_price']:.2f}")
             else:
-                ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], pos["stop"])
+                ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], pos["stop"], action=stop_action)
                 log("partial_failed", symbol=sym, output=out[-500:])
 
-        if pos["state"] != "post_breakeven" and price >= entry + ex["breakeven_trigger_R"] * R and entry > pos["stop"]:
-            t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], entry)
+        if pos["state"] != "post_breakeven" and gain >= ex["breakeven_trigger_R"] * R and (entry - pos["stop"]) * d > 0:
+            t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], entry, action=stop_action)
             pos.update(stop=entry, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId, state="post_breakeven")
             log("breakeven", symbol=sym, new_stop=entry)
             safe_notify(f"BE {sym}", f"stop -> ${entry:.2f}")
@@ -233,15 +255,20 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
         if pos["state"] == "post_breakeven" and ex.get("trail", True) and bars is not None and not bars.empty:
             entry_time = datetime.fromisoformat(pos["entry_time_iso"])
             completed = _rth(bars).iloc[:-1]  # newest bar is still forming
-            lows = [(t, low) for t, low in swing_lows(completed, 2, 2) if t >= entry_time]
-            if lows:
-                new_stop = round(lows[-1][1] - 0.01, 2)
-                if pos["stop"] < new_stop < price:  # ratchet up only
-                    old = pos["stop"]
-                    t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], new_stop)
-                    pos.update(stop=new_stop, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
-                    log("trail", symbol=sym, old_stop=old, new_stop=new_stop)
-                    safe_notify(f"TRAIL {sym}", f"stop ${old:.2f} -> ${new_stop:.2f}")
+            if d > 0:  # long: trail under swing lows, only ever up
+                pts = [(t, v) for t, v in swing_lows(completed, 2, 2) if t >= entry_time]
+                new_stop = round(pts[-1][1] - 0.01, 2) if pts else None
+                better = new_stop is not None and pos["stop"] < new_stop < price
+            else:      # short: trail above swing highs, only ever down
+                pts = [(t, v) for t, v in swing_highs(completed, 2, 2) if t >= entry_time]
+                new_stop = round(pts[-1][1] + 0.01, 2) if pts else None
+                better = new_stop is not None and price < new_stop < pos["stop"]
+            if better:
+                old = pos["stop"]
+                t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], new_stop, action=stop_action)
+                pos.update(stop=new_stop, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
+                log("trail", symbol=sym, old_stop=old, new_stop=new_stop)
+                safe_notify(f"TRAIL {sym}", f"stop ${old:.2f} -> ${new_stop:.2f}")
     positions[:] = [p for p in positions if not p.get("closed")]
 
 
@@ -256,16 +283,16 @@ def force_close(ibkr, positions: list[dict]) -> list[dict]:
     for pos in positions:
         sym = pos["symbol"]
         ibkr.cancel(pos.get("stop_order_id"))
-        qty = ibkr.position_qty(sym)
+        qty = ibkr.position_qty(sym) * _dir(pos)
         if qty <= 0:
             log("force_close_nothing_held", symbol=sym)
             continue
-        result, out = run_trade(sym, "SELL", qty, strategy=pos.get("strategy", ""))
+        result, out = run_trade(sym, _close_side(pos), qty, strategy=pos.get("strategy", ""))
         if result and result.get("status") == "Filled":
-            log("force_closed", symbol=sym, qty=qty, price=result["fill_price"])
+            log("force_closed", symbol=sym, side=pos.get("side", "long"), qty=qty, price=result["fill_price"])
         else:
             # Put the protective stop back so nothing sits naked; next run retries the close.
-            t = ibkr.place_stop(sym, qty, pos["stop"])
+            t = ibkr.place_stop(sym, qty, pos["stop"], action=_close_side(pos))
             pos.update(stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
             left.append(pos)
             log("force_close_failed", symbol=sym, output=out[-500:])
@@ -302,6 +329,8 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
         sid = cfg["id"]
         if not (_hhmm(cfg["earliest_entry_et"]) <= now_t <= _hhmm(cfg["latest_entry_et"])):
             continue
+        if cfg.get("timeframe", "5m") == "5m" and now.minute % 5:
+            continue  # the cycle runs every minute; 5-minute strategies only look on 5-minute marks
         s_buys = todays_buy_count(strategy=sid)
         if s_buys >= cfg["max_trades_per_day"]:
             log("entry_skip", strategy=sid, reason=f"strategy daily cap {s_buys}/{cfg['max_trades_per_day']}")
@@ -332,12 +361,22 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
             if math.isnan(price) or price < cfg["min_price"]:
                 log("entry_skip", symbol=sym, strategy=sid, reason=f"price {price} below min or missing")
                 continue
-            res = st.evaluate(cfg, daily, intra, price, today, rules, now_t, symbol=sym)
+            bars_1m = None
+            if cfg.get("timeframe") == "1m":
+                try:
+                    if (sym, "1m") not in data_cache:
+                        data_cache[(sym, "1m")] = intraday_bars(sym, period="1d", interval="1m")
+                    bars_1m = data_cache[(sym, "1m")]
+                except Exception as exc:
+                    log("entry_skip", symbol=sym, strategy=sid, reason=f"1-minute data error {exc!r}")
+                    continue
+            res = st.evaluate(cfg, daily, intra, price, today, rules, now_t, symbol=sym, bars_1m=bars_1m)
             log("evaluate", symbol=sym, strategy=sid, passed=bool(res["pass"]), reasons=res["reasons"], metrics=res["metrics"])
             if not res["pass"]:
                 continue
 
             stop = float(res["metrics"]["stop"])
+            side = res["metrics"].get("side", "long")
             size = position_size(price, stop, portfolio, risk_pct,
                                  float(rules["risk"]["max_position_size_pct_of_portfolio"]),
                                  env_float("MAX_TRADE_SIZE_USD", 2500))
@@ -345,23 +384,24 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
                 log("entry_skip", symbol=sym, strategy=sid, reason="size < 1", price=price, stop=stop)
                 continue
 
-            result, out = run_trade(sym, "BUY", size, stop_price=stop, strategy=sid)
+            d = -1 if side == "short" else 1
+            result, out = run_trade(sym, "SELL" if d < 0 else "BUY", size, stop_price=stop, strategy=sid)
             buys += 1  # count attempts too: a timed-out order may still fill
             s_buys += 1
             held.add(sym)
             ibkr.ib.sleep(1)
-            qty = ibkr.position_qty(sym)
+            qty = ibkr.position_qty(sym) * d
             if qty <= 0:
-                log("entry_unfilled", symbol=sym, strategy=sid, result=result, output=out[-500:])
+                log("entry_unfilled", symbol=sym, strategy=sid, side=side, result=result, output=out[-500:])
                 continue
             fill = float(result["fill_price"]) if result and result.get("fill_price") else price
-            t = ibkr.place_stop(sym, qty, stop)
-            pos = new_position(sym, fill, qty, stop, t, strategy=sid,
+            t = ibkr.place_stop(sym, qty, stop, action="BUY" if d < 0 else "SELL")
+            pos = new_position(sym, fill, qty, stop, t, strategy=sid, side=side,
                                exit_rules=None if cfg["type"] == "trend_join" else cfg["exit"])
             positions.append(pos)
             save_positions(positions)  # persist right away so a crash later this run can't orphan it
-            log("entry", symbol=sym, strategy=sid, qty=qty, price=fill, stop=stop, R=pos["R"], stop_order_id=t.order.orderId)
-            safe_notify(f"BUY {sym} · {cfg['name']}", f"@ ${fill:.2f}, stop ${stop:.2f}, qty {qty}")
+            log("entry", symbol=sym, strategy=sid, side=side, qty=qty, price=fill, stop=stop, R=pos["R"], stop_order_id=t.order.orderId)
+            safe_notify(f"{'SHORT' if d < 0 else 'BUY'} {sym} · {cfg['name']}", f"@ ${fill:.2f}, stop ${stop:.2f}, qty {qty}")
 
 
 # ---------------------------------------------------------------- main

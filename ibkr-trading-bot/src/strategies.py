@@ -119,6 +119,27 @@ TEMPLATES = {
         ],
         "overrides": {"earliest_entry_et": "10:00"},
     },
+    "pm_break": {
+        "name": "Premarket High/Low Break (1-min)",
+        "summary": "Breakout: after price breaks the premarket high, buys when the 2nd one-minute candle also closes above "
+                   "it; stop below that candle's low. Breakdown: mirror image below the premarket low, sold short; "
+                   "stop above that candle's high.",
+        "timeframe": "1m",
+        "fields": [
+            _f("direction", "Trade", "select", "both",
+               opts=[["both", "Breakout (long) and breakdown (short)"], ["long", "Breakout of premarket high (long)"],
+                     ["short", "Breakdown of premarket low (short)"]]),
+            _f("confirm_bars", "Enter after this many 1-min closes beyond the level", "num", 2,
+               "2 = the breakout candle plus the 2nd candle that stays above/below", step=1, min=1, max=5),
+            _f("fresh_bars", "Still enter up to N candles after confirmation", "num", 1, "1 = only right at confirmation", step=1, min=1, max=5),
+            _f("stop_rule", "Stop at", "select", "confirm_bar", group="Exits",
+               opts=[["confirm_bar", "Beyond the confirming 1-min candle (its low / high)"], ["run_extreme", "Beyond the whole breakout move"]]),
+            _f("stop_cents", "Stop buffer $", "num", 0.01, group="Exits", step=0.01, min=0),
+            _f("min_pm_range_pct", "Skip if premarket range under %", "num", 0.0, "0 = off", step=0.25, min=0),
+        ],
+        "overrides": {"above_vwap": False, "earliest_entry_et": "09:30", "latest_entry_et": "11:00",
+                      "partial_R": 1.0, "breakeven_R": 1.0},
+    },
     # ---- HumbledTrader strategies (from the user's summary; every judgement word is a setting)
     "ht_vwap_reclaim": {
         "name": "HT_VWAP_Reclaim_Long",
@@ -264,7 +285,7 @@ def config(s: dict, rules: dict) -> dict:
     if s["type"] == "trend_join":
         tf, ex = rules["time_filter"], rules["exit"]
         return {"id": s["id"], "name": s.get("name", "Trend Join Long"), "type": "trend_join",
-                "universe": "gappers", "tickers": [],
+                "universe": "gappers", "tickers": [], "timeframe": "5m",
                 "earliest_entry_et": tf["earliest_entry_et"], "latest_entry_et": tf["latest_entry_et"],
                 "min_price": float(rules["universe_filters"]["min_price_usd"]),
                 "risk_pct": float(rules["risk"]["max_risk_per_trade_pct"]), "max_trades_per_day": 99,
@@ -273,7 +294,7 @@ def config(s: dict, rules: dict) -> dict:
                          "breakeven_trigger_R": ex["breakeven_trigger_R"], "take_profit_R": 0, "trail": True}}
     p = s["params"]
     return {"id": s["id"], "name": s.get("name") or TEMPLATES[s["type"]]["name"], "type": s["type"], "params": p,
-            "universe": p["universe"],
+            "universe": p["universe"], "timeframe": TEMPLATES[s["type"]].get("timeframe", "5m"),
             "tickers": _tickers(p),
             "earliest_entry_et": p["earliest_entry_et"], "latest_entry_et": p["latest_entry_et"],
             "min_price": float(p["min_price"]), "risk_pct": float(p["risk_pct"]),
@@ -333,7 +354,7 @@ def _crossed_within(above: pd.Series, bars: int) -> bool:
 # ---------------------------------------------------------------- evaluation
 
 def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: float, today: date,
-             rules: dict, now_t: time, symbol: str = "") -> dict:
+             rules: dict, now_t: time, symbol: str = "", bars_1m: pd.DataFrame | None = None) -> dict:
     """{'pass', 'reasons', 'metrics' (incl. 'stop')}: every check is listed so the app shows why."""
     if cfg["type"] == "trend_join":
         res = evaluate_filters(daily, intraday, price, today, rules)
@@ -365,7 +386,7 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
         rv = compute_rvol(intraday, today, 14)
         m["rvol"] = rv
         checks.append(("volume", not math.isnan(rv) and rv >= float(p["min_rvol"]), f"RVOL {rv:.2f} vs min {float(p['min_rvol']):.1f}"))
-    if p["above_vwap"]:
+    if p["above_vwap"] and cfg["type"] != "pm_break":  # pm_break checks VWAP on the trade's side itself
         vw = vwap(today_rth)
         m["vwap"] = vw
         checks.append(("vwap", price > vw, f"price {price:.2f} vs VWAP {vw:.2f}"))
@@ -421,7 +442,13 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
         level = {"ema": float(e.iloc[-1])}.get(p["stop_rule"])
 
     stop = None
-    if kind == "ht_vwap_reclaim":
+    if kind == "pm_break":
+        if p["above_vwap"]:
+            m["vwap"] = vwap(today_rth)
+        stop = _pm_break(p, bars_1m if bars_1m is not None else intraday, today, price, checks, m)
+        if stop is None:
+            return {"pass": False, "reasons": [f"{n} {'ok' if ok else 'FAIL'}: {d}" for n, ok, d in checks], "metrics": m}
+    elif kind == "ht_vwap_reclaim":
         stop = _ht_vwap_reclaim(p, today_rth, completed, price, checks, m)
     elif kind == "ht_buy_dip":
         stop = _ht_buy_dip(p, prior, completed, price, symbol, checks, m)
@@ -433,7 +460,10 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
             level = float(completed["Low"].iloc[-3:].min()) if len(completed) else m["low_of_day"]
         stop = round(level * (1 - float(p["stop_buffer_pct"]) / 100), 2)
     m["stop"] = stop
-    checks.append(("stop", stop < price, f"stop {stop:.2f} below price {price:.2f}"))
+    if m.get("side") == "short":
+        checks.append(("stop", stop > price, f"stop {stop:.2f} above price {price:.2f}"))
+    else:
+        checks.append(("stop", stop < price, f"stop {stop:.2f} below price {price:.2f}"))
 
     reasons = [f"{name} {'ok' if ok else 'FAIL'}: {detail}" for name, ok, detail in checks]
     return {"pass": bool(all(ok for _, ok, _ in checks)), "reasons": reasons, "metrics": m}
@@ -516,3 +546,55 @@ def _ht_buy_dip(p, prior, completed, price, symbol, checks, m) -> float | None:
         checks.append(("stabilized", recent_low >= low_before and recent_low >= support - float(p["stop_cents"]),
                        f"no new low in the last {n} bars ({recent_low:.2f} vs {low_before:.2f})"))
     return round(support - float(p["stop_cents"]), 2)
+
+
+# ---------------------------------------------------------------- premarket high/low break (1-minute)
+
+def _pm_break(p, bars, today, price, checks, m) -> float | None:
+    """Breakout: the last `confirm_bars` completed 1-min candles all closed above the premarket high (the first of
+    them being the break), confirmed no more than `fresh_bars`-1 candles ago. Stop below the confirming candle's
+    low. Breakdown (short) is the mirror image below the premarket low. Returns None when there's no setup."""
+    day = _day(bars, today)
+    pm = day[(day.index.time >= time(4, 0)) & (day.index.time < time(9, 30))]
+    if pm.empty:
+        checks.append(("premarket", False, "no premarket trading"))
+        return None
+    pmh, pml = float(pm["High"].max()), float(pm["Low"].min())
+    m.update(pm_high=pmh, pm_low=pml)
+    if float(p["min_pm_range_pct"]) > 0:
+        rng = (pmh / pml - 1) * 100
+        checks.append(("pm range", rng >= float(p["min_pm_range_pct"]), f"premarket range {rng:.2f}%"))
+    done = day[day.index.time >= time(9, 30)].iloc[:-1]  # completed regular-hours candles (newest is forming)
+    confirm, fresh = int(p["confirm_bars"]), int(p["fresh_bars"])
+
+    def run_length(beyond: pd.Series) -> int:  # consecutive closes beyond the level, ending at the newest candle
+        n = 0
+        for flag in reversed(beyond.tolist()):
+            if not flag:
+                break
+            n += 1
+        return n
+
+    sides = {"both": ["long", "short"], "long": ["long"], "short": ["short"]}[p["direction"]]
+    runs = {"long": run_length(done["Close"] > pmh), "short": run_length(done["Close"] < pml)}
+    for side in sides:
+        n = runs[side]
+        if not (confirm <= n <= confirm + fresh - 1):
+            continue
+        level = pmh if side == "long" else pml
+        run = done.iloc[-n:]
+        confirm_bar = run.iloc[confirm - 1]  # e.g. the 2nd candle that stayed beyond the level
+        m["side"] = side
+        word = "above the premarket high" if side == "long" else "below the premarket low"
+        checks.append(("break", (price > level) if side == "long" else (price < level),
+                       f"{n} one-minute closes {word} {level:.2f} (needs {confirm}); price {price:.2f}"))
+        if p["above_vwap"] and "vwap" in m:
+            ok = price > m["vwap"] if side == "long" else price < m["vwap"]
+            checks.append(("vwap", ok, f"price {price:.2f} {'above' if side == 'long' else 'below'} VWAP {m['vwap']:.2f}"))
+        buf = float(p["stop_cents"])
+        if side == "long":
+            return round((float(confirm_bar["Low"]) if p["stop_rule"] == "confirm_bar" else float(run["Low"].min())) - buf, 2)
+        return round((float(confirm_bar["High"]) if p["stop_rule"] == "confirm_bar" else float(run["High"].max())) + buf, 2)
+    checks.append(("break", False, f"no fresh confirmed break: premarket high {pmh:.2f}, low {pml:.2f}; closes beyond: "
+                                   f"{runs['long']} above / {runs['short']} below (needs {confirm})"))
+    return None

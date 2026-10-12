@@ -71,13 +71,21 @@ together; every trade is tagged with its strategy, and the performance view can 
 | EMA Cross | the fast EMA crosses above the slow EMA (5-minute bars) |
 | Price crosses EMA | a 5-minute bar closes back above the EMA |
 | EMA Bounce | in an uptrend, price touches the EMA and then takes out the last bar's high |
+| Premarket High/Low Break (1-min) | long: the 2nd one-minute candle closes above the premarket high (stop below that candle's low); short: the mirror image below the premarket low |
 | HT_VWAP_Reclaim_Long | HumbledTrader: a VWAP reclaim on a volume push, or a pullback to VWAP as selling dries up; stop below the pullback low, never on VWAP |
 | HT_BuyTheDip_Support | HumbledTrader: a stock that ran up pulls back to your marked support (or the auto breakout level) and stops making new lows; stop 10-15¢ below support |
 
 Every new strategy has: stocks to watch (scanner gappers or your own ticker list), optional filters (gap, relative
 volume, VWAP, daily uptrend), its own entry window, stop rule, partial / breakeven / full take-profit / trailing
 exits, risk per trade and max trades per day. New strategies start **off**. Global limits (max open positions,
-position size cap, `MAX_TRADES_PER_DAY`, the 15:51 force-close) apply to all of them. Long only.
+position size cap, `MAX_TRADES_PER_DAY`, the 15:51 force-close) apply to all of them.
+
+**Shorts:** strategies can sell short (currently the premarket breakdown). Shorts are mirrored longs: buy-stop above
+the entry placed right after the fill, partial cover / breakeven / trailing above 5-minute swing highs, the same risk
+sizing, end-of-day cover, and P&L / R counted flat-to-flat. Paper accounts don't model real borrow availability.
+
+**Timing:** the cycle runs every minute; 5-minute strategies act only on 5-minute marks, 1-minute strategies every
+minute (1-minute bars from Yahoo, which can lag slightly). Re-install the schedule after updating.
 Settings are stored in `strategies.json` (kept by updates).
 
 ## Trade charts

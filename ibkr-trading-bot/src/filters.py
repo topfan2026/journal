@@ -119,7 +119,7 @@ def initial_stop(low_of_day: float, rule: str = "lod_minus_1pct") -> float:
 def position_size(price: float, stop: float, portfolio: float, risk_pct: float,
                   max_position_pct: float, max_trade_usd: float) -> int:
     """Shares = risk budget / R, capped by % of portfolio and by MAX_TRADE_SIZE_USD."""
-    r = price - stop
+    r = abs(price - stop)  # long or short
     if r <= 0 or price <= 0:
         return 0
     by_risk = math.floor(portfolio * risk_pct / 100 / r)
@@ -136,6 +136,17 @@ def swing_lows(bars: pd.DataFrame, left: int = 2, right: int = 2) -> list[tuple[
         neighbours = lows[i - left:i] + lows[i + 1:i + 1 + right]
         if all(lows[i] < n for n in neighbours):
             out.append((bars.index[i], float(lows[i])))
+    return out
+
+
+def swing_highs(bars: pd.DataFrame, left: int = 2, right: int = 2) -> list[tuple[pd.Timestamp, float]]:
+    """Mirror of swing_lows: bars whose high is strictly higher than the bars around them."""
+    highs = bars["High"].tolist()
+    out = []
+    for i in range(left, len(highs) - right):
+        neighbours = highs[i - left:i] + highs[i + 1:i + 1 + right]
+        if all(highs[i] > n for n in neighbours):
+            out.append((bars.index[i], float(highs[i])))
     return out
 
 

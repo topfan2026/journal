@@ -144,7 +144,9 @@ def todays_buy_count(trades: list[dict] | None = None, strategy: str | None = No
     """Today's BUYs; with `strategy`, only that strategy's (untagged old rows count as Trend Join Long)."""
     today = now_et().date().isoformat()
     trades = read_trades() if trades is None else trades
-    return sum(1 for r in trades if r.get("side") == "BUY" and r.get("timestamp_iso", "").startswith(today)
+    def is_entry(r):  # entries carry the initial stop (long BUY or short SELL); old rows were all-long BUYs
+        return bool(r.get("stop_price")) or (r.get("side") == "BUY" and not r.get("strategy"))
+    return sum(1 for r in trades if is_entry(r) and r.get("timestamp_iso", "").startswith(today)
                and (strategy is None or (r.get("strategy") or "trend_join_long") == strategy))
 
 

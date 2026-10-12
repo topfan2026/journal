@@ -147,8 +147,8 @@ def performance(rows: list[dict]) -> dict:
     """Closed trades (partial exits merged into one trade) for any list of
     {timestamp_iso, symbol, side, size, fill_price, stop_price?} rows. The page computes the
     metrics and charts from these, so its date-range buttons work instantly."""
-    from compute_perf import aggregate, group_trades, pair_trades
-    trades = group_trades(pair_trades(rows))
+    from compute_perf import aggregate, bot_trades
+    trades = bot_trades(rows)
     today = now_et().date().isoformat()
     return {"all": aggregate(trades), "today": aggregate([c for c in trades if c["exit_time"].startswith(today)]),
             "closed": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in c.items()} for c in trades[-3000:]]}
@@ -268,7 +268,7 @@ def build_state() -> dict:
         if bot:
             r = bot["R"] or 1
             row.update(stop=bot["stop"], entry=bot["entry_price"], state=bot["state"],
-                       r_now=round((row["price"] - bot["entry_price"]) / r, 2) if row.get("price") else None)
+                       r_now=round((row["price"] - bot["entry_price"]) / r * (-1 if bot.get("side") == "short" else 1), 2) if row.get("price") else None)
     gate = time_gate(now_et(), rules)
     return {
         "now": now_et().strftime("%a %b %d, %H:%M:%S ET"),

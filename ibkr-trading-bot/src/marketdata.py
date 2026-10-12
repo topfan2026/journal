@@ -28,9 +28,9 @@ def daily_bars(symbol: str, period: str = "1y") -> pd.DataFrame:
     return df
 
 
-def intraday_bars(symbol: str, period: str = "30d") -> pd.DataFrame:
-    """5-minute bars incl. pre/post market, ET index. yfinance keeps 60 days of 5m history."""
-    df = yf.Ticker(yahoo_symbol(symbol)).history(period=period, interval="5m", prepost=True, auto_adjust=True)
+def intraday_bars(symbol: str, period: str = "30d", interval: str = "5m") -> pd.DataFrame:
+    """Intraday bars incl. pre/post market, ET index. yfinance keeps 60 days of 5m and 7 days of 1m history."""
+    df = yf.Ticker(yahoo_symbol(symbol)).history(period=period, interval=interval, prepost=True, auto_adjust=True)
     df = _clean(df)
     if df.empty:
         return df

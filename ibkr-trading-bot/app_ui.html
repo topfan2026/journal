@@ -210,7 +210,7 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
   </div>
   <div id="alerts"></div>
   <section class="card" id="stratCard" style="margin-bottom:12px">
-    <h2>Strategies <small>switch on to paper trade · changes apply on the next 5-minute cycle</small></h2>
+    <h2>Strategies <small>switch on to paper trade · changes apply on the next cycle (every minute)</small></h2>
     <div id="stratList"></div>
     <div class="body" style="border-top:1px solid var(--line)">
       <div class="form-row" style="margin:0">
@@ -471,18 +471,20 @@ function hbarChart(el, items, {label, value, tipFn, empty, colorFn, fmt = money0
 
 /* ---------------------------------------------------------------- position ladder */
 function ladder(p, partialR, beR) {
-  const entry = p.entry, stop = p.stop, R = p.R || (entry - (p.initial_stop ?? stop)), price = p.price;
+  const d = p.side === "short" ? -1 : 1;  // shorts: stop above, targets below
+  const entry = p.entry, stop = p.stop, R = p.R || Math.abs(entry - (p.initial_stop ?? stop)), price = p.price;
   if (!entry || !R || R <= 0) return "";
-  const pts = {stop, entry, partial: entry + partialR * R, be: entry + beR * R};
-  const vals = [stop, entry, pts.partial, pts.be, entry + 2 * R, price].filter(v => v != null && !isNaN(v));
+  const pts = {stop, entry, partial: entry + d * partialR * R, be: entry + d * beR * R};
+  const vals = [stop, entry, pts.partial, pts.be, entry + d * 2 * R, price].filter(v => v != null && !isNaN(v));
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * .06 || 1;
   const L = 12, Rm = 12, h = 64, x = v => L + (v - (lo - pad)) / ((hi + pad) - (lo - pad)) * (W - L - Rm), yb = 30;
   const mark = (v, lbl, color, up) => `<g data-tip="${esc(lbl + ": $" + num(v))}"><line x1="${x(v)}" x2="${x(v)}" y1="${yb - 9}" y2="${yb + 9}" stroke="${color}" stroke-width="2"/>
     <text x="${x(v)}" y="${up ? yb - 14 : yb + 22}" text-anchor="middle">${esc(lbl)}</text></g>`;
-  const pc = price > entry ? css("--good") : css("--bad");
+  const pc = (price - entry) * d > 0 ? css("--good") : css("--bad");
+  const riskA = Math.min(x(stop), x(entry)), rewardA = d > 0 ? x(entry) : x(lo), rewardB = d > 0 ? x(hi) : x(entry);
   return `<svg class="chart" viewBox="0 0 ${W} ${h}" role="img" aria-label="Price ladder for ${esc(p.symbol)}">
-    <rect x="${x(stop)}" y="${yb - 3}" width="${Math.max(0, x(entry) - x(stop))}" height="6" rx="3" fill="${css("--dd")}"/>
-    <rect x="${x(entry)}" y="${yb - 3}" width="${Math.max(0, x(hi) - x(entry))}" height="6" rx="3" fill="${css("--area")}"/>
+    <rect x="${riskA}" y="${yb - 3}" width="${Math.abs(x(entry) - x(stop))}" height="6" rx="3" fill="${css("--dd")}"/>
+    <rect x="${rewardA}" y="${yb - 3}" width="${Math.max(0, rewardB - rewardA)}" height="6" rx="3" fill="${css("--area")}"/>
     ${mark(stop, "stop", css("--bad"), false)}${mark(entry, "entry", css("--ink"), true)}
     ${mark(pts.partial, `+${partialR}R`, css("--muted"), false)}${mark(pts.be, `+${beR}R`, css("--muted"), true)}
     ${price ? `<g data-tip="${esc("Now: $" + num(price))}"><circle cx="${x(price)}" cy="${yb}" r="7" fill="${pc}" stroke="${css("--card")}" stroke-width="2.5"/>
@@ -540,6 +542,7 @@ function describe(type, v, tpl) {
     ema_cross: `buys when EMA${v.fast} crosses above EMA${v.slow} on 5-min bars`,
     price_cross_ema: `buys when a 5-min bar closes back above EMA${v.ema}`,
     ema_bounce: `in an uptrend (EMA${v.ema} > EMA${v.trend_ema}) buys a bounce after price touches EMA${v.ema}`,
+    pm_break: `on 1-minute candles, ${{both: "buys a breakout of the premarket high or shorts a breakdown of the premarket low", long: "buys a breakout of the premarket high", short: "shorts a breakdown of the premarket low"}[v.direction]} once ${v.confirm_bars} candles close beyond it; stop ${v.stop_rule === "confirm_bar" ? "beyond the confirming candle" : "beyond the whole move"} (+$${v.stop_cents})`,
     ht_vwap_reclaim: `${{both: "takes both setups", reclaim: "only the reclaim", pullback: "only the pullback"}[v.mode]}: a VWAP reclaim on ≥ ${v.vol_push}× volume, or a pullback to VWAP on ≤ ${v.dry_up}× volume that closes back above; stop below the pullback low and ≥ ${v.stop_below_vwap_pct}% under VWAP`,
     ht_buy_dip: `buys within ${v.near_pct}% above ${v.levels ? "your marked support (" + esc(v.levels) + ")" : "the automatic breakout level (after a ≥ " + v.runup_pct + "% run-up)"} once there's no new low for ${v.stable_bars} bars; stop $${v.stop_cents} below support`,
   }[type] || "";
@@ -888,10 +891,10 @@ function render(s) {
   $("posNote").textContent = live.connected ? `${port.length} open` : "from bot records (TWS offline)";
   $("positions").innerHTML = rows.length ? rows.map(p => {
     const b = botBy[p.symbol], entry = p.entry ?? p.avg_cost;
-    return `<div class="lrow"${chartAttrs(p.symbol, b ? b.entry_time_iso.slice(0, 10) : etToday(), "bot", {strategy: b && b.strategy})}><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${p.bot || b ? `<span class="chip bot">BOT${b && b.strategy ? " · " + esc(sNames[b.strategy] || b.strategy) : ""}</span>` : '<span class="chip">manual</span>'}
+    return `<div class="lrow"${chartAttrs(p.symbol, b ? b.entry_time_iso.slice(0, 10) : etToday(), "bot", {strategy: b && b.strategy})}><div class="lhead"><span class="sym">${esc(p.symbol)}</span>${(b && b.side === "short") || p.qty < 0 ? ' <span class="chip">SHORT</span>' : ""}${p.bot || b ? `<span class="chip bot">BOT${b && b.strategy ? " · " + esc(sNames[b.strategy] || b.strategy) : ""}</span>` : '<span class="chip">manual</span>'}
       <span class="meta">${p.qty} sh @ ${num(entry)}${p.price ? ` · now ${num(p.price)}` : ""}${b ? ` · stop ${num(b.stop)} · ${esc(b.state.replace(/_/g, " "))}` : ""}</span>
       <span class="pnl ${cls(p.unrealized)}">${p.unrealized != null ? money(p.unrealized) : ""}${p.r_now != null ? ` · ${num(p.r_now)}R` : ""}</span></div>
-      ${b ? ladder({symbol: p.symbol, entry: b.entry_price, stop: b.stop, R: b.R, initial_stop: b.initial_stop, price: p.price},
+      ${b ? ladder({symbol: p.symbol, side: b.side, entry: b.entry_price, stop: b.stop, R: b.R, initial_stop: b.initial_stop, price: p.price},
                    +((b.exit || {}).partial_profit_trigger_R ?? ex.partial_profit_trigger_R), +((b.exit || {}).breakeven_trigger_R ?? ex.breakeven_trigger_R)) : ""}</div>`;
   }).join("") : `<div class="empty">No open positions.</div>`;
 

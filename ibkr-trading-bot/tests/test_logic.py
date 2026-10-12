@@ -88,7 +88,8 @@ def test_sizing_caps():
     assert position_size(100, 99, 25000, 1.0, 10, 2500) == 25
     # risk-limited: R $20 -> 12 sh
     assert position_size(100, 80, 25000, 1.0, 10, 2500) == 12
-    assert position_size(100, 101, 25000, 1.0, 10, 2500) == 0
+    assert position_size(100, 101, 25000, 1.0, 10, 2500) == 25  # short: stop above, same risk math
+    assert position_size(100, 100, 25000, 1.0, 10, 2500) == 0
     assert initial_stop(50.0) == pytest.approx(49.5)
 
 

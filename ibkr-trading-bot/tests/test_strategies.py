@@ -187,3 +187,58 @@ def test_levels_parse_and_watch_list():
     assert st.parse_levels("nvda:182.5; PLTR : 171, bad, AMD:x") == {"NVDA": 182.5, "PLTR": 171.0}
     c = cfg("ht_buy_dip", tickers="META", levels="NVDA:182.5")
     assert c["tickers"] == ["META", "NVDA"] and c["universe"] == "custom"
+
+
+def one_min(pre, rth, day=TODAY):
+    """Premarket 1-min bars from 8:00 + regular-hours 1-min bars from 9:30 (last one = still forming).
+    Each item is (open, high, low, close)."""
+    rows = []
+    for i, (o, h, l, c) in enumerate(pre):
+        rows.append((datetime(day.year, day.month, day.day, 8, 0, tzinfo=ET) + timedelta(minutes=i), o, h, l, c, 100))
+    for i, (o, h, l, c) in enumerate(rth):
+        rows.append((datetime(day.year, day.month, day.day, 9, 30, tzinfo=ET) + timedelta(minutes=i), o, h, l, c, 1000))
+    return pd.DataFrame(rows, columns=["t", "Open", "High", "Low", "Close", "Volume"]).set_index("t")
+
+
+PRE = [(100, 101.0, 99.5, 100.2), (100.2, 100.8, 99.0, 99.8), (99.8, 100.5, 99.6, 100.1)]  # PM high 101, low 99
+
+
+def pm(rth, price, **params):
+    bars = one_min(PRE, rth)
+    five = bars  # 5-minute frame only feeds the common filters here
+    return st.evaluate(cfg("pm_break", min_rvol=0, **params), make_daily(), five, price, TODAY, RULES, time(9, 40), bars_1m=bars)
+
+
+def test_pm_breakout_enters_on_second_close_above_with_stop_under_that_candle():
+    rth = [(100.2, 100.6, 100.0, 100.5), (100.5, 101.4, 100.4, 101.3),  # 2nd candle: first close above 101 (the break)
+           (101.3, 101.6, 101.05, 101.5),                               # 3rd: stays above -> confirmed
+           (101.5, 101.7, 101.4, 101.6)]                                # forming
+    res = pm(rth, 101.6)
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["side"] == "long" and res["metrics"]["pm_high"] == 101.0
+    assert res["metrics"]["stop"] == pytest.approx(101.04)  # low of the confirming candle - 1 cent
+    # one candle later it's no longer fresh (fresh_bars = 1)
+    late = pm(rth[:-1] + [(101.5, 101.8, 101.3, 101.7), (101.7, 101.8, 101.6, 101.7)], 101.7)
+    assert not late["pass"]
+    # only one close above so far: wait
+    early = pm(rth[:2] + [(101.3, 101.4, 101.0, 101.2)], 101.3)
+    assert not early["pass"] and "no fresh confirmed break" in " ".join(early["reasons"])
+
+
+def test_pm_breakdown_goes_short_with_stop_above_the_candle():
+    rth = [(99.6, 99.8, 99.3, 99.4), (99.4, 99.5, 98.7, 98.8),   # first close below 99 (the break)
+           (98.8, 98.95, 98.5, 98.6),                            # 2nd stays below -> confirmed
+           (98.6, 98.7, 98.4, 98.5)]                             # forming
+    res = pm(rth, 98.5)
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["side"] == "short" and res["metrics"]["stop"] == pytest.approx(98.96)
+    assert not pm(rth, 98.5, direction="long")["pass"]  # long-only setting ignores breakdowns
+
+
+def test_pm_break_needs_premarket_and_respects_vwap_side():
+    bars = one_min([], [(100, 100.5, 99.5, 100.2), (100.2, 100.4, 100, 100.3)])
+    res = st.evaluate(cfg("pm_break", min_rvol=0), make_daily(), bars, 100.3, TODAY, RULES, time(9, 40), bars_1m=bars)
+    assert not res["pass"] and "no premarket trading" in " ".join(res["reasons"])
+    rth = [(100.2, 100.6, 100.0, 100.5), (100.5, 101.4, 100.4, 101.3), (101.3, 101.6, 101.05, 101.5), (101.5, 101.7, 101.4, 101.6)]
+    res = pm(rth, 101.6, above_vwap=True)
+    assert any(r.startswith("vwap") for r in res["reasons"])

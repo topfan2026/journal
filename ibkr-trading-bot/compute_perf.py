@@ -77,6 +77,26 @@ def group_trades(pieces: list[dict]) -> list[dict]:
     return sorted(trades, key=lambda t: t["exit_time"])
 
 
+def bot_trades(rows: list[dict]) -> list[dict]:
+    """The bot's trades.csv as round trips (flat to flat, long or short), with R from the entry's stop."""
+    from src.live_import import round_trips
+    fills = []
+    for i, r in enumerate(rows):
+        qty, px = _f(r.get("size")), _f(r.get("fill_price"))
+        if qty <= 0 or px <= 0 or r.get("side") not in ("BUY", "SELL"):
+            continue
+        fills.append({"id": str(i), "time": r["timestamp_iso"], "symbol": r["symbol"], "asset": "STK", "side": r["side"],
+                      "qty": qty, "price": px, "commission": 0.0, "realized": None, "mult": 1.0, "account": "",
+                      "open_close": "", "currency": "", "stop": _f(r.get("stop_price"), 0) or None,
+                      "strategy": r.get("strategy") or "trend_join_long"})
+    trades, _ = round_trips(fills)
+    for t in trades:
+        if t.get("R") is None:  # no stop logged: 1% of entry as a proxy risk, as before
+            entry = t["buy"] if t["side"] == "long" else t["sell"]
+            t["R"] = t["pnl"] / (entry * 0.01 * t["qty"]) if entry else 0.0
+    return trades
+
+
 def aggregate(closed: list[dict]) -> dict:
     wins = [c for c in closed if c["pnl"] > 0]
     losses = [c for c in closed if c["pnl"] <= 0]
@@ -177,7 +197,7 @@ def render_html(today: str, agg: dict, all_closed: list[dict], open_rows: list[d
 
 def main() -> int:
     today = now_et().date().isoformat()
-    all_closed = group_trades(pair_trades(read_trades()))
+    all_closed = bot_trades(read_trades())
     todays = [c for c in all_closed if c["exit_time"].startswith(today)]
     agg = aggregate(todays)
     summary = to_py({"date": today, **agg})

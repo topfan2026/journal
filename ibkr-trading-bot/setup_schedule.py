@@ -100,7 +100,8 @@ def main() -> int:
         local = et_to_local(task["et"])
         cmd = ["schtasks", "/create", "/tn", task["name"], "/tr", task["tr"], "/f"]
         if task.get("minute"):
-            cmd += ["/sc", "MINUTE", "/mo", "5", "/sd", local.strftime(date_fmt), "/st", local.strftime("%H:%M")]
+            # every minute: 1-minute strategies need it; 5-minute ones only act on 5-minute marks
+            cmd += ["/sc", "MINUTE", "/mo", "1", "/sd", local.strftime(date_fmt), "/st", local.strftime("%H:%M")]
         else:
             cmd += ["/sc", "WEEKLY", "/d", WEEKDAYS, "/st", local.strftime("%H:%M")]
         r = subprocess.run(cmd, check=False, capture_output=True, text=True)

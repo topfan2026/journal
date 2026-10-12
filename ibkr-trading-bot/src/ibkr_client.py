@@ -73,9 +73,9 @@ class IBKRClient:
         trade = self.ib.placeOrder(self.contract(symbol), order)
         return self.wait_settled(trade, timeout)
 
-    def place_stop(self, symbol: str, quantity: int, stop_price: float) -> Trade:
-        """Protective GTC sell stop. GTC so a crashed bot never leaves a position naked overnight."""
-        order = StopOrder("SELL", int(quantity), round_price(stop_price), tif="GTC", account=self.account)
+    def place_stop(self, symbol: str, quantity: int, stop_price: float, action: str = "SELL") -> Trade:
+        """Protective GTC stop (SELL for longs, BUY for shorts). GTC so a crash never leaves a position naked."""
+        order = StopOrder(action, int(quantity), round_price(stop_price), tif="GTC", account=self.account)
         trade = self.ib.placeOrder(self.contract(symbol), order)
         return self.wait_settled(trade, timeout=5, until_filled=False)
 
@@ -85,11 +85,11 @@ class IBKRClient:
                 return t
         return None
 
-    def modify_stop(self, symbol: str, order_id: int | None, quantity: int, stop_price: float) -> Trade:
+    def modify_stop(self, symbol: str, order_id: int | None, quantity: int, stop_price: float, action: str = "SELL") -> Trade:
         """Move/resize an existing stop in place (no unprotected gap); place a new one if it's gone."""
         existing = self.find_open_trade(order_id) if order_id else None
         if existing is None:
-            return self.place_stop(symbol, quantity, stop_price)
+            return self.place_stop(symbol, quantity, stop_price, action)
         order = existing.order
         order.totalQuantity = int(quantity)
         order.auxPrice = round_price(stop_price)

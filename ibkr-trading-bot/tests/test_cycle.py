@@ -15,21 +15,23 @@ from tests.test_logic import RULES, TODAY, make_daily, make_intraday
 class FakeIBKR:
     def __init__(self):
         self.held, self.prices, self.stops, self.calls, self.fill_list = {}, {}, {}, [], []
+        self.stop_actions = {}
         self.next_id = 100
         self.ib = SimpleNamespace(fills=lambda: self.fill_list, sleep=lambda s: None)
 
     def _trade(self, oid):
         return SimpleNamespace(order=SimpleNamespace(orderId=oid, permId=oid + 9000))
 
-    def place_stop(self, sym, qty, px):
+    def place_stop(self, sym, qty, px, action="SELL"):
         self.next_id += 1
+        self.stop_actions[self.next_id] = action
         self.stops[self.next_id] = (sym, qty, round(px, 2))
         self.calls.append(("place_stop", sym, qty, round(px, 2)))
         return self._trade(self.next_id)
 
-    def modify_stop(self, sym, oid, qty, px):
+    def modify_stop(self, sym, oid, qty, px, action="SELL"):
         if oid not in self.stops:
-            return self.place_stop(sym, qty, px)
+            return self.place_stop(sym, qty, px, action)
         self.stops[oid] = (sym, qty, round(px, 2))
         self.calls.append(("modify_stop", sym, qty, round(px, 2)))
         return self._trade(oid)
@@ -180,7 +182,7 @@ def test_custom_strategy_buys_with_its_own_tag_exits_and_cap(env, monkeypatch):
     st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "name": "Trend Join Long", "enabled": False}, orb])
     monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
     monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d": make_intraday())
-    monkeypatch.setattr(st, "evaluate", lambda cfg, d, i, price, today, rules, t, symbol="": {"pass": True, "reasons": [], "metrics": {"stop": price - 1}})
+    monkeypatch.setattr(st, "evaluate", lambda cfg, d, i, price, today, rules, t, symbol="", bars_1m=None: {"pass": True, "reasons": [], "metrics": {"stop": price - 1}})
     positions = []
     cycle.entry_scan(f, positions, RULES)  # 11:00 ET in the fixture: inside ORB's window
     assert [p["symbol"] for p in positions] == ["AAA", "BBB"]  # per-strategy cap of 2
@@ -220,3 +222,88 @@ def test_old_trades_csv_is_migrated(env):
                          "fill_price": 101, "strategy": "trend_join_long"})
     assert [r["strategy"] for r in common.read_trades()] == ["", "trend_join_long"]
     assert common.todays_buy_count(strategy="trend_join_long") == 1  # untagged old BUY counts as Trend Join
+
+
+def short_pos(entry=100.0, stop=102.0, qty=30, oid=None, **kw):
+    p = pos(entry=entry, stop=stop, qty=qty, oid=oid, **kw)
+    p.update(side="short", R=abs(entry - stop), strategy="pm_break_1")
+    return p
+
+
+def test_short_entry_sells_and_places_buy_stop(env, monkeypatch):
+    from src import strategies as st
+    f = env.fake
+    f.prices["AAA"] = 50.0
+    s = {"id": "pm_break_1", "type": "orb", "name": "PM break", "enabled": True,
+         "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "15:00"}}
+    st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False}, s])
+    monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
+    monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d", interval="5m": make_intraday())
+    monkeypatch.setattr(st, "evaluate", lambda *a, **k: {"pass": True, "reasons": [], "metrics": {"stop": 51.0, "side": "short"}})
+    positions = []
+    cycle.entry_scan(f, positions, RULES)
+    p = positions[0]
+    assert env.trades == [("SELL", "AAA", 50)]  # $125 risk / $1 = 125 sh, capped at $2,500 / $50 = 50 sh
+    assert p["side"] == "short" and p["qty"] == 50 and f.held["AAA"] == -50
+    assert f.stop_actions[p["stop_order_id"]] == "BUY" and f.stops[p["stop_order_id"]] == ("AAA", 50, 51.0)
+    row = common.read_trades()[-1]
+    assert row["side"] == "SELL" and row["stop_price"] and common.todays_buy_count() == 1  # a short entry counts
+
+
+def test_short_partial_breakeven_and_trail_mirror_longs(env, monkeypatch):
+    f = env.fake
+    t = f.place_stop("AAA", 30, 102.0, action="BUY")
+    f.held["AAA"], f.prices["AAA"] = -30, 97.5  # +1.25R in the short's favour (R = 2)
+    flat_bars(monkeypatch)
+    p = short_pos(oid=t.order.orderId)
+    cycle.manage(f, [p], RULES)
+    assert env.trades == [("BUY", "AAA", 10)]  # covered a third
+    assert p["qty"] == 20 and p["stop"] == 100.0 and p["state"] == "post_breakeven"  # stop moved DOWN to entry
+    # trail above a swing high, only downwards
+    highs = [96, 97, 98.5, 97, 96, 95.5]
+    idx = pd.date_range("2026-10-12 10:00", periods=len(highs), freq="5min", tz=ET)
+    df = pd.DataFrame({"Open": 1.0, "High": highs, "Low": 1.0, "Close": 1.0, "Volume": 1}, index=idx)
+    monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="1d", interval="5m": df)
+    f.prices["AAA"] = 95.0
+    cycle.manage(f, [p], RULES)
+    assert p["stop"] == 98.51
+
+
+def test_short_stop_out_logs_a_buy_to_cover(env):
+    f = env.fake
+    t = f.place_stop("AAA", 20, 102.0, action="BUY")
+    p = short_pos(qty=20, oid=t.order.orderId)
+    f.fill_list.append(SimpleNamespace(contract=SimpleNamespace(symbol="AAA"), time=None,
+                                       execution=SimpleNamespace(side="BOT", orderId=t.order.orderId, permId=0, shares=20, price=102.05)))
+    f.held["AAA"] = 0
+    assert cycle.reconcile(f, [p]) == []
+    last = common.read_trades()[-1]
+    assert last["side"] == "BUY" and last["status"] == "StopFilled" and last["strategy"] == "pm_break_1"
+
+
+def test_force_close_covers_shorts(env):
+    f = env.fake
+    t = f.place_stop("AAA", 20, 102.0, action="BUY")
+    f.held["AAA"], f.prices["AAA"] = -20, 99.0
+    assert cycle.force_close(f, [short_pos(qty=20, oid=t.order.orderId)]) == []
+    assert env.trades == [("BUY", "AAA", 20)]
+
+
+def test_bot_trades_short_round_trip_r():
+    import compute_perf
+    rows = [{"timestamp_iso": "2026-10-12T09:41:00-04:00", "symbol": "AAA", "side": "SELL", "size": "30", "fill_price": "50", "stop_price": "51", "strategy": "pm_break_1"},
+            {"timestamp_iso": "2026-10-12T10:00:00-04:00", "symbol": "AAA", "side": "BUY", "size": "10", "fill_price": "49"},
+            {"timestamp_iso": "2026-10-12T10:30:00-04:00", "symbol": "AAA", "side": "BUY", "size": "20", "fill_price": "48"}]
+    [t] = compute_perf.bot_trades(rows)
+    assert t["side"] == "short" and t["pnl"] == pytest.approx(50) and t["R"] == pytest.approx(50 / 30)
+    assert t["strategy"] == "pm_break_1" and t["exits"] == 2
+
+
+def test_five_minute_strategies_wait_for_five_minute_marks(env, monkeypatch):
+    from src import strategies as st
+    st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False},
+             {"id": "orb_1", "type": "orb", "enabled": True,
+              "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "15:00"}}])
+    monkeypatch.setattr(cycle, "now_et", lambda: datetime(2026, 10, 12, 11, 3, tzinfo=ET))
+    monkeypatch.setattr(st, "evaluate", lambda *a, **k: pytest.fail("5-minute strategy evaluated at 11:03"))
+    cycle.entry_scan(env.fake, [], RULES)
