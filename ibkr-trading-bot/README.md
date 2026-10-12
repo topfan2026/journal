@@ -9,6 +9,7 @@ flattens everything at 15:51 ET, sends Telegram alerts and builds an HTML dashbo
 
 ## Setup (Windows)
 
+0. **Easiest:** double-click `SETUP.bat` in this folder. It does steps 2, 8 (Telegram settings), 9 and 10 for you.
 1. **TWS:** log into your paper account → *File > Global Configuration > API > Settings*:
    enable *ActiveX and Socket Clients*, *Allow connections from localhost only*, Socket Port **7497**,
    untick *Read-Only API*, make sure `127.0.0.1` is a Trusted IP. Restart TWS.
