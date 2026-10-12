@@ -59,6 +59,20 @@ Buttons: **Pause / Resume** (paused = no new entries; open trades keep their sto
 The app's TWS connection is **read-only** (client id 7), so it can't place orders. Its buttons are protected by a
 per-session token, so other websites can't trigger them.
 
+## Your live account (read-only analysis)
+
+In the app, switch **🤖 Bot · paper / 💼 My live account**. The live view shows the same charts and gauges for your real
+IBKR trades, kept completely separate from the bot's paper trades (`live_trades.csv`, never `trades.csv`).
+
+- **Upload:** drop an IBKR Activity Statement (CSV) or Flex Query export (CSV/XML) on the page. Re-uploading only adds
+  new trades. Several accounts (e.g. a Canadian and a US account) are kept apart, one account at a time, each in its
+  own currency; positions in different accounts are never netted.
+- **Automatic sync:** IBKR's Flex Web Service (read-only). Create an Activity Flex Query with the Trades section (XML),
+  enable the Flex Web Service, and paste the token and query ID into the app (stored in `.env` as `FLEX_TOKEN` and
+  `FLEX_QUERY_ID`). The app syncs at start-up and every 6 hours while open.
+- Trades are counted flat-to-flat (long or short), using IBKR's own realized P&L (net of commissions) when the file
+  has it. Positions opened before your file's date range are counted from IBKR's realized P&L only.
+
 ## Files
 
 | File | Role |

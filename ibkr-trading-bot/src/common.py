@@ -158,3 +158,19 @@ def read_watchlist() -> list[str]:
         if line:
             out.append(line)
     return out
+
+
+def set_env_values(values: dict[str, str]) -> None:
+    """Write KEY=value lines into .env (replacing existing keys, keeping everything else) and apply them now."""
+    lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
+    remaining = dict(values)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip()
+        if key in remaining:
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    out += [f"{k}={v}" for k, v in remaining.items()]
+    ENV_PATH.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.environ.update({k: str(v) for k, v in values.items()})

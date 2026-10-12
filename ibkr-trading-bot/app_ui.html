@@ -49,6 +49,18 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; margin-left: auto; }
 .seg button { border: 0; border-radius: 0; padding: 7px 12px; background: var(--card); color: var(--ink2); }
 .seg button.on { background: var(--accent); color: #fff; }
+.viewbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 12px; }
+.viewbar .seg { margin-left: 0; }
+.viewbar .seg.big button { padding: 9px 16px; font-size: 14px; }
+.drop { border: 2px dashed var(--axis); border-radius: 12px; padding: 18px; text-align: center; color: var(--ink2); }
+.drop.over { border-color: var(--accent); background: var(--accent-bg); }
+.form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.form-row input { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); min-width: 220px; }
+.steps { margin: 6px 0 0; padding-left: 20px; color: var(--ink2); font-size: 13px; }
+.steps li { margin-bottom: 4px; }
+.livemeta { color: var(--ink2); font-size: 13px; }
+.hidden { display: none !important; }
+select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); }
 #toast { color: var(--muted); font-size: 13px; }
 .alert { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 14px; border-radius: 10px; margin-bottom: 10px; font-weight: 500;
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -146,11 +158,48 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
     <button id="rulesBtn">📖 Strategy rules</button>
     <button data-action="check_update" title="Check GitHub for a newer version">⟳ Check for updates</button>
     <span id="toast"></span>
+  </div>
+  <div id="alerts"></div>
+  <div class="viewbar">
+    <div class="seg big" id="source" role="group" aria-label="Which account to analyse">
+      <button data-s="bot" class="on">🤖 Bot · paper</button><button data-s="live">💼 My live account</button>
+    </div>
+    <select id="liveAcct" class="hidden" aria-label="Live account"></select>
+    <select id="twsAcct" class="hidden" aria-label="TWS account"></select>
     <div class="seg" id="range" role="group" aria-label="Performance period">
       <button data-r="1">Today</button><button data-r="7">7D</button><button data-r="30">30D</button><button data-r="0" class="on">All</button>
     </div>
   </div>
-  <div id="alerts"></div>
+
+  <section class="card hidden" id="liveCard" style="margin-bottom:12px">
+    <h2>Live account data <small>read-only · separate from the bot's paper trades</small></h2>
+    <div class="body">
+      <div class="livemeta" id="liveMeta"></div>
+      <div class="form-row" style="margin-top:10px">
+        <button class="primary" id="uploadBtn">📂 Upload IBKR file</button>
+        <button id="syncBtn" data-action="live_sync">⟳ Sync from IBKR</button>
+        <button id="setupBtn">⚙ Set up automatic sync</button>
+        <button id="clearBtn">Clear imported data</button>
+        <input type="file" id="fileIn" accept=".csv,.xml,.txt" multiple hidden>
+        <span id="liveToast" class="muted"></span>
+      </div>
+      <div class="drop" id="drop">Drop your IBKR <b>Activity Statement</b> or <b>Flex Query</b> file (CSV or XML) here.<br>
+        <span class="muted" style="font-size:12px">Client Portal → Performance &amp; Reports → Statements → Activity → pick a period → format <b>CSV</b> → Download.
+        Uploading again later only adds new trades (no duplicates).</span></div>
+      <div id="setupForm" class="hidden" style="margin-top:12px">
+        <b>Automatic sync with IBKR's Flex Web Service</b> <span class="muted">(read-only: it can only download your trade history)</span>
+        <ol class="steps">
+          <li>Client Portal → <b>Performance &amp; Reports → Flex Queries</b> → <b>Activity Flex Query</b> → <b>+</b> (create).</li>
+          <li>Name it e.g. "Bot app". Sections: tick <b>Trades</b> and select all its fields (Execution level). Format: <b>XML</b>. Period: <b>Last 365 calendar days</b>. Save, then note the <b>Query ID</b> shown in the list.</li>
+          <li>Same page → <b>Flex Web Service Configuration</b> (gear icon) → enable it → copy the <b>Current Token</b>.</li>
+          <li>Paste both below and click Save, then <b>Sync from IBKR</b>. The app then syncs by itself every 6 hours while open.</li>
+        </ol>
+        <div class="form-row"><input id="flexToken" type="password" placeholder="Flex token" autocomplete="off">
+          <input id="flexQuery" placeholder="Query ID" autocomplete="off"><button class="primary" id="saveFlex">Save</button></div>
+        <div class="muted" style="font-size:12px">Saved only in your local .env file on this PC. Never paste the token into chats.</div>
+      </div>
+    </div>
+  </section>
 
   <div class="grid" id="kpis"></div>
 
@@ -164,11 +213,11 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
 
   <div class="section-title">Charts</div>
   <div class="grid">
-    <section class="card c8"><h2>Equity curve <small>cumulative P&amp;L of closed bot trades · hover for details</small></h2>
+    <section class="card c8" id="equityCard"><h2>Equity curve <small id="equityNote">cumulative P&amp;L of closed trades · hover for details</small></h2>
       <div class="body"><div id="equity"></div><div id="drawdown"></div></div></section>
-    <section class="card c4"><h2>Today's limits <small>risk guard rails</small></h2><div class="body" id="limits"></div></section>
+    <section class="card c4" id="limitsCard"><h2>Today's limits <small>bot risk guard rails</small></h2><div class="body" id="limits"></div></section>
     <section class="card c6"><h2>Daily P&amp;L <small>per trading day</small></h2><div class="body" id="daily"></div></section>
-    <section class="card c6"><h2>R-multiple distribution <small>result of each trade ÷ its risk</small></h2><div class="body" id="rdist"></div></section>
+    <section class="card c6"><h2><span id="rdistTitle">R-multiple distribution</span> <small id="rdistNote">result of each trade ÷ its risk</small></h2><div class="body" id="rdist"></div></section>
     <section class="card c6"><h2>P&amp;L by stock <small>top 12 by size</small></h2><div class="body" id="bysym"></div></section>
     <section class="card c6"><h2>P&amp;L by entry hour <small>New York time</small></h2><div class="body" id="byhour"></div></section>
   </div>
@@ -184,7 +233,7 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
 
   <div class="section-title">History</div>
   <div class="grid">
-    <section class="card c7"><h2>Closed bot trades <small id="closedNote"></small></h2><div class="scroll" id="botClosed"></div></section>
+    <section class="card c7"><h2><span id="closedTitle">Closed bot trades</span> <small id="closedNote"></small></h2><div class="scroll" id="botClosed"></div></section>
     <section class="card c5"><h2>Bot activity <small>every decision, newest first</small></h2><div class="scroll" id="events"></div></section>
     <section class="card c12" id="rulesCard"><h2>How the bot trades <small id="rulesNote"></small></h2><div class="body" id="rules"></div></section>
     <section class="card c12"><h2>Last command output</h2><div class="body"><pre id="jobs" class="muted">Nothing run from the app yet.</pre></div></section>
@@ -208,8 +257,8 @@ const MARKET = {weekend: ["Weekend: market closed", ""], too_early: ["Before 10:
   closed: ["After close: bot idle", ""], manage_only: ["Managing trades only", "warn"],
   force_close: ["Closing all positions", "warn"], ok: ["Market open: bot hunting", "up"]};
 
-let state = null, range = 0;
-try { range = +(localStorage.getItem("range") ?? 0); } catch (e) {}
+let state = null, range = 0, source = "bot", liveAcct = null, twsAcct = null;
+try { range = +(localStorage.getItem("range") ?? 0); source = localStorage.getItem("source") || "bot"; liveAcct = localStorage.getItem("liveAcct"); twsAcct = localStorage.getItem("twsAcct"); } catch (e) {}
 
 /* ---------------------------------------------------------------- tooltip */
 const tip = $("tip");
@@ -251,7 +300,8 @@ function metrics(trades) {
     avgW, avgL, maxDD, curve, streak,
     best: trades.reduce((b, t) => !b || t.pnl > b.pnl ? t : b, null),
     worst: trades.reduce((b, t) => !b || t.pnl < b.pnl ? t : b, null),
-    hold: n ? trades.reduce((x, t) => x + t.hold_min, 0) / n : null};
+    hold: (h => h.length ? h.reduce((a, b) => a + b, 0) / h.length : null)(trades.map(t => t.hold_min).filter(v => v != null)),
+    expPct: (p => p.length ? p.reduce((a, b) => a + b, 0) / p.length : null)(trades.map(t => t.pnl_pct).filter(v => v != null))};
 }
 
 /* ---------------------------------------------------------------- gauges */
@@ -371,8 +421,8 @@ function ladder(p, partialR, beR) {
 }
 
 /* ---------------------------------------------------------------- performance charts */
-function drawCharts(trades, M) {
-  const tradeTip = p => `<b>${esc(p.t.symbol)}</b> · trade #${p.i}<br>${esc(p.t.exit_time.slice(0, 16).replace("T", " "))}<br>Trade: <b>${money(p.t.pnl)}</b> (${num(p.t.R)}R)<br>Total: <b>${money(p.cum)}</b>`;
+function drawCharts(trades, M, isLive) {
+  const tradeTip = p => `<b>${esc(p.t.symbol)}</b> · trade #${p.i}<br>${esc(p.t.exit_time.slice(0, 16).replace("T", " "))}<br>Trade: <b>${money(p.t.pnl)}</b> (${p.t.R != null ? num(p.t.R) + "R" : p.t.pnl_pct != null ? num(p.t.pnl_pct) + "%" : "—"})<br>Total: <b>${money(p.cum)}</b>`;
   lineChart($("equity"), M.curve, {h: 210, value: p => p.cum, color: css("--accent"), fill: css("--area"), tipFn: tradeTip});
   if (M.curve.length >= 2) lineChart($("drawdown"), M.curve, {h: 110, value: p => p.dd, color: css("--bad"), fill: css("--dd"),
     tipFn: p => `<b>Drawdown</b> after trade #${p.i}<br><b>${money(p.dd)}</b> below the previous peak`});
@@ -384,8 +434,11 @@ function drawCharts(trades, M) {
     colorFn: d => d.pnl >= 0 ? css("--good") : css("--bad"), empty: "No closed trades in this period.",
     tipFn: d => `<b>${d.d}</b><br>P&L: <b>${money(d.pnl)}</b><br>${d.n} trade${d.n === 1 ? "" : "s"} · ${d.w} won`});
 
-  const buckets = [["≤−2R", -1e9, -2], ["−2…−1", -2, -1], ["−1…0", -1, 0], ["0…1", 0, 1], ["1…2", 1, 2], ["2…3", 2, 3], ["≥3R", 3, 1e9]]
-    .map(([l, lo, hi]) => ({l, lo, n: trades.filter(t => t.R > lo && t.R <= hi).length}));
+  const key = isLive ? "pnl_pct" : "R";
+  const buckets = (isLive
+    ? [["≤−3%", -1e9, -3], ["−3…−1%", -3, -1], ["−1…0%", -1, 0], ["0…1%", 0, 1], ["1…3%", 1, 3], ["≥3%", 3, 1e9]]
+    : [["≤−2R", -1e9, -2], ["−2…−1", -2, -1], ["−1…0", -1, 0], ["0…1", 0, 1], ["1…2", 1, 2], ["2…3", 2, 3], ["≥3R", 3, 1e9]])
+    .map(([l, lo, hi]) => ({l, lo, n: trades.filter(t => t[key] != null && t[key] > lo && t[key] <= hi).length}));
   barChart($("rdist"), M.n ? buckets : [], {label: b => b.l, value: b => b.n, yFmt: v => String(v), labelTop: b => b.n,
     colorFn: b => b.lo < 0 ? css("--bad") : css("--good"), empty: "No closed trades in this period.",
     tipFn: b => `<b>${b.l}</b><br>${b.n} trade${b.n === 1 ? "" : "s"} (${M.n ? Math.round(b.n / M.n * 100) : 0}%)`});
@@ -398,11 +451,46 @@ function drawCharts(trades, M) {
 
   const byHour = {};
   trades.forEach(t => { const hr = +t.entry_time.slice(11, 13); (byHour[hr] ??= {h: hr, pnl: 0, n: 0, w: 0}); byHour[hr].pnl += t.pnl; byHour[hr].n++; byHour[hr].w += t.pnl > 0; });
-  const hours = [10, 11, 12, 13, 14, 15].map(hr => byHour[hr] || {h: hr, pnl: 0, n: 0, w: 0});
+  const hrs = isLive ? Object.keys(byHour).map(Number).concat([9, 10, 11, 12, 13, 14, 15]) : [10, 11, 12, 13, 14, 15];
+  const hours = [...new Set(hrs)].sort((a, b) => a - b).map(hr => byHour[hr] || {h: hr, pnl: 0, n: 0, w: 0});
   barChart($("byhour"), M.n ? hours : [], {label: b => `${b.h}:00`, value: b => b.pnl, colorFn: b => b.pnl >= 0 ? css("--good") : css("--bad"),
     empty: "No closed trades in this period.",
     tipFn: b => `<b>${b.h}:00–${b.h}:59 ET</b><br>P&L: <b>${money(b.pnl)}</b><br>${b.n} trade${b.n === 1 ? "" : "s"}${b.n ? ` · win rate ${Math.round(b.w / b.n * 100)}%` : ""}`});
 
+}
+
+/* ---------------------------------------------------------------- live account card */
+function fillSelect(sel, options, value, show) {
+  const html = options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.classList.toggle("hidden", !show);
+}
+
+function renderLiveCard(s, isLive) {
+  $("liveCard").classList.toggle("hidden", !isLive);
+  if (!isLive) return;
+  const lp = s.live_perf || {};
+  $("liveMeta").innerHTML = lp.fills
+    ? `<b>${lp.fills}</b> fills imported · <b>${lp.closed.length}</b> closed trades · ${esc(lp.first)} → ${esc(lp.last)}` +
+      (lp.accounts && lp.accounts.length ? ` · account ${esc(lp.accounts.join(", "))}` : "") +
+      (lp.open && lp.open.length ? ` · still open: ${lp.open.map(o => esc(o.symbol) + " " + (+o.qty.toFixed(4)) + (o.side === "short" ? " short" : "")).join(", ")}` : "") +
+      ` · updated ${esc(lp.updated || "")}`
+    : `No live-account trades yet. Upload an IBKR export below, or set up automatic sync. Your live account is only <b>read</b>; the bot never trades it.`;
+  $("syncBtn").classList.toggle("hidden", !lp.flex_configured);
+  $("setupBtn").textContent = lp.flex_configured ? "⚙ Change sync settings" : "⚙ Set up automatic sync";
+  $("clearBtn").classList.toggle("hidden", !lp.fills);
+  if (lp.sync) $("liveToast").textContent = lp.sync.running ? "Syncing…" : `Last sync ${lp.sync.finished}: ${lp.sync.output}`;
+}
+
+async function uploadFiles(files) {
+  for (const f of files) {
+    $("liveToast").textContent = `Reading ${f.name}…`;
+    try {
+      const r = await fetch("/api/upload", {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "text/plain"}, body: await f.text()});
+      $("liveToast").textContent = `${f.name}: ${(await r.json()).message}`;
+    } catch (e) { $("liveToast").textContent = `${f.name}: upload failed (${e.message})`; }
+  }
+  refresh();
 }
 
 /* ---------------------------------------------------------------- render */
@@ -433,15 +521,40 @@ function render(s) {
   if (ub) ub.onclick = () => { if (confirm("Update the bot now? Your settings, strategy rules and trade history are kept.")) act("update"); };
 
   // performance for the selected range
-  const all = s.bot_perf.closed, trades = inRange(all), M = metrics(trades);
+  const isLive = source === "live", lp = s.live_perf || {closed: [], fills: 0, accounts_detail: []};
+  // live view: one account at a time (a Canadian and a US account have different currencies)
+  const acctList = lp.accounts_detail || [];
+  if (!acctList.some(a => a.key === liveAcct)) liveAcct = acctList.length ? acctList[0].key : null;
+  fillSelect($("liveAcct"), acctList.map(a => [a.key, `${a.account}${a.currency ? " · " + a.currency : ""} (${a.fills} fills)`]), liveAcct, isLive && acctList.length > 1);
+  const liveCur = (acctList.find(a => a.key === liveAcct) || {}).currency || "";
+  const all = isLive ? lp.closed.filter(t => liveAcct == null || (t.account || "") === liveAcct) : s.bot_perf.closed;
+  const trades = inRange(all), M = metrics(trades);
+  // TWS: pick which connected account the value tile shows
+  const tdet = live.account_details || [];
+  if (!tdet.some(a => a.account === twsAcct)) twsAcct = tdet.length ? tdet[0].account : null;
+  fillSelect($("twsAcct"), tdet.map(a => [a.account, `${a.account} · ${a.currency}`]), twsAcct, !isLive && tdet.length > 1);
+  const tsel = tdet.find(a => a.account === twsAcct);
+  if (tsel) { live.values = tsel.values; live.currency = tsel.currency; }
   const rangeName = {0: "all time", 1: "today", 7: "last 7 days", 30: "last 30 days"}[range];
+  document.querySelectorAll("#source button").forEach(b => b.classList.toggle("on", b.dataset.s === source));
+  renderLiveCard(s, isLive);
+  $("limitsCard").classList.toggle("hidden", isLive);
+  $("equityCard").className = "card " + (isLive ? "c12" : "c8");
+  $("equityNote").textContent = `cumulative P&L of ${isLive ? "your live account's" : "the bot's"} closed trades · hover for details`;
+  $("rdistTitle").textContent = isLive ? "Return distribution" : "R-multiple distribution";
+  $("rdistNote").textContent = isLive ? "% gain/loss of each trade" : "result of each trade ÷ its risk";
+  $("closedTitle").textContent = isLive ? "Closed live trades" : "Closed bot trades";
   $("perfNote").textContent = `· ${rangeName} · ${M.n} trade${M.n === 1 ? "" : "s"}` + (M.n && M.n < 20 ? " · too few trades to judge yet" : "");
   document.querySelectorAll("#range button").forEach(b => b.classList.toggle("on", +b.dataset.r === range));
 
   const v = live.values || {}, dayPnl = (v.RealizedPnL ?? 0) + (v.UnrealizedPnL ?? 0);
   const kpis = [
-    ["c3 hero", `Bot P&L · ${rangeName}`, money(M.pnl), cls(M.pnl), `${M.n} trades · ${M.wins}W / ${M.losses}L`],
-    ["c3", "Account value", live.connected ? money(v.NetLiquidation, false) : "—", "", live.connected ? `today ${money(dayPnl)}` : "connect TWS"],
+    ["c3 hero", `${isLive ? "Live" + (liveAcct ? " " + liveAcct : "") : "Bot"} P&L · ${rangeName}${isLive && liveCur ? " · " + liveCur : ""}`, money(M.pnl), cls(M.pnl), `${M.n} trades · ${M.wins}W / ${M.losses}L`],
+    isLive
+      ? ["c3", "Imported history", `${(acctList.find(a => a.key === liveAcct) || {fills: lp.fills}).fills} fills`, "",
+         lp.first ? `${all.length} closed trades · data ${lp.first} → ${lp.last}` : "upload a file or sync"]
+      : ["c3", `Paper account value${live.currency ? " · " + live.currency : ""}`, live.connected && v.NetLiquidation != null ? money(v.NetLiquidation, false) : "—", "",
+         live.connected ? `today ${money(v.DailyPnL ?? v.RealizedPnL ?? 0)} · open positions ${money(v.UnrealizedPnL ?? 0)}` : "connect TWS"],
     ["c3", "Max drawdown", M.n ? money(M.maxDD) : "—", M.maxDD < 0 ? "down" : "", "worst drop from a peak"],
     ["c3", "Current streak", M.n ? `${Math.abs(M.streak)} ${M.streak > 0 ? "win" : "loss"}${Math.abs(M.streak) === 1 ? "" : (M.streak > 0 ? "s" : "es")}` : "—", M.streak > 0 ? "up" : M.streak < 0 ? "down" : "",
       M.n ? `best ${esc(M.best.symbol)} ${money(M.best.pnl)} · worst ${esc(M.worst.symbol)} ${money(M.worst.pnl)}` : "no closed trades"],
@@ -453,7 +566,9 @@ function render(s) {
     bands: [[35, "bad"], [45, "warn"], [101, "good"]], desc: "Share of trades that made money. With winners bigger than losers, 45%+ is healthy."});
   gauge($("g-pf"), {name: "Profit factor", value: M.pf, display: M.pf === Infinity ? "∞" : num(M.pf), min: 0, max: 3, n: M.n,
     bands: [[1, "bad"], [1.5, "warn"], [99, "good"]], desc: "Total won ÷ total lost. Above 1 makes money; 1.5+ is solid."});
-  gauge($("g-exp"), {name: "Expectancy", value: M.expR, display: M.expR == null ? "—" : (M.expR >= 0 ? "+" : "") + num(M.expR) + "R", min: -1, max: 1, n: M.n,
+  if (isLive) gauge($("g-exp"), {name: "Expectancy", value: M.expPct, display: M.expPct == null ? "—" : (M.expPct >= 0 ? "+" : "") + num(M.expPct) + "%", min: -2, max: 2, n: M.n,
+    bands: [[0, "bad"], [0.3, "warn"], [99, "good"]], desc: `Average gain per trade as % of the position${M.exp$ != null ? `, about ${money(M.exp$)} a trade` : ""}. Above +0.3% is good for day trades.`});
+  else gauge($("g-exp"), {name: "Expectancy", value: M.expR, display: M.expR == null ? "—" : (M.expR >= 0 ? "+" : "") + num(M.expR) + "R", min: -1, max: 1, n: M.n,
     bands: [[0, "bad"], [0.2, "warn"], [99, "good"]], desc: `Average result per trade in R (risk units)${M.exp$ != null ? `, about ${money(M.exp$)} a trade` : ""}. Above +0.2R is good.`});
   gauge($("g-payoff"), {name: "Win / loss size", value: M.payoff, display: M.payoff === Infinity ? "∞" : num(M.payoff) + "×", min: 0, max: 3, n: M.n,
     bands: [[1, "bad"], [1.5, "warn"], [99, "good"]], desc: M.n ? `Avg win ${money(M.avgW)} vs avg loss ${money(M.avgL)}. 1.5×+ lets you win less than half the time.` : "Average win ÷ average loss."});
@@ -468,8 +583,8 @@ function render(s) {
     + `<div class="hint muted" style="font-size:12px">Each trade risks up to ${money0(riskPer)} (${s.risk_env.risk_pct}% of ${money0(s.risk_env.portfolio)}). Avg hold time: ${M.hold == null ? "—" : Math.round(M.hold) + " min"}.</div>`;
 
   // charts: only redraw when the data or period changed, so hovering isn't interrupted every 5 s
-  const chartKey = JSON.stringify([range, all.length, all.length && all[all.length - 1].exit_time]);
-  if (chartKey !== render.chartKey) { render.chartKey = chartKey; drawCharts(trades, M); }
+  const chartKey = JSON.stringify([source, liveAcct, range, all.length, all.length && all[all.length - 1].exit_time]);
+  if (chartKey !== render.chartKey) { render.chartKey = chartKey; drawCharts(trades, M, isLive); }
 
   // open positions ladder
   const ex = s.rules.exit, port = live.portfolio || [];
@@ -507,11 +622,11 @@ function render(s) {
       <td class="${f.side === "BUY" ? "up" : "down"}">${f.side}</td><td>${esc(f.symbol)}</td><td class="num">${f.qty}</td><td class="num">${num(f.price)}</td></tr>`), "") : "";
 
   $("closedNote").textContent = `${rangeName} · ${M.n}`;
-  $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "Held#", "P&L#", "R#"],
-    trades.slice().reverse().slice(0, 200).map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b></td>
-      <td class="num">${c.qty}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td><td class="num muted">${Math.round(c.hold_min)}m</td>
-      <td class="num ${cls(c.pnl)}">${money(c.pnl)}</td><td class="num ${cls(c.R)}"><b>${num(c.R)}R</b></td></tr>`),
-    "No closed bot trades in this period.");
+  $("botClosed").innerHTML = table(["Exit", "Symbol", "Qty#", "Buy#", "Sell#", "Held#", "P&L#", isLive ? "Return#" : "R#"],
+    trades.slice().reverse().slice(0, 200).map(c => `<tr><td class="muted">${esc(c.exit_time.slice(5, 16).replace("T", " "))}</td><td><b>${esc(c.symbol)}</b>${c.side === "short" ? ' <span class="chip">short</span>' : ""}</td>
+      <td class="num">${+c.qty.toFixed(4)}</td><td class="num">${num(c.buy)}</td><td class="num">${num(c.sell)}</td><td class="num muted">${c.hold_min == null ? "—" : Math.round(c.hold_min) + "m"}</td>
+      <td class="num ${cls(c.pnl)}">${money(c.pnl)}</td><td class="num ${cls(c.R ?? c.pnl_pct)}"><b>${c.R != null ? num(c.R) + "R" : c.pnl_pct != null ? num(c.pnl_pct) + "%" : "—"}</b></td></tr>`),
+    isLive ? "No closed live trades in this period. Upload an IBKR file or sync above." : "No closed bot trades in this period.");
 
   $("events").innerHTML = table(["Time", "Event", "Details"],
     s.events.map(e => { const {ts, event, ...rest} = e;
@@ -611,6 +726,27 @@ async function act(name) {
   setTimeout(refresh, 400);
 }
 document.querySelectorAll("button[data-action]").forEach(b => b.onclick = () => act(b.dataset.action));
+$("liveAcct").onchange = e => { liveAcct = e.target.value; try { localStorage.setItem("liveAcct", liveAcct); } catch (x) {} render.chartKey = null; render(state); };
+$("twsAcct").onchange = e => { twsAcct = e.target.value; try { localStorage.setItem("twsAcct", twsAcct); } catch (x) {} render(state); };
+document.querySelectorAll("#source button").forEach(b => b.onclick = () => {
+  source = b.dataset.s; try { localStorage.setItem("source", source); } catch (e) {}
+  if (state) render(state);
+});
+$("uploadBtn").onclick = () => $("fileIn").click();
+$("fileIn").onchange = e => { uploadFiles([...e.target.files]); e.target.value = ""; };
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => uploadFiles([...e.dataTransfer.files]));
+$("setupBtn").onclick = () => $("setupForm").classList.toggle("hidden");
+$("saveFlex").onclick = async () => {
+  const body = {FLEX_TOKEN: $("flexToken").value.trim(), FLEX_QUERY_ID: $("flexQuery").value.trim()};
+  if (!body.FLEX_TOKEN || !body.FLEX_QUERY_ID) { $("liveToast").textContent = "Enter both the token and the query ID."; return; }
+  const r = await fetch("/api/settings", {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"}, body: JSON.stringify(body)});
+  $("liveToast").textContent = (await r.json()).message + " Now click “Sync from IBKR”.";
+  $("flexToken").value = ""; $("setupForm").classList.add("hidden"); refresh();
+};
+$("clearBtn").onclick = () => { if (confirm("Delete the imported live-account trades from this app? (Nothing changes in your IBKR account.)")) act("live_clear"); };
 document.querySelectorAll("#range button").forEach(b => b.onclick = () => {
   range = +b.dataset.r; try { localStorage.setItem("range", range); } catch (e) {}
   if (state) render(state);

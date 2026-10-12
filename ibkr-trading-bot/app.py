@@ -27,6 +27,8 @@ FIRST_PORT = 18765  # tries this and the next 19 ports; set APP_PORT in .env to 
 APP_CLIENT_ID = 7
 UI_PATH = PROJECT_DIR / "app_ui.html"
 ICON_PATH = PROJECT_DIR / "icon.ico"
+UI_HTML = UI_PATH.read_text(encoding="utf-8")  # read once: after an update, the old server keeps serving its own page
+ICON_BYTES = ICON_PATH.read_bytes() if ICON_PATH.exists() else b""
 WINDOW_PROFILE = PROJECT_DIR / ".appwindow"  # Edge profile just for the app window
 TOKEN = secrets.token_urlsafe(16)  # blocks other websites from POSTing actions to localhost
 
@@ -47,6 +49,8 @@ def ibkr_loop() -> None:
         if not ib.isConnected():
             try:
                 ib.connect(host, port, clientId=APP_CLIENT_ID, readonly=True, timeout=5)
+                for acct in ib.managedAccounts():
+                    ib.reqPnL(acct)  # streams today's P&L for the account
             except Exception as exc:
                 with _lock:
                     _live.clear()
@@ -70,13 +74,45 @@ def ibkr_loop() -> None:
             time.sleep(3)
 
 
-def ibkr_snapshot(ib) -> dict:
+ACCOUNT_TAGS = {"NetLiquidation", "TotalCashValue", "BuyingPower", "UnrealizedPnL", "RealizedPnL", "GrossPositionValue"}
+
+
+def account_values(ib, account: str = "") -> tuple[dict, str]:
+    """Key account numbers in the account's BASE currency (CAD, USD, ...), not only USD."""
+    by_tag: dict[str, dict[str, float]] = defaultdict(dict)
+    base = ""
+    for v in ib.accountValues(account):
+        if v.tag == "Currency" and v.currency == "BASE":
+            base = v.value
+        if v.tag in ACCOUNT_TAGS:
+            try:
+                by_tag[v.tag][v.currency] = float(v.value)
+            except ValueError:
+                pass
     vals = {}
-    for v in ib.accountValues():
-        if v.currency in ("USD", "BASE") and v.tag in {"NetLiquidation", "TotalCashValue", "BuyingPower",
-                                                        "UnrealizedPnL", "RealizedPnL", "GrossPositionValue"}:
-            vals.setdefault(v.tag, float(v.value))
-    portfolio = [{"symbol": p.contract.symbol, "qty": p.position, "avg_cost": p.averageCost,
+    for tag, cur in by_tag.items():
+        for pick in ("BASE", base, "USD"):
+            if pick and pick in cur:
+                vals[tag] = cur[pick]
+                break
+        else:
+            vals[tag] = next(iter(cur.values()))
+    if not base:
+        base = next((c for c in by_tag.get("NetLiquidation", {}) if c != "BASE"), "USD")
+    return vals, base
+
+
+def ibkr_snapshot(ib) -> dict:
+    # One entry per account (e.g. a Canadian and a US account), each in its own base currency.
+    details = []
+    for acct in ib.managedAccounts():
+        vals, base = account_values(ib, acct)
+        daily = [p.dailyPnL for p in ib.pnl(acct) if p.dailyPnL is not None and p.dailyPnL == p.dailyPnL]  # skip NaN
+        if daily:
+            vals["DailyPnL"] = sum(daily)
+        details.append({"account": acct, "currency": base, "values": vals})
+    vals, base = (details[0]["values"], details[0]["currency"]) if details else ({}, "")
+    portfolio = [{"symbol": p.contract.symbol, "account": p.account, "qty": p.position, "avg_cost": p.averageCost,
                   "price": p.marketPrice, "value": p.marketValue, "unrealized": p.unrealizedPNL}
                  for p in ib.portfolio() if p.position]
     fills = []
@@ -84,9 +120,10 @@ def ibkr_snapshot(ib) -> dict:
         ex = f.execution
         fills.append({"time": f.time.astimezone(ET).isoformat(timespec="seconds"), "symbol": f.contract.symbol,
                       "side": "BUY" if ex.side == "BOT" else "SELL", "qty": ex.shares, "price": ex.price,
-                      "client": ex.clientId,
+                      "client": ex.clientId, "account": ex.acctNumber,
                       "commission": f.commissionReport.commission if f.commissionReport else 0.0})
-    return {"connected": True, "error": "", "accounts": ib.managedAccounts(), "values": vals,
+    return {"connected": True, "error": "", "accounts": ib.managedAccounts(), "values": vals, "currency": base,
+            "account_details": details,
             "portfolio": portfolio, "fills": fills, "updated": now_et().strftime("%H:%M:%S")}
 
 
@@ -244,6 +281,7 @@ def build_state() -> dict:
         "schedule": schedule_status(),
         "jobs": {k: v for k, v in _jobs.items() if isinstance(v, dict)},
         "update": update_status(),
+        "live_perf": live_summary(),
     }
 
 
@@ -267,6 +305,8 @@ def run_action(name: str) -> str:
         return "Resumed."
     if name in ("update", "check_update"):
         return update_action(name)
+    if name in ("live_sync", "live_clear"):
+        return live_action(name)
     if name not in ACTIONS:
         return f"unknown action {name}"
     if _jobs.get(name, {}).get("running"):
@@ -285,6 +325,51 @@ def run_action(name: str) -> str:
 
     threading.Thread(target=worker, daemon=True).start()
     return f"Started {name}"
+
+
+_live_cache = {"key": None, "value": None}
+
+
+def live_summary() -> dict:
+    """Live-account trades from live_trades.csv, cached until the file changes."""
+    from src import live_import
+    path = live_import.LIVE_PATH
+    key = (path.stat().st_mtime, path.stat().st_size) if path.exists() else None
+    if key != _live_cache["key"] or _live_cache["value"] is None:
+        _live_cache.update(key=key, value=live_import.summary())
+    value = dict(_live_cache["value"])
+    value["flex_configured"] = live_import.flex_configured()
+    value["sync"] = _jobs.get("live_sync") if isinstance(_jobs.get("live_sync"), dict) else None
+    return value
+
+
+def live_action(name: str) -> str:
+    from src import live_import
+    if name == "live_clear":
+        live_import.clear()
+        return "Imported live-account data cleared."
+    if _jobs.get("live_sync", {}).get("running"):
+        return "Sync already running"
+
+    def worker():
+        _jobs["live_sync"] = {"running": True, "output": "", "started": now_et().strftime("%H:%M:%S")}
+        try:
+            out = live_import.flex_sync()["message"]
+        except Exception as exc:
+            out = f"Sync failed: {exc!r}"
+        _jobs["live_sync"] = {"running": False, "output": out, "finished": now_et().strftime("%H:%M:%S")}
+
+    threading.Thread(target=worker, daemon=True).start()
+    return "Syncing from IBKR… (can take up to a minute)"
+
+
+def live_auto_sync() -> None:
+    """If the Flex Web Service is set up, sync live trades at start-up and every 6 hours."""
+    from src import live_import
+    while True:
+        if live_import.flex_configured():
+            live_action("live_sync")
+        time.sleep(6 * 3600)
 
 
 def update_action(name: str) -> str:
@@ -338,10 +423,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
-            html = UI_PATH.read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
+            html = UI_HTML.replace("__TOKEN__", TOKEN)
             self._send(200, html.encode(), "text/html; charset=utf-8")
         elif self.path == "/favicon.ico":
-            self._send(200, ICON_PATH.read_bytes(), "image/x-icon")
+            self._send(200, ICON_BYTES, "image/x-icon")
         elif self.path == "/api/ping":
             self._send(200, json.dumps({"app": APP_SIGNATURE}).encode(), "application/json")
         elif self.path == "/api/state":
@@ -354,11 +439,34 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.headers.get("X-Token") != TOKEN or not self.path.startswith("/api/action/"):
+        if self.headers.get("X-Token") != TOKEN:
             self._send(403, b"forbidden", "text/plain")
             return
-        msg = run_action(self.path.rsplit("/", 1)[-1])
-        self._send(200, json.dumps({"message": msg}).encode(), "application/json")
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 30 * 1024 * 1024:
+            self._send(413, json.dumps({"message": "File too large (30 MB max)."}).encode(), "application/json")
+            return
+        body = self.rfile.read(length) if length else b""
+        if self.path == "/api/upload":
+            from src import live_import
+            text = body.decode("utf-8-sig", "replace")
+            try:
+                res = live_import.import_text(text)
+            except Exception as exc:
+                res = {"ok": False, "message": f"Couldn't read that file: {exc!r}"}
+            self._send(200, json.dumps(res).encode(), "application/json")
+        elif self.path == "/api/settings":
+            data = json.loads(body or b"{}")
+            allowed = {k: str(v).strip() for k, v in data.items() if k in ("FLEX_TOKEN", "FLEX_QUERY_ID")}
+            if allowed:
+                from src.common import set_env_values
+                set_env_values(allowed)
+            self._send(200, json.dumps({"message": "Saved." if allowed else "Nothing to save."}).encode(), "application/json")
+        elif self.path.startswith("/api/action/"):
+            msg = run_action(self.path.rsplit("/", 1)[-1])
+            self._send(200, json.dumps({"message": msg}).encode(), "application/json")
+        else:
+            self._send(404, b"not found", "text/plain")
 
 
 class AppServer(ThreadingHTTPServer):
@@ -449,6 +557,7 @@ def main() -> int:
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(target=update_checker, daemon=True).start()
+    threading.Thread(target=live_auto_sync, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     print(f"{now_et():%Y-%m-%d %H:%M:%S} IBKR Trading Bot app running at {url}. "
           f"Closing the app window quits it; the scheduled bot keeps trading either way.")

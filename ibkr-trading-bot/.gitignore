@@ -13,3 +13,5 @@ PAUSED
 .appwindow/
 .version
 *.updating
+live_trades.csv
+live_trades.csv.tmp
