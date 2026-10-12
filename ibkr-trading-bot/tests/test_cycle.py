@@ -93,8 +93,9 @@ def test_jump_past_1r_takes_partial_then_breakeven(env, monkeypatch):
     p = [pos(oid=t.order.orderId)]
     cycle.manage(f, p, RULES)
     assert env.trades == [("SELL", "AAA", 10)]
-    # stop shrunk to 20 BEFORE the sell, then moved to breakeven
-    assert f.calls[1:] == [("modify_stop", "AAA", 20, 98.0), ("modify_stop", "AAA", 20, 100.0)]
+    # stop shrunk to 20 BEFORE the sell, tightened to entry-1% after the partial, then breakeven
+    assert f.calls[1:] == [("modify_stop", "AAA", 20, 98.0), ("modify_stop", "AAA", 20, 99.0),
+                           ("modify_stop", "AAA", 20, 100.0)]
     assert p[0]["qty"] == 20 and p[0]["partial_done"] and p[0]["state"] == "post_breakeven"
 
 

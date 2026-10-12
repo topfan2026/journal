@@ -189,7 +189,12 @@ def manage(ibkr, positions: list[dict], rules: dict) -> None:
                 pos["qty"] = pos["qty"] - sold
                 pos["partial_done"] = True
                 pos["state"] = "partial_done" if pos["state"] == "pre_breakeven" else pos["state"]
-                log("partial", symbol=sym, sold=sold, price=result["fill_price"], remaining=pos["qty"])
+                # Per the strategy: after the partial, tighten the stop to entry - 1% (ratchet up only).
+                tight = round(entry * 0.99, 2)
+                if tight > pos["stop"]:
+                    t = ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], tight)
+                    pos.update(stop=tight, stop_order_id=t.order.orderId, stop_perm_id=t.order.permId)
+                log("partial", symbol=sym, sold=sold, price=result["fill_price"], remaining=pos["qty"], stop=pos["stop"])
                 safe_notify(f"PARTIAL {sym}", f"sold {sold}/{sold + pos['qty']} @ ${result['fill_price']:.2f}")
             else:
                 ibkr.modify_stop(sym, pos["stop_order_id"], pos["qty"], pos["stop"])
