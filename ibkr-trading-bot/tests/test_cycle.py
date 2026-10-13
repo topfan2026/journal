@@ -307,3 +307,19 @@ def test_five_minute_strategies_wait_for_five_minute_marks(env, monkeypatch):
     monkeypatch.setattr(cycle, "now_et", lambda: datetime(2026, 10, 12, 11, 3, tzinfo=ET))
     monkeypatch.setattr(st, "evaluate", lambda *a, **k: pytest.fail("5-minute strategy evaluated at 11:03"))
     cycle.entry_scan(env.fake, [], RULES)
+
+
+
+def test_fill_beyond_the_stop_is_closed_immediately(env, monkeypatch):
+    from src import strategies as st
+    f = env.fake
+    f.prices["AAA"] = 49.0  # market moved: the long fills at 49, below its 49.5 stop
+    s2 = {"id": "pm_break_1", "type": "pm_break", "name": "PM break", "enabled": True,
+          "params": {**st.defaults_for("pm_break"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "15:00"}}
+    st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False}, s2])
+    monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
+    monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d", interval="5m": make_intraday())
+    monkeypatch.setattr(st, "evaluate", lambda *a, **k: {"pass": True, "reasons": [], "metrics": {"stop": 49.5, "side": "long"}})
+    positions = []
+    cycle.entry_scan(f, positions, RULES)
+    assert positions == [] and env.trades[-1][0] == "SELL" and f.held["AAA"] == 0

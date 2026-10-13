@@ -203,10 +203,14 @@ def one_min(pre, rth, day=TODAY):
 PRE = [(100, 101.0, 99.5, 100.2), (100.2, 100.8, 99.0, 99.8), (99.8, 100.5, 99.6, 100.1)]  # PM high 101, low 99
 
 
-def pm(rth, price, **params):
+def pm(rth, price, now=None, **params):
+    """Evaluate at `now` (default: 20 s into the last, still-forming candle)."""
     bars = one_min(PRE, rth)
+    if now is None:
+        last = bars.index[-1]
+        now = (last + timedelta(seconds=20)).time()
     five = bars  # 5-minute frame only feeds the common filters here
-    return st.evaluate(cfg("pm_break", min_rvol=0, **params), make_daily(), five, price, TODAY, RULES, time(9, 40), bars_1m=bars)
+    return st.evaluate(cfg("pm_break", min_rvol=0, **params), make_daily(), five, price, TODAY, RULES, now, bars_1m=bars)
 
 
 def test_pm_breakout_enters_on_second_close_above_with_stop_under_that_candle():
@@ -237,8 +241,20 @@ def test_pm_breakdown_goes_short_with_stop_above_the_candle():
 
 def test_pm_break_needs_premarket_and_respects_vwap_side():
     bars = one_min([], [(100, 100.5, 99.5, 100.2), (100.2, 100.4, 100, 100.3)])
-    res = st.evaluate(cfg("pm_break", min_rvol=0), make_daily(), bars, 100.3, TODAY, RULES, time(9, 40), bars_1m=bars)
+    res = st.evaluate(cfg("pm_break", min_rvol=0), make_daily(), bars, 100.3, TODAY, RULES, time(9, 32, 20), bars_1m=bars)
     assert not res["pass"] and "no premarket trading" in " ".join(res["reasons"])
     rth = [(100.2, 100.6, 100.0, 100.5), (100.5, 101.4, 100.4, 101.3), (101.3, 101.6, 101.05, 101.5), (101.5, 101.7, 101.4, 101.6)]
     res = pm(rth, 101.6, above_vwap=True)
     assert any(r.startswith("vwap") for r in res["reasons"])
+
+
+
+def test_pm_break_uses_the_clock_not_the_last_candle():
+    rth = [(100.2, 100.6, 100.0, 100.5), (100.5, 101.4, 100.4, 101.3), (101.3, 101.6, 101.05, 101.5)]
+    # Yahoo lagging: the forming 9:33 candle isn't published yet, but at 9:33:20 the 9:32 candle IS complete
+    res = pm(rth, 101.55, now=time(9, 33, 20))
+    assert res["pass"], res["reasons"]
+    assert res["metrics"]["break_time"] == "09:31" and res["metrics"]["confirm_time"] == "09:32"
+    # the same data seen two minutes later (lagging feed / slow cycle): too late, no chasing
+    late = pm(rth, 101.9, now=time(9, 35, 10))
+    assert not late["pass"] and "too late" in " ".join(late["reasons"])

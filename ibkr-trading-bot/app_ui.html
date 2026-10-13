@@ -691,7 +691,7 @@ async function openChart(o) {
     series[name].setData(pts);
   });
   const levelColor = {"Initial stop": css("--bad"), "Opening range high": css("--accent"), "Opening range low": css("--accent"),
-    "Premarket high": "#d58e00", "Yesterday high": css("--muted"), "Yesterday close": css("--muted")};
+    "Premarket high": "#d58e00", "Premarket low": "#d58e00", "Yesterday high": css("--muted"), "Yesterday close": css("--muted")};
   const levels = {};
   Object.entries(d.levels).forEach(([name, price]) => {
     levels[name] = candles.createPriceLine({price, color: levelColor[name] || css("--muted"), lineWidth: 1,

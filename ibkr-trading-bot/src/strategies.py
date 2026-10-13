@@ -445,7 +445,7 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
     if kind == "pm_break":
         if p["above_vwap"]:
             m["vwap"] = vwap(today_rth)
-        stop = _pm_break(p, bars_1m if bars_1m is not None else intraday, today, price, checks, m)
+        stop = _pm_break(p, bars_1m if bars_1m is not None else intraday, today, price, checks, m, now_t)
         if stop is None:
             return {"pass": False, "reasons": [f"{n} {'ok' if ok else 'FAIL'}: {d}" for n, ok, d in checks], "metrics": m}
     elif kind == "ht_vwap_reclaim":
@@ -550,10 +550,11 @@ def _ht_buy_dip(p, prior, completed, price, symbol, checks, m) -> float | None:
 
 # ---------------------------------------------------------------- premarket high/low break (1-minute)
 
-def _pm_break(p, bars, today, price, checks, m) -> float | None:
+def _pm_break(p, bars, today, price, checks, m, now_t: time | None = None) -> float | None:
     """Breakout: the last `confirm_bars` completed 1-min candles all closed above the premarket high (the first of
-    them being the break), confirmed no more than `fresh_bars`-1 candles ago. Stop below the confirming candle's
-    low. Breakdown (short) is the mirror image below the premarket low. Returns None when there's no setup."""
+    them being the break). Enter only if that confirming candle closed within the last `fresh_bars` minute(s) by
+    the CLOCK (so lagging data can never cause a late, chased entry). Stop below the confirming candle's low.
+    Breakdown (short) is the mirror image below the premarket low. Returns None when there's no setup."""
     day = _day(bars, today)
     pm = day[(day.index.time >= time(4, 0)) & (day.index.time < time(9, 30))]
     if pm.empty:
@@ -564,7 +565,13 @@ def _pm_break(p, bars, today, price, checks, m) -> float | None:
     if float(p["min_pm_range_pct"]) > 0:
         rng = (pmh / pml - 1) * 100
         checks.append(("pm range", rng >= float(p["min_pm_range_pct"]), f"premarket range {rng:.2f}%"))
-    done = day[day.index.time >= time(9, 30)].iloc[:-1]  # completed regular-hours candles (newest is forming)
+    rth = day[day.index.time >= time(9, 30)]
+    if now_t is not None:  # completed = the candle's minute is over by the clock (Yahoo can lag a minute or two)
+        now_dt = pd.Timestamp.combine(today, now_t).tz_localize(rth.index.tz) if rth.index.tz else pd.Timestamp.combine(today, now_t)
+        done = rth[rth.index + pd.Timedelta(minutes=1) <= now_dt]
+    else:
+        now_dt = None
+        done = rth.iloc[:-1]
     confirm, fresh = int(p["confirm_bars"]), int(p["fresh_bars"])
 
     def run_length(beyond: pd.Series) -> int:  # consecutive closes beyond the level, ending at the newest candle
@@ -584,6 +591,14 @@ def _pm_break(p, bars, today, price, checks, m) -> float | None:
         level = pmh if side == "long" else pml
         run = done.iloc[-n:]
         confirm_bar = run.iloc[confirm - 1]  # e.g. the 2nd candle that stayed beyond the level
+        confirm_close = run.index[confirm - 1] + pd.Timedelta(minutes=1)
+        m.update(break_time=run.index[0].strftime("%H:%M"), confirm_time=run.index[confirm - 1].strftime("%H:%M"),
+                 confirm_low=float(confirm_bar["Low"]), confirm_high=float(confirm_bar["High"]))
+        if now_dt is not None:
+            age = (now_dt - confirm_close).total_seconds() / 60
+            if age > (fresh - 1) + 0.75:  # 45 s of slack for the cycle to start and download
+                checks.append(("fresh", False, f"confirmed at {confirm_close:%H:%M}, now {now_dt:%H:%M:%S}: too late to enter"))
+                return None
         m["side"] = side
         word = "above the premarket high" if side == "long" else "below the premarket low"
         checks.append(("break", (price > level) if side == "long" else (price < level),

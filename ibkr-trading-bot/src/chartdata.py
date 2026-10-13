@@ -113,7 +113,13 @@ def bot_reasons(symbol: str, day: date) -> list[dict]:
             if e.get("symbol") == symbol and str(e.get("ts", "")).startswith(day.isoformat()):
                 if e.get("event") == "evaluate" and not e.get("passed"):
                     continue  # keep the story short: only the passing check, entries and management
-                out.append({k: v for k, v in e.items() if k != "metrics"})
+                keep = {k: v for k, v in e.items() if k != "metrics"}
+                mt = e.get("metrics") or {}
+                shown = {k: mt[k] for k in ("side", "break_time", "confirm_time", "pm_high", "pm_low", "confirm_low",
+                                            "confirm_high", "stop", "price", "vwap", "support", "or_high", "or_low") if k in mt}
+                if shown:
+                    keep["levels"] = ", ".join(f"{k}: {round(v, 2) if isinstance(v, float) else v}" for k, v in shown.items())
+                out.append(keep)
     return out[-40:]
 
 
@@ -152,6 +158,7 @@ def chart(symbol: str, day: date, source: str = "bot", account: str | None = Non
         pm = view[view.index.time < RTH_OPEN]
         if not pm.empty:
             res["levels"]["Premarket high"] = float(pm["High"].max())
+            res["levels"]["Premarket low"] = float(pm["Low"].min())
         prev = df[df.index.date < day]
         if not prev.empty:
             prev_rth = _rth(prev)

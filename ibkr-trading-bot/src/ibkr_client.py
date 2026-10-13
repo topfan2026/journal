@@ -113,6 +113,10 @@ class IBKRClient:
     def last_price(self, symbol: str) -> float:
         """Snapshot price (live or delayed). Returns nan if IBKR has nothing."""
         [ticker] = self.ib.reqTickers(self.contract(symbol))
+        if getattr(ticker, "marketDataType", 1) in (3, 4):
+            # delayed (~15 min) quotes: no live data subscription on this account. Too old to trade on;
+            # the caller falls back to Yahoo's latest price.
+            return float("nan")
         for value in (ticker.marketPrice(), ticker.last, ticker.close):
             if value is not None and not math.isnan(value) and value > 0:
                 return float(value)

@@ -370,6 +370,8 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
                 except Exception as exc:
                     log("entry_skip", symbol=sym, strategy=sid, reason=f"1-minute data error {exc!r}")
                     continue
+            if bars_1m is not None and not bars_1m.empty:
+                price = current_price(ibkr, sym, bars_1m)  # freshest price for a 1-minute decision
             res = st.evaluate(cfg, daily, intra, price, today, rules, now_t, symbol=sym, bars_1m=bars_1m)
             log("evaluate", symbol=sym, strategy=sid, passed=bool(res["pass"]), reasons=res["reasons"], metrics=res["metrics"])
             if not res["pass"]:
@@ -395,6 +397,13 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
                 log("entry_unfilled", symbol=sym, strategy=sid, side=side, result=result, output=out[-500:])
                 continue
             fill = float(result["fill_price"]) if result and result.get("fill_price") else price
+            if (fill - stop) * d <= 0:
+                # filled at or beyond the stop (price moved during the order): the setup is gone; flatten now
+                out_res, _ = run_trade(sym, "BUY" if d < 0 else "SELL", qty, strategy=sid)
+                log("entry_invalid", symbol=sym, strategy=sid, side=side, fill=fill, stop=stop,
+                    closed=bool(out_res and out_res.get("filled")))
+                safe_notify(f"ENTRY CANCELLED {sym}", f"filled ${fill:.2f} beyond the stop ${stop:.2f}; closed right away", "high")
+                continue
             t = ibkr.place_stop(sym, qty, stop, action="BUY" if d < 0 else "SELL")
             pos = new_position(sym, fill, qty, stop, t, strategy=sid, side=side,
                                exit_rules=None if cfg["type"] == "trend_join" else cfg["exit"])
