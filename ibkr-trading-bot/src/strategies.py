@@ -133,8 +133,12 @@ TEMPLATES = {
                "2 = the breakout candle plus the 2nd candle that stays above/below", step=1, min=1, max=5),
             _f("fresh_bars", "Still enter up to N candles after confirmation", "num", 1, "1 = only right at confirmation", step=1, min=1, max=5),
             _f("stop_rule", "Stop at", "select", "confirm_bar", group="Exits",
-               opts=[["confirm_bar", "Beyond the confirming 1-min candle (its low / high)"], ["run_extreme", "Beyond the whole breakout move"]]),
+               opts=[["confirm_bar", "Beyond the confirming 1-min candle (its low / high)"], ["run_extreme", "Beyond the whole breakout move"],
+                     ["level", "Beyond the premarket high / low itself"]]),
             _f("stop_cents", "Stop buffer $", "num", 0.01, group="Exits", step=0.01, min=0),
+            _f("min_stop_pct", "Min stop distance %", "num", 0.3,
+               "If the stop is closer than this to the entry price, it's moved out to this distance (fewer shares, same $ risk). "
+               "0 = off", group="Exits", step=0.05, min=0),
             _f("min_pm_range_pct", "Skip if premarket range under %", "num", 0.0, "0 = off", step=0.25, min=0),
             _f("require_cross", "Break candle must cross the level", "bool", True,
                "The first candle beyond the level has to trade through it (low at/below the premarket high, or high "
@@ -623,10 +627,19 @@ def _pm_break(p, bars, today, price, checks, m, now_t: time | None = None) -> fl
         if p["above_vwap"] and "vwap" in m:
             ok = price > m["vwap"] if side == "long" else price < m["vwap"]
             checks.append(("vwap", ok, f"price {price:.2f} {'above' if side == 'long' else 'below'} VWAP {m['vwap']:.2f}"))
-        buf = float(p["stop_cents"])
-        if side == "long":
-            return round((float(confirm_bar["Low"]) if p["stop_rule"] == "confirm_bar" else float(run["Low"].min())) - buf, 2)
-        return round((float(confirm_bar["High"]) if p["stop_rule"] == "confirm_bar" else float(run["High"].max())) + buf, 2)
+        buf, d = float(p["stop_cents"]), 1 if side == "long" else -1
+        if p["stop_rule"] == "level":
+            base = level
+        elif p["stop_rule"] == "run_extreme":
+            base = float(run["Low"].min()) if side == "long" else float(run["High"].max())
+        else:
+            base = float(confirm_bar["Low"]) if side == "long" else float(confirm_bar["High"])
+        stop = base - d * buf
+        min_dist = price * float(p.get("min_stop_pct", 0) or 0) / 100
+        if min_dist and (price - stop) * d < min_dist:  # too tight for the opening noise: give it room
+            m["stop_widened_from"] = round(stop, 2)
+            stop = price - d * min_dist
+        return round(stop, 2)
     checks.append(("break", False, f"no fresh confirmed break: premarket high {pmh:.2f}, low {pml:.2f}; closes beyond: "
                                    f"{runs['long']} above / {runs['short']} below (needs {confirm})"))
     return None

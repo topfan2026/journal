@@ -273,3 +273,21 @@ def test_pm_break_settings_shown_in_the_form():
     assert "stop_buffer_pct" not in keys and {"require_cross", "max_slip_R"} <= set(keys)
     assert "stop_buffer_pct" in [f["k"] for f in st.fields_for("orb")]
     assert cfg("pm_break")["max_slip_R"] == pytest.approx(0.2)
+
+
+RTH_LONG = [(100.2, 100.6, 100.0, 100.5), (100.5, 101.4, 100.4, 101.3), (101.3, 101.6, 101.05, 101.5), (101.5, 101.7, 101.4, 101.6)]
+
+
+def test_pm_break_stop_under_the_premarket_high_itself():
+    res = pm(RTH_LONG, 101.6, stop_rule="level")
+    assert res["pass"] and res["metrics"]["stop"] == pytest.approx(100.99)  # PM high 101 - 1 cent
+    rth = [(99.6, 99.8, 99.3, 99.4), (99.4, 99.5, 98.7, 98.8), (98.8, 98.95, 98.5, 98.6), (98.6, 98.7, 98.4, 98.5)]
+    short = pm(rth, 98.5, stop_rule="level")
+    assert short["metrics"]["side"] == "short" and short["metrics"]["stop"] == pytest.approx(99.01)  # PM low 99 + 1 cent
+
+
+def test_pm_break_min_stop_distance_widens_a_tight_stop():
+    res = pm(RTH_LONG, 101.6, min_stop_pct=1.0)  # candle stop 101.04 is only 0.55% away -> moved to 1%
+    assert res["pass"] and res["metrics"]["stop"] == pytest.approx(100.58)
+    assert res["metrics"]["stop_widened_from"] == pytest.approx(101.04)
+    assert pm(RTH_LONG, 101.6, min_stop_pct=0)["metrics"]["stop"] == pytest.approx(101.04)  # off
