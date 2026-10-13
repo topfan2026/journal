@@ -63,10 +63,11 @@ def env(tmp_path, monkeypatch):
     from src import strategies
     monkeypatch.setattr(strategies, "STORE", tmp_path / "strategies.json")
     fake = FakeIBKR()
-    trades = []
+    trades, limits = [], []
 
-    def run_trade(sym, side, size, stop_price=None, timeout=30, strategy=""):
+    def run_trade(sym, side, size, stop_price=None, timeout=30, strategy="", limit=None):
         trades.append((side, sym, size))
+        limits.append(limit)
         fill = fake.prices[sym]
         fake.held[sym] = fake.held.get(sym, 0) + (size if side == "BUY" else -size)
         common.append_trade({"timestamp_iso": "2026-10-12T11:00:00-04:00", "symbol": sym, "side": side,
@@ -75,7 +76,7 @@ def env(tmp_path, monkeypatch):
         return {"status": "Filled", "filled": size, "fill_price": fill}, ""
 
     monkeypatch.setattr(executor, "run_trade", run_trade)
-    return SimpleNamespace(fake=fake, trades=trades, tmp=tmp_path)
+    return SimpleNamespace(fake=fake, trades=trades, limits=limits, tmp=tmp_path)
 
 
 def pos(sym="AAA", entry=100.0, stop=98.0, qty=30, state="pre_breakeven", partial=False, oid=None):
@@ -235,7 +236,8 @@ def test_short_entry_sells_and_places_buy_stop(env, monkeypatch):
     f = env.fake
     f.prices["AAA"] = 50.0
     s = {"id": "pm_break_1", "type": "orb", "name": "PM break", "enabled": True,
-         "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "15:00"}}
+         "params": {**st.defaults_for("orb"), "universe": "custom", "tickers": "AAA", "latest_entry_et": "15:00",
+                    "max_slip_R": 0.2}}
     st.save([{"id": st.TREND_JOIN_ID, "type": "trend_join", "enabled": False}, s])
     monkeypatch.setattr(marketdata, "daily_bars", lambda s, period="1y": make_daily())
     monkeypatch.setattr(marketdata, "intraday_bars", lambda s, period="30d", interval="5m": make_intraday())
@@ -243,6 +245,7 @@ def test_short_entry_sells_and_places_buy_stop(env, monkeypatch):
     positions = []
     cycle.entry_scan(f, positions, RULES)
     p = positions[0]
+    assert env.limits == [49.8]  # sell limit: at most 0.2 × the $1 risk below the decision price
     assert env.trades == [("SELL", "AAA", 50)]  # $125 risk / $1 = 125 sh, capped at $2,500 / $50 = 50 sh
     assert p["side"] == "short" and p["qty"] == 50 and f.held["AAA"] == -50
     assert f.stop_actions[p["stop_order_id"]] == "BUY" and f.stops[p["stop_order_id"]] == ("AAA", 50, 51.0)

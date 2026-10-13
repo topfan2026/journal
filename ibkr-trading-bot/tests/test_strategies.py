@@ -258,3 +258,18 @@ def test_pm_break_uses_the_clock_not_the_last_candle():
     # the same data seen two minutes later (lagging feed / slow cycle): too late, no chasing
     late = pm(rth, 101.9, now=time(9, 35, 10))
     assert not late["pass"] and "too late" in " ".join(late["reasons"])
+
+
+def test_pm_break_ignores_a_gap_beyond_the_level():
+    # 9:30 candle opens and stays above the 101 premarket high: never traded through it -> not a break
+    rth = [(101.5, 101.9, 101.3, 101.8), (101.8, 102.0, 101.6, 101.9), (101.9, 102.1, 101.8, 102.0)]
+    res = pm(rth, 102.0)
+    assert not res["pass"] and "a gap, not a break" in " ".join(res["reasons"])
+    assert pm(rth, 102.0, require_cross=False)["pass"]  # the old behaviour, if wanted
+
+
+def test_pm_break_settings_shown_in_the_form():
+    keys = [f["k"] for f in st.fields_for("pm_break")]
+    assert "stop_buffer_pct" not in keys and {"require_cross", "max_slip_R"} <= set(keys)
+    assert "stop_buffer_pct" in [f["k"] for f in st.fields_for("orb")]
+    assert cfg("pm_break")["max_slip_R"] == pytest.approx(0.2)

@@ -121,8 +121,8 @@ TEMPLATES = {
     },
     "pm_break": {
         "name": "Premarket High/Low Break (1-min)",
-        "summary": "Breakout: after price breaks the premarket high, buys when the 2nd one-minute candle also closes above "
-                   "it; stop below that candle's low. Breakdown: mirror image below the premarket low, sold short; "
+        "summary": "Breakout: a one-minute candle trades through the premarket high and closes above it; buys when the "
+                   "2nd candle also closes above it (limit order, no chasing); stop below that candle's low. Breakdown: mirror image below the premarket low, sold short; "
                    "stop above that candle's high.",
         "timeframe": "1m",
         "fields": [
@@ -136,7 +136,14 @@ TEMPLATES = {
                opts=[["confirm_bar", "Beyond the confirming 1-min candle (its low / high)"], ["run_extreme", "Beyond the whole breakout move"]]),
             _f("stop_cents", "Stop buffer $", "num", 0.01, group="Exits", step=0.01, min=0),
             _f("min_pm_range_pct", "Skip if premarket range under %", "num", 0.0, "0 = off", step=0.25, min=0),
+            _f("require_cross", "Break candle must cross the level", "bool", True,
+               "The first candle beyond the level has to trade through it (low at/below the premarket high, or high "
+               "at/above the premarket low). Off = a candle that opens already beyond the level also counts"),
+            _f("max_slip_R", "Max entry slippage (× risk)", "num", 0.2,
+               "Entry is a limit order this far past the decision price (0.2 = a fifth of the stop distance); "
+               "if it doesn't fill within a few seconds it's cancelled. 0 = market order", group="Exits", step=0.05, min=0),
         ],
+        "hide": ["stop_buffer_pct"],  # the stop buffer here is in $ (stop_cents)
         "overrides": {"above_vwap": False, "earliest_entry_et": "09:30", "latest_entry_et": "11:00",
                       "partial_R": 1.0, "breakeven_R": 1.0},
     },
@@ -189,7 +196,10 @@ def defaults_for(kind: str) -> dict:
 
 
 def fields_for(kind: str) -> list[dict]:
-    return TEMPLATES[kind]["fields"] if kind == "trend_join" else TEMPLATES[kind]["fields"] + COMMON_FIELDS
+    t = TEMPLATES[kind]
+    if kind == "trend_join":
+        return t["fields"]
+    return t["fields"] + [f for f in COMMON_FIELDS if f["k"] not in t.get("hide", [])]
 
 
 # ---------------------------------------------------------------- the user's list
@@ -298,7 +308,7 @@ def config(s: dict, rules: dict) -> dict:
             "tickers": _tickers(p),
             "earliest_entry_et": p["earliest_entry_et"], "latest_entry_et": p["latest_entry_et"],
             "min_price": float(p["min_price"]), "risk_pct": float(p["risk_pct"]),
-            "max_trades_per_day": int(p["max_trades_per_day"]),
+            "max_trades_per_day": int(p["max_trades_per_day"]), "max_slip_R": float(p.get("max_slip_R", 0) or 0),
             "exit": {"partial_profit_trigger_R": float(p["partial_R"]) or 999,
                      "partial_profit_fraction": float(p["partial_fraction"]),
                      "breakeven_trigger_R": float(p["breakeven_R"]) or 999,
@@ -592,6 +602,13 @@ def _pm_break(p, bars, today, price, checks, m, now_t: time | None = None) -> fl
         run = done.iloc[-n:]
         confirm_bar = run.iloc[confirm - 1]  # e.g. the 2nd candle that stayed beyond the level
         confirm_close = run.index[confirm - 1] + pd.Timedelta(minutes=1)
+        brk = run.iloc[0]
+        if p.get("require_cross", True):
+            crossed = float(brk["Low"]) <= level if side == "long" else float(brk["High"]) >= level
+            if not crossed:
+                checks.append(("cross", False, f"the {run.index[0]:%H:%M} candle opened already "
+                                               f"{'above' if side == 'long' else 'below'} {level:.2f} (a gap, not a break)"))
+                continue
         m.update(break_time=run.index[0].strftime("%H:%M"), confirm_time=run.index[confirm - 1].strftime("%H:%M"),
                  confirm_low=float(confirm_bar["Low"]), confirm_high=float(confirm_bar["High"]))
         if now_dt is not None:

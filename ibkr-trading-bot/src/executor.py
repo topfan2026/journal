@@ -9,10 +9,12 @@ from src.common import PROJECT_DIR
 
 
 def run_trade(symbol: str, side: str, size: int, stop_price: float | None = None, timeout: int = 30,
-              strategy: str = "") -> tuple[dict | None, str]:
+              strategy: str = "", limit: float | None = None) -> tuple[dict | None, str]:
     cmd = [sys.executable, str(PROJECT_DIR / "trade.py"), "--symbol", symbol, "--side", side, "--size", str(int(size))]
     if stop_price is not None:
         cmd += ["--stop-price", f"{stop_price:.4f}"]
+    if limit:
+        cmd += ["--limit", f"{limit:.4f}"]
     if strategy:
         cmd += ["--strategy", strategy]
     try:

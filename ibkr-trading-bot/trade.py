@@ -19,6 +19,7 @@ def main() -> int:
     ap.add_argument("--side", required=True, choices=["BUY", "SELL", "buy", "sell"])
     ap.add_argument("--size", required=True, type=int)
     ap.add_argument("--stop-price", type=float, default=None, help="initial stop, logged for R calculations")
+    ap.add_argument("--limit", type=float, default=None, help="limit price; unfilled part is cancelled after a few seconds")
     ap.add_argument("--strategy", default="", help="which strategy opened/closed this trade")
     args = ap.parse_args()
     side = args.side.upper()
@@ -37,11 +38,14 @@ def main() -> int:
         return 1
 
     try:
-        trade = ibkr.place_order(args.symbol, side, args.size)
+        if args.limit:
+            trade = ibkr.place_limit(args.symbol, side, args.size, args.limit)
+        else:
+            trade = ibkr.place_order(args.symbol, side, args.size)
         st = trade.orderStatus
         result = {"symbol": args.symbol, "side": side, "size": args.size, "status": st.status,
                   "filled": int(st.filled), "fill_price": float(st.avgFillPrice or 0), "order_id": trade.order.orderId}
-        if st.status in DEAD:
+        if st.status in DEAD and not st.filled:
             for entry in trade.log:
                 print(f"  log: {entry.status} {entry.message} {entry.errorCode}")
             print("RESULT " + json.dumps(result))

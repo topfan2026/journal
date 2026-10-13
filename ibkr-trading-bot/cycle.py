@@ -302,6 +302,10 @@ def force_close(ibkr, positions: list[dict]) -> list[dict]:
 
 # ---------------------------------------------------------------- step 8: entries
 
+def _round_price(x: float) -> float:
+    return round(float(x), 2) if x >= 1 else round(float(x), 4)
+
+
 def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
     """Run every ACTIVE strategy over its stocks; buy what passes, within global and per-strategy limits."""
     from src import strategies as st
@@ -387,14 +391,17 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
                 continue
 
             d = -1 if side == "short" else 1
-            result, out = run_trade(sym, "SELL" if d < 0 else "BUY", size, stop_price=stop, strategy=sid)
+            limit = None
+            if cfg.get("max_slip_R"):  # cap slippage: limit = decision price + a fraction of the risk
+                limit = _round_price(price + d * cfg["max_slip_R"] * abs(price - stop))
+            result, out = run_trade(sym, "SELL" if d < 0 else "BUY", size, stop_price=stop, strategy=sid, limit=limit)
             buys += 1  # count attempts too: a timed-out order may still fill
             s_buys += 1
             held.add(sym)
             ibkr.ib.sleep(1)
             qty = ibkr.position_qty(sym) * d
             if qty <= 0:
-                log("entry_unfilled", symbol=sym, strategy=sid, side=side, result=result, output=out[-500:])
+                log("entry_unfilled", symbol=sym, strategy=sid, side=side, limit=limit, result=result, output=out[-500:])
                 continue
             fill = float(result["fill_price"]) if result and result.get("fill_price") else price
             if (fill - stop) * d <= 0:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import time
 
-from ib_async import IB, MarketOrder, Stock, StopOrder, Trade
+from ib_async import IB, LimitOrder, MarketOrder, Stock, StopOrder, Trade
 
 class AccountLockError(RuntimeError):
     """The connected TWS isn't the one paper account this bot may trade."""
@@ -72,6 +72,17 @@ class IBKRClient:
         order = MarketOrder(side.upper(), int(quantity), outsideRth=True, account=self.account)
         trade = self.ib.placeOrder(self.contract(symbol), order)
         return self.wait_settled(trade, timeout)
+
+    def place_limit(self, symbol: str, side: str, quantity: int, limit: float, timeout: float = 6) -> Trade:
+        """Marketable limit entry: fills now at the limit or better, or is cancelled after `timeout` seconds
+        (whatever part filled stays filled), so a fast market can never fill us far from the decision price."""
+        order = LimitOrder(side.upper(), int(quantity), round_price(limit), tif="DAY", outsideRth=True, account=self.account)
+        trade = self.ib.placeOrder(self.contract(symbol), order)
+        self.wait_settled(trade, timeout)
+        if trade.orderStatus.status not in DEAD and trade.orderStatus.status != "Filled":
+            self.ib.cancelOrder(trade.order)
+            self.wait_settled(trade, 5)
+        return trade
 
     def place_stop(self, symbol: str, quantity: int, stop_price: float, action: str = "SELL") -> Trade:
         """Protective GTC stop (SELL for longs, BUY for shorts). GTC so a crash never leaves a position naked."""
