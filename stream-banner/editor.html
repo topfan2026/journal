@@ -52,6 +52,23 @@
   summary { cursor: pointer; font-weight: 600; }
   ol.steps { padding-left: 20px; }
   code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; }
+  .section { margin-top: 16px; }
+  .section > .head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .section > .head h2 { margin: 0; flex: 1; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; margin-top: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--bg); }
+  .card .field { grid-template-columns: 96px minmax(0, 1fr); }
+  .card textarea { min-height: 54px; }
+  .card .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  button.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.go { color: #062411; } }
+  :root[data-theme="dark"] button.go { color: #062411; }
+  button.small { padding: 7px 12px; font-size: 14px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; }
+  .live { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); }
+  .live .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--soft); }
+  .live.on .dot { background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,0.2); }
+  .empty { color: var(--soft); font-size: 14px; padding: 6px 0; }
 </style>
 </head>
 <body>
@@ -65,22 +82,51 @@
   </div>
   <p class="note">Preview over a sample chart. On stream, your real chart shows in the middle.</p>
 
-  <div class="bars" id="bars"></div>
-
   <div class="actions">
-    <button class="primary" type="button" id="save">Save</button>
+    <button class="primary" type="button" id="save">Save &amp; go live</button>
+    <label class="live" id="live-box"><input type="checkbox" id="live" checked> <span class="dot"></span> Live: changes go on stream automatically</label>
     <button type="button" id="reset">Undo changes</button>
     <span id="status"></span>
   </div>
 
+  <section class="panel section">
+    <div class="head">
+      <h2>Pop-up messages</h2>
+      <select id="preset" aria-label="Add a pop-up">
+        <option value="">+ Add a pop-up…</option>
+      </select>
+    </div>
+    <p class="note" style="margin:0">Big animated text on the stream. Click <b>Show now</b> to put it on screen, or let it repeat every few minutes by itself.</p>
+    <div class="quick" id="quick" style="margin-top:10px"></div>
+    <div class="cards" id="pops"></div>
+  </section>
+
+  <div class="bars" id="bars"></div>
+
+  <section class="panel section">
+    <div class="head">
+      <h2>Hide areas</h2>
+      <button type="button" class="small" id="add-cover">+ Add a cover</button>
+    </div>
+    <p class="note" style="margin:0">A frosted box that hides part of your screen (account balance, order panel…). Position and size are in % of the screen.
+      The overlay sits on top of your chart, so it can't blur what's underneath: it covers it. For a true blur, see the README.</p>
+    <div class="cards" id="covers"></div>
+  </section>
+
+  <section class="panel section">
+    <div class="head"><h2>Extras</h2></div>
+    <label class="toggle"><input type="checkbox" id="shimmer"> Light shimmer sweeping across the bars</label>
+  </section>
+
   <details>
     <summary>How saving works</summary>
     <ol class="steps">
-      <li>Click <b>Save</b>. The first time, choose <code>banner-config.js</code> in this folder and replace it.
-        After that, Save writes straight to it.</li>
-      <li>If your browser asks where to download instead, save it as <code>banner-config.js</code> in this folder
-        (the <code>stream-banner</code> folder), replacing the old one.</li>
-      <li>OBS picks up the change within 5 seconds. You don't need to touch OBS.</li>
+      <li>Click <b>Save &amp; go live</b> once and choose <code>banner-config.js</code> in this folder (replace it).</li>
+      <li>From then on, with <b>Live</b> ticked, every change goes on stream about a second after you stop typing.
+        No more saving. Next time you open the editor, the first change asks once to allow editing the file.</li>
+      <li>If your browser can't save directly (use Chrome or Edge), it downloads <code>banner-config.js</code>:
+        move it into the <code>stream-banner</code> folder, replacing the old one.</li>
+      <li>OBS checks the file every second. You don't need to touch OBS.</li>
       <li>Images (logo, promo pictures, QR code) must be copied into this folder first; then type the file name, e.g. <code>logo.png</code>.</li>
     </ol>
   </details>
@@ -99,10 +145,32 @@
   let cfg = JSON.parse(JSON.stringify(original));
   for (const w of ["top", "bottom"]) cfg[w] = { ...DEFAULT_BAR, ...(cfg[w] || {}) };
   cfg.font = cfg.font || "'Segoe UI', Inter, Arial, sans-serif";
+  cfg.callouts = Array.isArray(cfg.callouts) ? cfg.callouts : [];
+  cfg.covers = Array.isArray(cfg.covers) ? cfg.covers : [];
+  cfg.shimmer = !!cfg.shimmer;
+
+  const POSITIONS = [["top-left", "Top left"], ["top-center", "Top middle"], ["top-right", "Top right"],
+    ["middle-left", "Middle left"], ["center", "Centre"], ["middle-right", "Middle right"],
+    ["bottom-left", "Bottom left"], ["bottom-center", "Bottom middle"], ["bottom-right", "Bottom right"]];
+  const ANIMATIONS = [["pop", "Pop"], ["slide", "Slide in"], ["drop", "Drop"], ["bounce", "Bounce"], ["shake", "Shake"],
+    ["glow", "Glow pulse"], ["type", "Typewriter"]];
+  const LOOKS = [["box", "Box"], ["plain", "Big text"], ["neon", "Neon"], ["ribbon", "Ribbon"]];
+  const EFFECTS = [["none", "None"], ["confetti", "Confetti"], ["rockets", "Rockets 🚀📈🔥"], ["money", "Money 💵💰"],
+    ["emoji", "Your emoji"], ["fireworks", "Fireworks"], ["sparkles", "Sparkles"], ["edge", "Screen glow"]];
+  const PRESETS = [
+    { text: "🔔 Subscribe for the scanner every morning!", position: "top-right", animation: "slide", look: "box", effect: "sparkles", color: "#22c55e", size: 44, duration: 8, every: 10 },
+    { text: "🚀 BREAKOUT!", position: "center", animation: "pop", look: "neon", effect: "rockets", color: "#22c55e", size: 110, duration: 5, every: 0 },
+    { text: "NEW HIGH OF DAY 📈", position: "center", animation: "drop", look: "ribbon", effect: "confetti", color: "#facc15", size: 84, duration: 5, every: 0 },
+    { text: "⚠️ Watch this level", position: "top-center", animation: "shake", look: "box", effect: "edge", color: "#ef4444", size: 56, duration: 6, every: 0 },
+    { text: "👍 Like the stream if the scanner helps you", position: "bottom-right", animation: "bounce", look: "box", effect: "none", color: "#38bdf8", size: 40, duration: 8, every: 15 },
+    { text: "Market opens in 5 minutes ⏰", position: "top-center", animation: "type", look: "box", effect: "none", color: "#a78bfa", size: 48, duration: 8, every: 0 },
+    { text: "Your text here", position: "center", animation: "pop", look: "box", effect: "none", color: "#22c55e", size: 56, duration: 6, every: 0 },
+  ];
 
   // ---------------------------------------------------------------- preview
   const frame = $("frame");
   const push = () => frame.contentWindow && frame.contentWindow.postMessage({ type: "banner-config", config: cfg }, "*");
+  const previewShow = c => frame.contentWindow && frame.contentWindow.postMessage({ type: "banner-show", callout: c }, "*");
   addEventListener("message", e => { if (e.data && e.data.type === "banner-ready") push(); });
   frame.addEventListener("load", push);
 
@@ -219,17 +287,153 @@
     return panel;
   }
 
+  const select = (options, value, id) => {
+    const s = el("select", { id });
+    for (const [v, t] of options) s.append(el("option", { value: v }, t));
+    s.value = value; return s;
+  };
+
+  function showNow(i) {
+    cfg.trigger = { id: Date.now(), index: i };
+    previewShow(cfg.callouts[i]);
+    liveSave(true);
+  }
+
+  function popCard(c, i) {
+    const card = el("div", { className: "card" });
+    const set = (k, v) => { c[k] = v; push(); dirty(); if (k === "text") buildQuick(); };
+    const id = k => `pop${i}-${k}`;
+    const text = el("textarea", { value: c.text || "", id: id("text") });
+    text.addEventListener("input", () => set("text", text.value));
+    card.append(field("Text", text, "Emoji work 👍. Enter for a new line."));
+    const pos = select(POSITIONS, c.position || "center", id("pos")); pos.addEventListener("change", () => set("position", pos.value));
+    const anim = select(ANIMATIONS, c.animation || "pop", id("anim")); anim.addEventListener("change", () => set("animation", anim.value));
+    const look = select(LOOKS, c.look || "box", id("look")); look.addEventListener("change", () => set("look", look.value));
+    const fx = select(EFFECTS, c.effect || "none", id("fx")); fx.addEventListener("change", () => { set("effect", fx.value); emojiRow.style.display = fx.value === "emoji" ? "" : "none"; });
+    card.append(field("Where", pos), field("Animation", anim), field("Look", look), field("Effect", fx));
+    const emoji = el("input", { type: "text", value: c.emoji || "🚀💰📈🔥", id: id("emoji") });
+    emoji.addEventListener("input", () => set("emoji", emoji.value));
+    const emojiRow = field("Emoji", emoji); emojiRow.style.display = (c.effect === "emoji") ? "" : "none";
+    card.append(emojiRow);
+    const nums = el("div", { className: "inline" });
+    const num = (k, label, min, max, width) => {
+      const n = el("input", { type: "number", min, max, value: c[k], id: id(k) }); n.style.width = width;
+      n.addEventListener("input", () => set(k, Number(n.value) || 0));
+      nums.append(n, el("span", { className: "note" }, label));
+    };
+    const color = el("input", { type: "color", value: c.color || "#22c55e", title: "Colour", ariaLabel: "Colour" });
+    color.addEventListener("input", () => set("color", color.value));
+    num("size", "px", 16, 220, "74px"); num("duration", "seconds", 2, 120, "64px");
+    nums.append(color);
+    card.append(field("Size, time", nums));
+    const every = el("input", { type: "number", min: 0, max: 600, value: c.every || 0, id: id("every") }); every.style.width = "74px";
+    every.addEventListener("input", () => set("every", Number(every.value) || 0));
+    const ev = el("div", { className: "inline" }); ev.append(every, el("span", { className: "note" }, "minutes (0 = only when I click Show now)"));
+    card.append(field("Repeat every", ev));
+    const row = el("div", { className: "row" });
+    const go = el("button", { type: "button", className: "go small" }, "▶ Show now"); go.addEventListener("click", () => showNow(i));
+    const del = el("button", { type: "button", className: "small" }, "Remove");
+    del.addEventListener("click", () => { cfg.callouts.splice(i, 1); buildPops(); push(); dirty(); });
+    row.append(go, del);
+    card.append(row);
+    return card;
+  }
+
+  function buildQuick() {
+    $("quick").replaceChildren(...cfg.callouts.map((c, i) => {
+      const b = el("button", { type: "button", className: "go small" }, "▶ " + (String(c.text || "").split("\n")[0].slice(0, 32) || `Pop-up ${i + 1}`));
+      b.addEventListener("click", () => showNow(i));
+      return b;
+    }));
+  }
+
+  function buildPops() {
+    $("pops").replaceChildren(...(cfg.callouts.length ? cfg.callouts.map(popCard) : [el("div", { className: "empty" }, "No pop-ups yet. Pick one from “+ Add a pop-up…”.")]));
+    buildQuick();
+  }
+
+  function coverCard(c, i) {
+    const card = el("div", { className: "card" });
+    const set = (k, v) => { c[k] = v; push(); dirty(); };
+    const nums = el("div", { className: "inline" });
+    for (const [k, label] of [["x", "left"], ["y", "top"], ["w", "wide"], ["h", "tall"]]) {
+      const n = el("input", { type: "number", min: 0, max: 100, step: 0.5, value: c[k], id: `cover${i}-${k}` }); n.style.width = "70px";
+      n.addEventListener("input", () => set(k, Number(n.value) || 0));
+      nums.append(n, el("span", { className: "note" }, label + " %"));
+    }
+    card.append(field("Position", nums, "Watch the preview while you adjust"));
+    const label = el("input", { type: "text", value: c.label || "", placeholder: "e.g. 🔒 Private (or leave empty)", id: `cover${i}-label` });
+    label.addEventListener("input", () => set("label", label.value));
+    card.append(field("Label", label));
+    const row = el("div", { className: "row" });
+    const tog = el("button", { type: "button", className: "small" }, c.show === false ? "Turn on" : "Turn off");
+    tog.addEventListener("click", () => { c.show = c.show === false; buildCovers(); push(); dirty(); });
+    const del = el("button", { type: "button", className: "small" }, "Remove");
+    del.addEventListener("click", () => { cfg.covers.splice(i, 1); buildCovers(); push(); dirty(); });
+    row.append(tog, del);
+    card.append(row);
+    return card;
+  }
+
+  function buildCovers() {
+    $("covers").replaceChildren(...(cfg.covers.length ? cfg.covers.map(coverCard) : [el("div", { className: "empty" }, "No covers. Add one to hide part of the screen.")]));
+  }
+
+  for (const [i, p] of PRESETS.entries()) $("preset").append(el("option", { value: String(i) }, p.text));
+  $("preset").addEventListener("change", e => {
+    if (e.target.value === "") return;
+    cfg.callouts.push(JSON.parse(JSON.stringify(PRESETS[Number(e.target.value)])));
+    e.target.value = "";
+    buildPops(); push(); dirty();
+  });
+  $("add-cover").addEventListener("click", () => {
+    cfg.covers.push({ x: 72, y: 12, w: 24, h: 14, label: "🔒 Private", show: true });
+    buildCovers(); push(); dirty();
+  });
+  $("shimmer").addEventListener("change", e => { cfg.shimmer = e.target.checked; push(); dirty(); });
+
   function buildForm() {
     $("bars").replaceChildren(barForm("top", "Top banner"), barForm("bottom", "Bottom banner"));
+    buildPops(); buildCovers();
+    $("shimmer").checked = cfg.shimmer;
     push();
   }
 
   // ---------------------------------------------------------------- save
-  let handle = null;
+  let handle = null, saveTimer = null;
   const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "err" : ""; };
-  const dirty = () => status("Unsaved changes");
+  const dirty = () => {
+    if ($("live").checked && handle) { status("Updating stream…"); clearTimeout(saveTimer); saveTimer = setTimeout(() => liveSave(false), 700); }
+    else status(handle ? "Unsaved changes (Live is off)" : "Click “Save & go live” once to connect to your stream");
+  };
+  $("live").addEventListener("change", () => { $("live-box").classList.toggle("on", $("live").checked && !!handle); if ($("live").checked) dirty(); });
+
+  // the chosen banner-config.js is remembered between visits (browser storage for file handles)
+  const db = () => new Promise((ok, bad) => { const r = indexedDB.open("stream-banner", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("h"); r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error); });
+  async function rememberHandle(h) { try { const d = await db(); d.transaction("h", "readwrite").objectStore("h").put(h, "config"); } catch (e) {} }
+  async function recallHandle() {
+    try { const d = await db(); return await new Promise(ok => { const q = d.transaction("h").objectStore("h").get("config"); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); }
+    catch (e) { return null; }
+  }
+  async function writable(h, ask) {
+    if (!h.queryPermission) return true;
+    if (await h.queryPermission({ mode: "readwrite" }) === "granted") return true;
+    return ask && await h.requestPermission({ mode: "readwrite" }) === "granted";
+  }
+  async function liveSave(fromClick) {
+    if (!handle) { if (fromClick) $("save").click(); return; }
+    try {
+      if (!await writable(handle, fromClick)) { status("Click “Save & go live” to allow updating the stream file", true); return; }
+      const w = await handle.createWritable(); await w.write(fileText()); await w.close();
+      status(`On stream ✓ ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`);
+    } catch (e) { status(`Couldn't update the file: ${e.message}`, true); }
+  }
+  recallHandle().then(h => { if (h) { handle = h; $("live-box").classList.toggle("on", $("live").checked); status("Connected to banner-config.js · changes go live automatically"); } });
+  // a click anywhere counts as permission to keep writing (browsers ask once per visit)
+  addEventListener("pointerdown", () => { if (handle) writable(handle, true).catch(() => {}); }, { once: true });
   const fileText = () => "// Banner settings. Edit with editor.html (easiest) or in Notepad, then save.\n" +
-    "// The banner in OBS reloads this file every 5 seconds, so changes appear by themselves.\n" +
+    "// The banner in OBS reloads this file every second, so changes appear by themselves.\n" +
     "// Images (logo, promo pictures) must be in this same folder; write just the file name.\n" +
     "window.BANNER = " + JSON.stringify(cfg, null, 2) + ";\n";
 
@@ -237,10 +441,14 @@
     const text = fileText();
     if (window.showSaveFilePicker) {
       try {
-        if (!handle) handle = await showSaveFilePicker({ suggestedName: "banner-config.js",
-          types: [{ description: "Banner settings", accept: { "text/javascript": [".js"] } }] });
+        if (!handle || !await writable(handle, true)) {
+          handle = await showSaveFilePicker({ suggestedName: "banner-config.js",
+            types: [{ description: "Banner settings", accept: { "text/javascript": [".js"] } }] });
+          rememberHandle(handle);
+        }
         const w = await handle.createWritable(); await w.write(text); await w.close();
-        status("Saved. OBS updates within 5 seconds.");
+        $("live-box").classList.toggle("on", $("live").checked);
+        status("Saved and connected. From now on changes go on stream by themselves.");
         return;
       } catch (e) {
         if (e.name === "AbortError") return status("Not saved");

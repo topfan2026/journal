@@ -1,5 +1,5 @@
 // Banner settings. Edit with editor.html (easiest) or in Notepad, then save.
-// The banner in OBS reloads this file every 5 seconds, so changes appear by themselves.
+// The banner in OBS reloads this file every second, so changes appear by themselves.
 // Images (logo, promo pictures) must be in this same folder; write just the file name.
 window.BANNER = {
   "font": "'Segoe UI', Inter, Arial, sans-serif",
@@ -51,5 +51,24 @@ window.BANNER = {
     "clockZone": "America/New_York",
     "clockLabel": "NY",
     "marketStatus": false
-  }
+  },
+  "shimmer": true,
+  "callouts": [
+    {
+      "text": "🔔 Subscribe for the scanner every morning!",
+      "position": "top-right", "animation": "slide", "look": "box", "effect": "sparkles",
+      "color": "#22c55e", "size": 44, "duration": 8, "every": 10
+    },
+    {
+      "text": "🚀 BREAKOUT!",
+      "position": "center", "animation": "pop", "look": "neon", "effect": "rockets",
+      "color": "#22c55e", "size": 110, "duration": 5, "every": 0
+    },
+    {
+      "text": "NEW HIGH OF DAY 📈",
+      "position": "center", "animation": "drop", "look": "ribbon", "effect": "confetti",
+      "color": "#facc15", "size": 84, "duration": 5, "every": 0
+    }
+  ],
+  "covers": []
 };

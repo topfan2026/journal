@@ -52,16 +52,68 @@
   .mkt.pre, .mkt.after { background: #d97706; color: #fff; }
   .mkt.closed { background: rgba(255,255,255,0.16); color: rgba(255,255,255,0.85); }
   @keyframes blink { 50% { opacity: 0.25; } }
+
+  /* shimmer: a light sweep across the bars every few seconds */
+  .bar.shimmer .sweep { position: absolute; top: 0; bottom: 0; width: 220px; left: -260px; z-index: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16), transparent); animation: sweep 7s ease-in-out infinite; }
+  .bar.bottom.shimmer .sweep { animation-delay: 3.5s; }
+  @keyframes sweep { 0% { left: -260px; } 22%, 100% { left: calc(100% + 40px); } }
+
+  /* frosted covers that hide part of the screen */
+  .cover { position: absolute; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, rgba(30,36,52,0.96), rgba(16,20,32,0.97)); border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.35); color: rgba(255,255,255,0.8); font-weight: 650; font-size: 28px; letter-spacing: 0.03em; }
+  .cover::before { content: ""; position: absolute; inset: -40px; opacity: 0.22; filter: blur(14px);
+    background: radial-gradient(circle at 20% 30%, #4b5b80, transparent 40%), radial-gradient(circle at 75% 70%, #3b4a6b, transparent 45%),
+      radial-gradient(circle at 60% 20%, #2c3550, transparent 35%); }
+  .cover span { position: relative; }
+
+  /* pop-up messages */
+  #fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  .callout { position: absolute; font-weight: 800; line-height: 1.15; color: #fff; white-space: pre;
+    --c: #22c55e; text-align: center; }
+  .callout.look-box { padding: 0.5em 0.9em; border-radius: 0.45em; background: rgba(10,14,26,0.9);
+    border: 3px solid var(--c); box-shadow: 0 0 0 4px rgba(0,0,0,0.25), 0 0 34px var(--c), 0 18px 50px rgba(0,0,0,0.45); }
+  .callout.look-plain { text-shadow: 0 4px 0 rgba(0,0,0,0.6), 0 0 22px rgba(0,0,0,0.65); -webkit-text-stroke: 1.5px rgba(0,0,0,0.65); }
+  .callout.look-neon { color: #fff; text-shadow: 0 0 6px #fff, 0 0 18px var(--c), 0 0 42px var(--c), 0 0 80px var(--c); }
+  .callout.look-ribbon { padding: 0.35em 1.1em; background: var(--c); color: #071107; transform-origin: center;
+    clip-path: polygon(3% 0, 100% 0, 97% 100%, 0 100%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); }
+  .p-top-left { left: 3%; } .p-top-center { left: 50%; } .p-top-right { right: 3%; }
+  .p-middle-left { left: 3%; } .p-center { left: 50%; } .p-middle-right { right: 3%; }
+  .p-bottom-left { left: 3%; } .p-bottom-center { left: 50%; } .p-bottom-right { right: 3%; }
+  .callout .inner { display: inline-block; }
+  .a-pop .inner { animation: pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+  .a-slide .inner { animation: slide 0.7s cubic-bezier(.2,.9,.2,1) both; }
+  .a-drop .inner { animation: drop 0.8s cubic-bezier(.3,1.5,.5,1) both; }
+  .a-bounce .inner { animation: pop 0.5s ease-out both, bounce 1.2s 0.5s ease-in-out infinite; }
+  .a-shake .inner { animation: pop 0.4s ease-out both, shake 0.5s 0.4s ease-in-out 3; }
+  .a-glow .inner { animation: fadein 0.6s ease-out both, pulse 1.6s 0.6s ease-in-out infinite; }
+  .a-type .inner { animation: fadein 0.2s both; }
+  .callout.out .inner { animation: out 0.5s ease-in forwards !important; }
+  @keyframes pop { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes slide { 0% { transform: translateX(-120%); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  @keyframes drop { 0% { transform: translateY(-300px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  @keyframes bounce { 50% { transform: translateY(-14px); } }
+  @keyframes shake { 20%, 60% { transform: translateX(-10px) rotate(-1.5deg); } 40%, 80% { transform: translateX(10px) rotate(1.5deg); } }
+  @keyframes pulse { 50% { transform: scale(1.06); filter: brightness(1.25); } }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes out { to { transform: scale(0.85); opacity: 0; } }
+  .edge { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 30px var(--c); opacity: 0;
+    animation: edge 2.4s ease-out forwards; }
+  @keyframes edge { 10% { opacity: 1; } 30% { opacity: 0.4; } 45% { opacity: 0.9; } 100% { opacity: 0; } }
 </style>
 </head>
 <body>
-<div id="stage"></div>
+<div id="stage"><div id="bars"></div><div id="covers"></div><canvas id="fx"></canvas><div id="pops"></div></div>
 <script>
 (function () {
   "use strict";
   const stage = document.getElementById("stage");
   const PREVIEW = new URLSearchParams(location.search).has("preview");
-  let config = null, key = "", timers = [], frames = [];
+  const barsBox = document.getElementById("bars"), coversBox = document.getElementById("covers");
+  const popsBox = document.getElementById("pops"), fxCanvas = document.getElementById("fx");
+  let config = null, timers = [], frames = [];
+  const keys = { bars: "", covers: "", callouts: "" };
 
   // ---------------------------------------------------------------- scale the 1920x1080 stage to the window
   // Sizes in the settings are for a 1080-pixel-tall stream. Scale by height, and make the stage as
@@ -71,6 +123,7 @@
     stage.style.transform = `scale(${k})`;
     stage.style.width = `${innerWidth / k}px`;
     stage.style.left = stage.style.top = "0px";
+    fxCanvas.width = Math.round(innerWidth / k); fxCanvas.height = 1080;
   }
   addEventListener("resize", fit); fit();
 
@@ -97,7 +150,7 @@
   }
 
   // ---------------------------------------------------------------- one bar
-  function buildBar(where, c, font) {
+  function buildBar(where, c, font, shimmer) {
     if (!c || !c.show) return;
     const h = Math.max(30, Math.min(400, Number(c.height) || 90));
     const bar = el("div", `bar ${where}`);
@@ -108,6 +161,7 @@
     bar.style.setProperty("--accent", c.accent || "#22c55e");
     bar.style.setProperty("--text", c.textColor || "#ffffff");
     if (!c.accent) bar.style.borderWidth = "0";
+    if (shimmer) { bar.classList.add("shimmer"); bar.append(el("div", "sweep")); }
 
     if (c.logo) { const img = el("img", "logo"); img.src = c.logo; img.alt = ""; img.onerror = () => img.remove(); bar.append(img); }
     if (c.badge) bar.append(el("span", "badge", c.badge));
@@ -147,7 +201,7 @@
       }
       bar.append(side);
     }
-    stage.append(bar);
+    barsBox.append(bar);
   }
 
   // messages one at a time, fading; long ones shrink to fit
@@ -182,13 +236,154 @@
   }
 
   function render(next) {
-    const k = JSON.stringify(next);
-    if (k === key) return;
-    key = k; config = next;
-    stop();
-    stage.replaceChildren();
-    buildBar("top", next.top, next.font);
-    buildBar("bottom", next.bottom, next.font);
+    config = next;
+    const kb = JSON.stringify([next.top, next.bottom, next.font, next.shimmer]);
+    if (kb !== keys.bars) {             // only rebuild the bars when their own settings change
+      keys.bars = kb;
+      stop();
+      barsBox.replaceChildren();
+      buildBar("top", next.top, next.font, next.shimmer);
+      buildBar("bottom", next.bottom, next.font, next.shimmer);
+    }
+    const kc = JSON.stringify(next.covers || []);
+    if (kc !== keys.covers) { keys.covers = kc; buildCovers(next.covers || []); }
+    const kp = JSON.stringify(next.callouts || []);
+    if (kp !== keys.callouts) { keys.callouts = kp; schedule(next.callouts || []); }
+    handleTrigger(next.trigger);
+  }
+
+  // ---------------------------------------------------------------- covers (hide part of the screen)
+  function buildCovers(list) {
+    coversBox.style.fontFamily = (config && config.font) || "'Segoe UI', Arial, sans-serif";
+    coversBox.replaceChildren(...list.filter(c => c && c.show !== false).map(c => {
+      const d = el("div", "cover");
+      const pct = (v, d0) => Math.max(0, Math.min(100, Number(v == null ? d0 : v)));
+      d.style.left = `${pct(c.x, 70)}%`; d.style.top = `${pct(c.y, 10)}%`;
+      d.style.width = `${pct(c.w, 20)}%`; d.style.height = `${pct(c.h, 15)}%`;
+      if (c.label) d.append(el("span", null, c.label));
+      return d;
+    }));
+  }
+
+  // ---------------------------------------------------------------- pop-up messages
+  const queue = [];
+  let showing = false, popTimers = [], lastTrigger = null;
+  function barHeight(where) {
+    const b = config && config[where];
+    return b && b.show ? Math.max(30, Math.min(400, Number(b.height) || 90)) : 0;
+  }
+  function schedule(list) {
+    popTimers.forEach(clearInterval); popTimers = [];
+    list.forEach((c, i) => {
+      const every = Number(c.every) || 0;
+      if (every > 0) popTimers.push(setInterval(() => enqueue(c), every * 60000));
+    });
+  }
+  function handleTrigger(t) {
+    if (!t || t.id == null) return;
+    if (lastTrigger === null) { lastTrigger = t.id; if (!PREVIEW) return; }   // don't replay an old click on start-up
+    if (t.id === lastTrigger) return;
+    lastTrigger = t.id;
+    const c = (config.callouts || [])[t.index];
+    if (c) enqueue(c, true);
+  }
+  function enqueue(c, now) {
+    if (now) queue.unshift(c); else queue.push(c);
+    if (queue.length > 6) queue.length = 6;
+    if (!showing) next();
+  }
+  function next() {
+    const c = queue.shift();
+    if (!c) { showing = false; return; }
+    showing = true;
+    const box = el("div", `callout look-${c.look || "box"} a-${c.animation || "pop"} p-${c.position || "center"}`);
+    const inner = el("span", "inner");
+    box.append(inner);
+    box.style.setProperty("--c", c.color || "#22c55e");
+    box.style.fontSize = `${Number(c.size) || 56}px`;
+    box.style.fontFamily = (config && config.font) || "'Segoe UI', Arial, sans-serif";
+    const pos = c.position || "center";
+    const topH = barHeight("top"), botH = barHeight("bottom");
+    if (pos.startsWith("top")) box.style.top = `${topH + 40}px`;
+    else if (pos.startsWith("bottom")) box.style.bottom = `${botH + 40}px`;
+    else box.style.top = "50%";
+    const tx = pos.endsWith("center") ? "-50%" : "0";
+    const ty = pos.startsWith("middle") || pos === "center" ? "-50%" : "0";
+    box.style.transform = `translate(${tx}, ${ty})`;
+    const text = String(c.text || "");
+    if (c.animation === "type") {
+      const chars = [...text];   // whole emoji, not half of one
+      let n = 0;
+      const t = setInterval(() => { inner.textContent = chars.slice(0, ++n).join(""); if (n >= chars.length) clearInterval(t); }, Math.max(18, 900 / Math.max(1, chars.length)));
+    } else inner.textContent = text;
+    popsBox.append(box);
+    // one line per line you typed; shrink if it is wider than 90% of the screen
+    const maxW = stage.offsetWidth * 0.9, measure = () => box.scrollWidth;
+    if (c.animation === "type") inner.textContent = text;          // measure the full text first
+    let size = Number(c.size) || 56;
+    while (measure() > maxW && size > 18) { size -= 4; box.style.fontSize = `${size}px`; }
+    if (c.animation === "type") inner.textContent = "";
+    effect(c.effect, c, box);
+    const ms = Math.max(2, Math.min(120, Number(c.duration) || 8)) * 1000;
+    setTimeout(() => { box.classList.add("out"); setTimeout(() => { box.remove(); next(); }, 520); }, ms);
+  }
+
+  // ---------------------------------------------------------------- effects (confetti, emoji rain, fireworks, sparkles, edge glow)
+  const fx = fxCanvas.getContext("2d");
+  let parts = [], fxRunning = false;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const COLORS = ["#22c55e", "#facc15", "#38bdf8", "#f472b6", "#fb923c", "#a78bfa", "#ffffff"];
+  function effect(name, c, box) {
+    const W = fxCanvas.width, H = fxCanvas.height;
+    if (!name || name === "none") return;
+    if (name === "edge") {
+      const e = el("div", "edge"); e.style.setProperty("--c", c.color || "#22c55e");
+      popsBox.append(e); setTimeout(() => e.remove(), 2600); return;
+    }
+    if (name === "confetti") for (let i = 0; i < 220; i++) parts.push({ kind: "paper", x: rnd(0, W), y: rnd(-H * 0.6, -10), vx: rnd(-60, 60), vy: rnd(160, 420),
+      r: rnd(0, 6.3), vr: rnd(-8, 8), w: rnd(10, 18), h: rnd(6, 10), c: COLORS[(Math.random() * COLORS.length) | 0], life: rnd(4, 6) });
+    if (name === "emoji" || name === "money" || name === "rockets") {
+      const set = [...(name === "money" ? "💵💰🤑" : name === "rockets" ? "🚀📈🔥" : (c.emoji || "🚀💰📈🔥"))].filter(ch => ch.trim());
+      for (let i = 0; i < 70; i++) parts.push({ kind: "emoji", ch: set[(Math.random() * set.length) | 0] || "⭐", x: rnd(0, W), y: rnd(-H, -40),
+        vx: rnd(-30, 30), vy: rnd(180, 380), r: rnd(-0.5, 0.5), vr: rnd(-1.5, 1.5), s: rnd(36, 70), life: 7 });
+    }
+    if (name === "fireworks") for (let b = 0; b < 5; b++) {
+      const cx = rnd(W * 0.2, W * 0.8), cy = rnd(H * 0.22, H * 0.55), col = COLORS[(Math.random() * 6) | 0], delay = b * 0.45;
+      for (let i = 0; i < 90; i++) { const a = rnd(0, Math.PI * 2), sp = rnd(120, 420);
+        parts.push({ kind: "spark", x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, c: col, life: rnd(1.2, 2), delay }); }
+    }
+    if (name === "sparkles") {
+      const r = box.getBoundingClientRect(), k = innerHeight / 1080;
+      for (let i = 0; i < 60; i++) parts.push({ kind: "star", x: rnd(r.left, r.right) / k, y: rnd(r.top, r.bottom) / k,
+        vx: rnd(-40, 40), vy: rnd(-60, 10), c: COLORS[(Math.random() * COLORS.length) | 0], life: rnd(1, 2.6), delay: rnd(0, 2) });
+    }
+    if (!fxRunning) { fxRunning = true; last = performance.now(); requestAnimationFrame(tickFx); }
+  }
+  let last = 0;
+  function tickFx(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    fx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    parts = parts.filter(p => {
+      if (p.delay > 0) { p.delay -= dt; return true; }
+      p.life -= dt;
+      if (p.life <= 0 || p.y > fxCanvas.height + 120) return false;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.kind === "spark") { p.vy += 260 * dt; p.vx *= 0.985; p.vy *= 0.985; }
+      if (p.kind === "star") p.vy += 40 * dt;
+      if (p.kind === "paper") { p.vx += Math.sin(now / 300 + p.r) * 4; }
+      fx.save();
+      fx.globalAlpha = Math.min(1, p.life * 1.5);
+      fx.translate(p.x, p.y);
+      if (p.kind === "paper") { p.r += p.vr * dt; fx.rotate(p.r); fx.scale(1, Math.cos(now / 160 + p.r)); fx.fillStyle = p.c; fx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); }
+      else if (p.kind === "emoji") { p.r += p.vr * dt; fx.rotate(p.r); fx.font = `${p.s}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        fx.textAlign = "center"; fx.textBaseline = "middle"; fx.fillText(p.ch, 0, 0); }
+      else if (p.kind === "spark") { fx.fillStyle = p.c; fx.shadowColor = p.c; fx.shadowBlur = 12; fx.beginPath(); fx.arc(0, 0, 3, 0, 7); fx.fill(); }
+      else { const s = 6 + 6 * Math.sin(now / 90 + p.x); fx.fillStyle = p.c; fx.shadowColor = p.c; fx.shadowBlur = 14;
+        fx.beginPath(); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4, rr = i % 2 ? s * 0.35 : s; fx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } fx.fill(); }
+      fx.restore();
+      return true;
+    });
+    if (parts.length) requestAnimationFrame(tickFx); else { fx.clearRect(0, 0, fxCanvas.width, fxCanvas.height); fxRunning = false; }
   }
 
   // ---------------------------------------------------------------- load + live reload of banner-config.js
@@ -200,11 +395,15 @@
     document.head.append(s);
   }
   if (PREVIEW) {
-    addEventListener("message", e => { if (e.data && e.data.type === "banner-config") render(e.data.config); });
+    addEventListener("message", e => {
+      if (!e.data) return;
+      if (e.data.type === "banner-config") render(e.data.config);
+      if (e.data.type === "banner-show" && e.data.callout) enqueue(e.data.callout, true);
+    });
     parent.postMessage({ type: "banner-ready" }, "*");
   } else {
     load();
-    setInterval(load, 5000);
+    setInterval(load, 1000);   // 1 s, so "Show now" from the editor appears almost at once
   }
 })();
 </script>
