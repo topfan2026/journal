@@ -984,16 +984,24 @@ class ScannerSite:
         """Pick *text* in any visible drop-down list that has it (exact option text first, then whole words)."""
         boxes = self.page.locator("select")
         words = whole_words(text)
+        found = []
         for k in range(boxes.count()):
             box = boxes.nth(k)
             try:
                 if not box.is_visible() or not box.is_enabled():
                     continue
-                labels = [t.strip() for t in box.locator("option").all_inner_texts()]
+                found.append((box, [t.strip() for t in box.locator("option").all_inner_texts()]))
             except Exception:
                 continue
-            match = next((t for t in labels if t.lower() == text.strip().lower()), None) \
-                or next((t for t in labels if words.search(t)), None)
+        # An exact name wins in ANY list before a partial match in an earlier one: "STREAM" is your saved
+        # layout, not a word inside the "Stream Mode" view switcher that comes first on the page.
+        for box, labels in found:
+            match = next((t for t in labels if t.lower() == text.strip().lower()), None)
+            if match:
+                box.select_option(label=match)
+                return True
+        for box, labels in found:
+            match = next((t for t in labels if words.search(t)), None)
             if match:
                 box.select_option(label=match)
                 return True

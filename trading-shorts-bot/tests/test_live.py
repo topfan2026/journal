@@ -1418,3 +1418,31 @@ def test_a_check_never_paints_over_a_stream_that_is_live(settings, monkeypatch):
     assert live.check_autopilot(settings) == 0
     st = live_status.read(root)
     assert st["phase"] == "live" and st["steps"]["gateway"]["detail"] == "port 4002" and not st.get("check")
+
+
+class _FakeBox:
+    def __init__(self, options):
+        self.options, self.picked = options, None
+
+    def is_visible(self): return True
+    def is_enabled(self): return True
+    def locator(self, _): return self
+    def all_inner_texts(self): return self.options
+    def select_option(self, label): self.picked = label
+
+
+class _FakeBoxes:
+    def __init__(self, boxes): self.boxes = boxes
+    def count(self): return len(self.boxes)
+    def nth(self, k): return self.boxes[k]
+
+
+def test_a_saved_layout_named_like_a_view_picks_the_layout_not_the_view_switcher():
+    import scanner_site
+    views = _FakeBox(["Single", "Wall (2-8)", "Stream Mode", "Momos Classic"])
+    layouts = _FakeBox(["Layouts…", "A+ setups", "STREAM"])
+    site = scanner_site.ScannerSite.__new__(scanner_site.ScannerSite)
+    site.page = type("P", (), {"locator": lambda self, _: _FakeBoxes([views, layouts])})()
+    assert site._select_option("STREAM") is True
+    assert layouts.picked == "STREAM" and views.picked is None
+    assert site._select_option("Stream Mode") is True and views.picked == "Stream Mode"

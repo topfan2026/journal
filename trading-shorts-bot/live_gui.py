@@ -36,7 +36,7 @@ ICONS = {"ok": ("✓", "#188038"), "working": ("●", "#e37400"), "failed": ("�
 class Field:
     key: str
     label: str
-    kind: str = "text"   # text | secret | bool | choice | file | dir | days
+    kind: str = "text"   # text | secret | bool | choice | combo (choice you may also type over) | file | dir | days
     default: str = ""
     help: str = ""
     choices: list[str] = field(default_factory=list)
@@ -92,9 +92,9 @@ TABS: dict[str, list[Field]] = {
         Field("SCANNER_CONNECTOR_PORT", "Website: connector port", default="8765"),
         Field("SCANNER_TUNNEL_CMD", "Website: tunnel command",
               help="e.g. cloudflared tunnel run ibkr (empty = none / you start it)"),
-        Field("SCANNER_LAYOUT", "Wall layout on the stream", "choice", default="A+ setups",
+        Field("SCANNER_LAYOUT", "Wall layout on the stream", "combo", default="A+ setups",
               choices=["A+ setups", "YouTube", "STREAM", "Momentum + charts"],
-              help="website only: the Layouts choice picked in Stream Mode ({SCANNER_LAYOUT} in the steps)"),
+              help="website only: type the exact name you saved under Layouts (Save layout), or pick one ({SCANNER_LAYOUT} in the steps)"),
         Field("SCANNER_WARMUP_SECONDS", "Warm-up seconds", default="20"),
         Field("BROWSER_CHANNEL", "Browser", "choice", default="chrome", choices=["chrome", "msedge", "chromium"]),
         Field("BROWSER_PATH", "or browser program", "file", help="optional: path to chrome.exe / msedge.exe"),
@@ -789,10 +789,10 @@ class App:
         if f.kind == "bool":
             var = tk.BooleanVar(value=str(value).lower() in ("1", "true", "yes", "on"))
             ttk.Checkbutton(cell, variable=var).grid(row=0, column=0, sticky="w")
-        elif f.kind == "choice":
+        elif f.kind in ("choice", "combo"):
             var = tk.StringVar(value=value or f.default)
-            ttk.Combobox(cell, textvariable=var, values=f.choices, state="readonly", width=18).grid(
-                row=0, column=0, sticky="w")
+            ttk.Combobox(cell, textvariable=var, values=f.choices, width=18,
+                         state="readonly" if f.kind == "choice" else "normal").grid(row=0, column=0, sticky="w")
         else:
             var = tk.StringVar(value=value)
             ttk.Entry(cell, textvariable=var, show="•" if f.kind == "secret" else "").grid(
