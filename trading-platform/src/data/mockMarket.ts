@@ -1,6 +1,7 @@
 import type { Bar } from '../lib/types';
 import { gaussian, hashString, mulberry32 } from '../lib/random';
 import { infoFor } from './universe';
+import { TF_SECONDS, type Timeframe } from '../lib/timeframes';
 
 const DAY = 86400;
 
@@ -36,6 +37,61 @@ export function generateDailyBars(symbol: string, count = 260, endTime = todayUt
   }
   // re-anchor so the last close sits near the reference price
   const scale = info.basePrice / bars[bars.length - 1].close;
+  return bars.map((b) => ({ ...b, open: r2(b.open * scale), high: r2(b.high * scale), low: r2(b.low * scale), close: r2(b.close * scale) }));
+}
+
+const SESSION_OPEN_UTC = 13.5 * 3600; // 9:30 ET (standard time) as seconds after midnight UTC
+const SESSION_SECONDS = 390 * 60;
+const SESSIONS: Record<string, number> = { '1m': 2, '5m': 6, '15m': 30, '1h': 120 };
+
+function weekdaysBack(endDay: number, n: number): number[] {
+  const out: number[] = [];
+  for (let t = endDay; out.length < n; t -= DAY) {
+    const dow = new Date(t * 1000).getUTCDay();
+    if (dow !== 0 && dow !== 6) out.push(t);
+  }
+  return out.reverse();
+}
+
+/**
+ * Bars for any timeframe. Daily uses generateDailyBars; weekly and intraday get their own seeded
+ * path, rescaled so the final close matches `anchorClose` (the daily last price) for consistency.
+ */
+export function generateBars(symbol: string, tf: Timeframe, anchorClose?: number): Bar[] {
+  if (tf === 'D') return generateDailyBars(symbol);
+  const info = infoFor(symbol);
+  const rand = mulberry32(hashString(`${symbol}:${tf}`));
+  const step = TF_SECONDS[tf];
+  const times: number[] = [];
+  if (tf === 'W') {
+    const today = todayUtc();
+    const monday = today - ((new Date(today * 1000).getUTCDay() + 6) % 7) * DAY;
+    for (let i = 259; i >= 0; i--) times.push(monday - i * 7 * DAY);
+  } else {
+    for (const day of weekdaysBack(todayUtc(), SESSIONS[tf])) {
+      for (let s = 0; s < SESSION_SECONDS; s += step) times.push(day + SESSION_OPEN_UTC + s);
+    }
+  }
+  // scale annual volatility to one bar: 52 weeks/year, or 252 sessions × bars per session
+  const volPerBar = tf === 'W' ? info.vol / Math.sqrt(52) : info.vol * Math.sqrt(step / (252 * SESSION_SECONDS));
+  let price = info.basePrice * (0.8 + rand() * 0.3);
+  let drift = 0;
+  const bars: Bar[] = times.map((time, i) => {
+    if (rand() < 0.02) drift = (rand() - 0.47) * volPerBar * 0.5;
+    // intraday volume is U-shaped across the session
+    const pos = tf === 'W' ? 0.5 : ((time - SESSION_OPEN_UTC) % DAY) / SESSION_SECONDS;
+    const u = tf === 'W' ? 1 : 0.6 + 2.2 * (pos - 0.5) ** 2 * 4;
+    const open = i === 0 ? price : price * (1 + gaussian(rand) * volPerBar * 0.1);
+    const close = open * Math.exp(drift + gaussian(rand) * volPerBar);
+    const range = Math.abs(gaussian(rand)) * volPerBar * price * 0.6;
+    const high = Math.max(open, close) + range * rand();
+    const low = Math.min(open, close) - range * rand();
+    price = close;
+    const baseVol = (5e6 + rand() * 4e7) * (info.marketCapB / 500 + 0.3);
+    const volume = Math.round(tf === 'W' ? baseVol * 5 : (baseVol * step / SESSION_SECONDS) * u);
+    return { time, open, high, low, close, volume };
+  });
+  const scale = (anchorClose ?? info.basePrice) / bars[bars.length - 1].close;
   return bars.map((b) => ({ ...b, open: r2(b.open * scale), high: r2(b.high * scale), low: r2(b.low * scale), close: r2(b.close * scale) }));
 }
 

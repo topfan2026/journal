@@ -21,7 +21,6 @@ async function createWindow() {
     minHeight: 700,
     backgroundColor: '#0a0d12',
     title: 'ChartDesk',
-    autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   // links to anything other than the app itself open in the system browser

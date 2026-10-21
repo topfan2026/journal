@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Landing } from './components/Landing';
-import { TopBar } from './components/TopBar';
-import { Workspace } from './components/Workspace';
+import { AppToolbar } from './components/AppToolbar';
+import { Page, PageTabs } from './components/Pages';
+import { SymbolEntry } from './components/SymbolEntry';
 import { Toasts } from './components/Toasts';
 import { useMarketFeed } from './lib/useMarketFeed';
 
@@ -18,9 +19,11 @@ export default function App() {
 
   if (page === 'home') return <><Landing onLaunch={() => (window.location.hash = '#/app')} /><Toasts /></>;
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <TopBar onHome={() => (window.location.hash = '')} />
-      <Workspace />
+    <div className="flex h-screen flex-col overflow-hidden bg-ink-950">
+      <AppToolbar />
+      <div className="min-h-0 flex-1"><Page /></div>
+      <PageTabs />
+      <SymbolEntry />
       <Toasts />
     </div>
   );

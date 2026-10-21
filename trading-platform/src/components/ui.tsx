@@ -36,3 +36,8 @@ export function Stat({ label, value, className = '' }: { label: string; value: R
     </div>
   );
 }
+
+/** Thin title bar used by every window in a page. */
+export function PanelHeader({ children }: { children: ReactNode }) {
+  return <div className="flex h-7 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-950 px-2 text-xs">{children}</div>;
+}

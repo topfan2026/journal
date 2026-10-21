@@ -63,6 +63,7 @@ export interface Position {
   symbol: string;
   qty: number;
   avgPrice: number;
+  openedAt?: number; // ms; used to measure day P&L from entry for positions opened today
 }
 
 export interface Drawing {

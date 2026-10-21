@@ -4,6 +4,7 @@
  * data, accounts and positions. Orders are never routed to IBKR from this app.
  */
 import type { Bar } from './types';
+import { IBKR_PARAMS, type Timeframe } from './timeframes';
 
 export interface IbkrStatus { reachable: boolean; authenticated: boolean; connected: boolean; message?: string }
 export interface IbkrQuote { symbol: string; last: number | null; bid: number | null; ask: number | null; changePct: number | null; volume: number | null }
@@ -18,7 +19,8 @@ async function get<T>(path: string): Promise<T> {
 
 export const ibkr = {
   status: () => get<IbkrStatus>('/status'),
-  history: (symbol: string) => get<Bar[]>(`/history?symbol=${encodeURIComponent(symbol)}&period=1y&bar=1d`),
+  history: (symbol: string, tf: Timeframe) =>
+    get<Bar[]>(`/history?symbol=${encodeURIComponent(symbol)}&period=${IBKR_PARAMS[tf].period}&bar=${IBKR_PARAMS[tf].bar}`),
   snapshot: (symbols: string[]) => get<IbkrQuote[]>(`/snapshot?symbols=${encodeURIComponent(symbols.join(','))}`),
   summary: () => get<IbkrSummary>('/summary'),
   positions: () => get<IbkrPosition[]>('/positions'),

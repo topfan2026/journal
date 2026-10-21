@@ -39,9 +39,9 @@ function fillPrice(o: Order, price: number): number {
   return price;
 }
 
-function applyFill(acct: Account, o: Order, px: number) {
+function applyFill(acct: Account, o: Order, px: number, now: number) {
   const signed = o.side === 'BUY' ? o.qty : -o.qty;
-  const pos = acct.positions[o.symbol] ?? { symbol: o.symbol, qty: 0, avgPrice: 0 };
+  const pos = acct.positions[o.symbol] ?? { symbol: o.symbol, qty: 0, avgPrice: 0, openedAt: now };
   let realized = 0;
   if (pos.qty === 0 || Math.sign(pos.qty) === Math.sign(signed)) {
     const newQty = pos.qty + signed;
@@ -52,7 +52,7 @@ function applyFill(acct: Account, o: Order, px: number) {
     realized = closing * (px - pos.avgPrice) * Math.sign(pos.qty);
     const newQty = pos.qty + signed;
     if (newQty === 0) pos.avgPrice = 0;
-    else if (Math.sign(newQty) !== Math.sign(pos.qty)) pos.avgPrice = px; // flipped
+    else if (Math.sign(newQty) !== Math.sign(pos.qty)) { pos.avgPrice = px; pos.openedAt = now; } // flipped
     pos.qty = newQty;
   }
   acct.cash -= signed * px;
@@ -82,7 +82,7 @@ export function processPrice(acct: Account, symbol: string, price: number, now =
       o.status = 'FILLED';
       o.fillPrice = px;
       o.filledAt = now;
-      applyFill(next, o, px);
+      applyFill(next, o, px, now);
       fills.push(o);
       progressed = true;
       if (o.ocaGroup) {
@@ -129,3 +129,10 @@ export function equity(acct: Account, prices: Record<string, number>): number {
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** Day P&L: from entry for positions opened today, otherwise from the prior close. */
+export function dayPnl(pos: Position, last: number, prevClose: number | undefined, now = Date.now()): number | null {
+  const today = new Date(now).toDateString();
+  if (pos.openedAt && new Date(pos.openedAt).toDateString() === today) return (last - pos.avgPrice) * pos.qty;
+  return prevClose ? (last - prevClose) * pos.qty : null;
+}

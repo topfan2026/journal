@@ -45,3 +45,12 @@ describe('paper trading engine', () => {
     expect(r.account.cash).toBeCloseTo(100_000 - 30);
   });
 });
+
+describe('day P&L', () => {
+  it('measures from entry for positions opened today and from prior close otherwise', async () => {
+    const { dayPnl } = await import('../src/lib/paper');
+    const now = Date.UTC(2026, 9, 21, 18);
+    expect(dayPnl({ symbol: 'X', qty: 10, avgPrice: 100, openedAt: now - 3600_000 }, 102, 105, now)).toBeCloseTo(20);
+    expect(dayPnl({ symbol: 'X', qty: 10, avgPrice: 100, openedAt: now - 3 * 86400_000 }, 102, 105, now)).toBeCloseTo(-30);
+  });
+});

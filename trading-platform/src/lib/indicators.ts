@@ -82,3 +82,23 @@ export function bollinger(values: number[], period = 20, mult = 2) {
 }
 
 export const closes = (bars: Bar[]) => bars.map((b) => b.close);
+
+/** Slow stochastic %K (smoothed) and %D. */
+export function stochastic(bars: Bar[], period = 14, smoothK = 3, smoothD = 3) {
+  const raw: Series = bars.map((b, i) => {
+    if (i < period - 1) return null;
+    let hi = -Infinity, lo = Infinity;
+    for (let j = i - period + 1; j <= i; j++) { hi = Math.max(hi, bars[j].high); lo = Math.min(lo, bars[j].low); }
+    return hi === lo ? 50 : ((b.close - lo) / (hi - lo)) * 100;
+  });
+  const smooth = (s: Series, n: number): Series => {
+    const first = s.findIndex((v) => v !== null);
+    const out: Series = new Array(s.length).fill(null);
+    if (first < 0) return out;
+    const tail = sma(s.slice(first) as number[], n);
+    tail.forEach((v, j) => (out[first + j] = v));
+    return out;
+  };
+  const k = smooth(raw, smoothK);
+  return { k, d: smooth(k, smoothD) };
+}

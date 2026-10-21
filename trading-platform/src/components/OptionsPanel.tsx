@@ -63,7 +63,7 @@ export function OptionsPanel() {
         <div className="flex items-center gap-2">
           <span className="text-2xs uppercase text-ink-500">Expiry</span>
           <select className={inputCls} value={dte} onChange={(e) => setWs('strategy', { ...strategy, dte: +e.target.value })}>
-            {DTES.map((d) => <option key={d} value={d}>{d} DTE</option>)}
+            {[...new Set([...DTES, dte])].sort((a, b) => a - b).map((d) => <option key={d} value={d}>{d} DTE</option>)}
           </select>
           <span className="font-mono text-2xs text-ink-400">IV {(iv * 100).toFixed(0)}%</span>
           <button

@@ -73,9 +73,9 @@ export function createIbkrClient({ baseUrl = 'https://localhost:5000', allowSelf
       const res = await get(`/iserver/marketdata/history?conid=${id}&period=${encodeURIComponent(period)}&bar=${encodeURIComponent(bar)}&outsideRth=false`);
       const factor = Number(res?.volumeFactor ?? 1) || 1;
       return (res?.data ?? []).map((d) => {
-        // daily bars: normalise to midnight UTC so they line up with the chart's day grid
+        // daily/weekly/monthly bars: normalise to midnight UTC so they line up with the chart's day grid
         const day = new Date(d.t);
-        const time = bar.endsWith('d') ? Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) / 1000 : Math.floor(d.t / 1000);
+        const time = /^\d+(d|w|m)$/.test(bar) ? Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) / 1000 : Math.floor(d.t / 1000);
         return { time, open: d.o, high: d.h, low: d.l, close: d.c, volume: Math.round(d.v * factor) };
       });
     },

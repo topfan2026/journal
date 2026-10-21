@@ -41,21 +41,41 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` (pr
 
 ## What's in it
 
-| Area | Where | Notes |
-|---|---|---|
-| Overview page | `/` | Feature tour with a live mini chart. |
-| Workspace & layouts | Sidebar → Layouts | Trader, Quad Charts (4 independent charts), Scan Focus. Drag dividers to resize. Saved in the browser. |
-| Watchlists | Sidebar → Watchlists | Mega Caps, S&P 500 leaders, NASDAQ 100, ETFs, plus an editable *My List*. |
-| Indicators | Sidebar → Indicators | SMA 20/50/200, Bollinger Bands, volume, RSI and MACD panes; candles or line. |
-| Drawing tools | Toolbar left of the chart | Trendline (2 clicks), price channel (3 clicks), horizontal line, measure ($, %, bars), eraser. |
-| Trade from the chart | Right-click the chart | Places a buy/sell limit or stop at that price. **Drag any order line** to move it. |
-| Bracket orders / OCA | Right panel → Trade | Entry + profit target + stop + trailing stop; exits activate when the entry fills and cancel each other. |
-| Paper account | Bottom → Orders & Positions | $100k simulated account: equity, realized/unrealized P&L, working orders, fills. |
-| Option builder | Right panel → Options | Presets (long call/put, bull call, bear put, iron condor, straddle, strangle), clickable streaming chain, payoff graph, max profit/loss, breakevens. |
-| Option P&L zones | Price chart | Green/red bands between the last bar and expiration, dashed breakeven lines. Toggle with *P&L zones on chart*. |
-| EasyScan | Bottom → EasyScan | Live, sortable table; preset scans (EPS growth, market cap, RSI cross, MACD breakout, uptrend, volume surge). |
-| Condition Wizard | EasyScan → Condition Wizard | Indicator → comparison → value/indicator → **Flex** (true on N of the last M bars) → review. Save scans to Sidebar → Conditions. |
-| Journal & sticky notes | Right panel → Journal | Per-ticker notes that autosave; pin one to the chart as a draggable sticky note. |
+The workspace is organised into **pages** (tabs along the bottom), each a layout of linked windows
+that all follow the current symbol:
+
+| Page | Windows |
+|---|---|
+| **Basic** | Chart · watchlist · option chain · My Favorites · News & Notes · Positions · Orders/Trades |
+| **Trading** | Chart · order ticket with bracket exits / option strategy builder · Positions · Orders/Trades |
+| **EasyScan** | Chart · watchlist · scanner with presets and the Condition Wizard |
+| **1-Chart** | One full-size chart |
+| **4-Timeframe** | The same symbol on 15m, 1h, daily and weekly side by side |
+| **Options** | Chart with P&L zones · strategy builder · option chain |
+| **Fundamentals** | Chart · company snapshot and performance · News & Notes |
+
+Drag any divider to resize; sizes are remembered.
+
+**Charts:** 1m / 5m / 15m / 1h / daily / weekly; candles, OHLC bars or line; log scale; indicator
+menu (MA 20/50/200, EMA 9/21, Bollinger Bands, Volume + MA 50, RSI, MACD, Stochastics); drawing
+tools (trendline, channel, horizontal line, measure); Buy / Sell / Opt buttons; right-click any
+price for limit/stop orders, a price alert, a horizontal line or a sticky note; drag order lines to
+move them; option strategies draw profit/loss zones and breakevens through expiration.
+
+**Watchlists:** High Cap (99 stocks), Mega Caps, NASDAQ 100, sectors, ETFs, Flagged and My Favorites,
+with % change, **Vol Buzz** (volume vs. its 50-day average), colour flags (click the flag column) and
+sorting.
+
+**Keyboard:** type letters anywhere to jump to a symbol · ↑ / ↓ or Space to step through the
+watchlist · **Shift+V** adds the current symbol to My Favorites · Esc drops the drawing tool.
+
+**Trading (paper):** $100k practice account; account strip shows today's P&L, long value, cash,
+account value and buying power. Bracket orders (target, stop, trailing stop) are One-Cancels-All.
+Positions and Orders/Trades windows use the familiar columns (Day P&L, Mkt Val, Unreal P&L, Dist,
+Est P&L, OCA, …).
+
+**Alerts:** toolbar → Alerts, or right-click a chart price. Triggered alerts pop a toast and a
+desktop notification.
 
 ## Connect Interactive Brokers (live data)
 

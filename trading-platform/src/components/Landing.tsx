@@ -45,7 +45,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.1 }}
           className="h-[340px] overflow-hidden rounded-lg border border-ink-700 shadow-[0_30px_80px_-20px_rgba(59,130,246,0.35)]"
         >
-          <PriceChart symbol="SPY" compact />
+          <PriceChart symbol="SPY" compact readOnly />
         </motion.div>
       </section>
 
