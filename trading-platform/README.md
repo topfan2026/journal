@@ -8,16 +8,34 @@ and can stream **live data from your Interactive Brokers account**.
 
 Stack: React 18 · TypeScript · Vite · Tailwind CSS · Zustand · Lightweight Charts · Framer Motion · Lucide.
 
-## Quick start
+## Desktop app (Windows / Mac / Linux)
+
+ChartDesk is a desktop application (Electron). The IBKR bridge runs inside the app, so there is
+nothing else to start except IBKR's own gateway when you want live data.
+
+**Download an installer:** on GitHub open the repo's **Actions** tab → *Build ChartDesk desktop app*
+→ the latest green run → **Artifacts**, and download `ChartDesk-windows` (`.exe` installer),
+`ChartDesk-mac` (`.dmg`) or `ChartDesk-linux` (`.AppImage`).
+
+The installers are not code-signed, so the first launch shows a warning:
+- **Windows:** "Windows protected your PC" → *More info* → *Run anyway*.
+- **Mac:** right-click the app → *Open* → *Open* (or System Settings → Privacy & Security → *Open Anyway*).
+  Use the `arm64` file for Apple Silicon (M1–M4) Macs and `x64` for Intel Macs.
+
+**Build it yourself** (needs Node.js 20+):
 
 ```bash
 cd trading-platform
 npm install
-npm run dev          # web app on http://localhost:5173 + IBKR bridge on :8787
+npm run desktop      # build and open the desktop app
+npm run dist         # build an installer for this OS into release/
 ```
 
-Open http://localhost:5173 and click **Open the platform**. No account or API key is needed for
-simulated data.
+## Developing in a browser
+
+```bash
+npm run dev          # web UI on http://localhost:5173 + IBKR bridge on :8787
+```
 
 Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` (production bundle in `dist/`).
 
@@ -51,7 +69,7 @@ own gateway on your computer — the app never sees your password.
    - Windows: `bin\run.bat root\conf.yaml`
 3. Open https://localhost:5000 in your browser, accept the self-signed certificate warning, and log
    in with your IBKR username/password (and 2FA). You should see "Client login succeeds".
-4. Run `npm run dev` (it starts the bridge too) and open the app.
+4. Open ChartDesk (or run `npm run dev` when developing in a browser).
 5. Click **Simulated data** in the top bar — it switches to **IBKR live data** once the gateway
    reports you're authenticated. Click **Live** to see your real account balances and positions.
 
@@ -62,7 +80,8 @@ Notes:
   delayed data or nothing. Symbols IBKR can't serve fall back to simulated history.
 - The gateway session times out after inactivity; the bridge pings `/tickle` every minute while
   it's running. If data stops, log in again at https://localhost:5000.
-- Settings (environment variables for `npm run server`):
+- The **IBKR** menu in the desktop app has shortcuts to the gateway login page and download.
+- Settings (environment variables):
   - `IBKR_GATEWAY_URL` — default `https://localhost:5000`
   - `IBKR_ALLOW_SELF_SIGNED` — defaults to `true` only for a localhost gateway
   - `PORT` — bridge port, default `8787` (the bridge only listens on 127.0.0.1)
@@ -84,6 +103,8 @@ src/
   data/                   symbol universe, watchlists, seeded OHLC generator
 server/
   index.js, ibkr.js       local read-only bridge to the IBKR Client Portal Gateway
+electron/
+  main.js                 desktop shell: runs the bridge + serves the UI on 127.0.0.1, opens the window
 tests/                    vitest: options math, paper engine, scanner, IBKR parsing
 ```
 
