@@ -13,9 +13,13 @@ Stack: React 18 · TypeScript · Vite · Tailwind CSS · Zustand · Lightweight 
 ChartDesk is a desktop application (Electron). The IBKR bridge runs inside the app, so there is
 nothing else to start except IBKR's own gateway when you want live data.
 
-**Download an installer:** on GitHub open the repo's **Actions** tab → *Build ChartDesk desktop app*
-→ the latest green run → **Artifacts**, and download `ChartDesk-windows` (`.exe` installer),
-`ChartDesk-mac` (`.dmg`) or `ChartDesk-linux` (`.AppImage`).
+**Download an installer** from the latest release: https://github.com/topfan2026/journal/releases/latest
+— `ChartDesk-Setup-<version>.exe` (Windows), `.dmg` (Mac) or `.AppImage` (Linux).
+
+**Updates are automatic.** Every push to the app builds a new numbered release. ChartDesk checks
+for one when it starts and every 4 hours (or **Help → Check for Updates…**), downloads it in the
+background and asks you to restart. On Mac, unsigned apps can't replace themselves, so *Check for
+Updates* opens the download page instead.
 
 The installers are not code-signed, so the first launch shows a warning:
 - **Windows:** "Windows protected your PC" → *More info* → *Run anyway*.

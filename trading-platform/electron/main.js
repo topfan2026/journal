@@ -4,6 +4,7 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
+import { checkForUpdatesManually, initUpdater } from './updater.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.join(here, '..', 'dist');
@@ -12,9 +13,10 @@ const distDir = path.join(here, '..', 'dist');
 const GATEWAY_LOGIN = process.env.IBKR_GATEWAY_URL ?? 'https://localhost:5000';
 
 let origin = '';
+let mainWindow = null;
 
 async function createWindow() {
-  const win = new BrowserWindow({
+  const win = (mainWindow = new BrowserWindow({
     width: 1600,
     height: 980,
     minWidth: 1100,
@@ -22,7 +24,8 @@ async function createWindow() {
     backgroundColor: '#0a0d12',
     title: 'ChartDesk',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
-  });
+  }));
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   // links to anything other than the app itself open in the system browser
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(origin)) { e.preventDefault(); shell.openExternal(url); } });
@@ -44,6 +47,13 @@ function buildMenu() {
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        { label: 'Check for Updates…', click: checkForUpdatesManually },
+        { label: `About ChartDesk ${app.getVersion()}`, click: () => shell.openExternal('https://github.com/topfan2026/journal/releases') },
+      ],
+    },
   ]));
 }
 
@@ -52,6 +62,7 @@ app.whenReady().then(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
   buildMenu();
   await createWindow();
+  initUpdater(() => mainWindow);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

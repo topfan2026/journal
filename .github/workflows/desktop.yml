@@ -5,10 +5,14 @@ on:
     paths: ['trading-platform/**', '.github/workflows/desktop.yml']
   workflow_dispatch:
 
+# Every run publishes a GitHub Release (v0.3.<run number>); installed apps update from it.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: windows-latest
@@ -30,6 +34,8 @@ jobs:
           cache-dependency-path: trading-platform/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Set version from run number
+        run: npm version 0.3.${{ github.run_number }} --no-git-tag-version
       - run: npm run dist
         env:
           # unsigned builds: no code-signing certificates configured
@@ -41,4 +47,26 @@ jobs:
             trading-platform/release/*.exe
             trading-platform/release/*.dmg
             trading-platform/release/*.AppImage
+            trading-platform/release/*.blockmap
+            trading-platform/release/latest*.yml
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: 0.3.${{ github.run_number }}
+        run: |
+          ls -la dist
+          gh release create "v$VERSION" dist/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "ChartDesk $VERSION" \
+            --notes "Built from ${{ github.sha }}. Installed copies of ChartDesk on Windows and Linux update to this automatically. First install: download ChartDesk-Setup-$VERSION.exe (Windows), the .dmg (Mac) or the .AppImage (Linux) below."

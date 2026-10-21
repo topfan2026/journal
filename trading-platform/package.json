@@ -1,7 +1,7 @@
 {
   "name": "trading-platform",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"node server/index.js\"",
@@ -15,6 +15,7 @@
     "dist": "vite build --base ./ && electron-builder --publish never"
   },
   "dependencies": {
+    "electron-updater": "6.3.9",
     "express": "4.21.1"
   },
   "devDependencies": {
@@ -78,7 +79,12 @@
       "category": "Finance",
       "artifactName": "ChartDesk-${version}.${ext}"
     },
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "topfan2026",
+      "repo": "journal",
+      "releaseType": "release"
+    },
     "executableName": "chartdesk"
   },
   "repository": {
