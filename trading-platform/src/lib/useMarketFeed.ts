@@ -3,6 +3,7 @@ import { useMarket } from '../store/market';
 import { useWorkspace } from '../store/workspace';
 import { WATCHLISTS } from '../data/universe';
 import { ibkr } from './ibkr';
+import { stepForwardTests } from './forwardTest';
 
 /** Drives prices: simulated ticks (1s) or IBKR snapshots (2s), then runs the paper engine and alerts. */
 export function useMarketFeed() {
@@ -17,6 +18,7 @@ export function useMarketFeed() {
       const syms = new Set(ws.paper.orders.filter((o) => o.status === 'WORKING').map((o) => o.symbol));
       syms.forEach((s) => prices[s] !== undefined && ws.onPrice(s, prices[s]));
       ws.checkAlerts(prices);
+      stepForwardTests();
     };
 
     if (source === 'mock') {
@@ -38,7 +40,7 @@ export function useMarketFeed() {
         ]);
         const quotes = await ibkr.snapshot([...wanted].slice(0, 50));
         const m = useMarket.getState();
-        quotes.forEach((q) => q.last && m.applyQuote(q.symbol, q.last, q.volume));
+        quotes.forEach((q) => q.last && m.applyQuote(q.symbol, q.last, q.volume, q.bid, q.ask));
         afterPrices();
       } catch {
         /* gateway hiccup — keep last prices and retry next interval */

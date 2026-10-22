@@ -4,6 +4,7 @@ import { AppToolbar } from './components/AppToolbar';
 import { Page, PageTabs } from './components/Pages';
 import { SymbolEntry } from './components/SymbolEntry';
 import { Toasts } from './components/Toasts';
+import { TickerHeader } from './components/TickerHeader';
 import { useMarketFeed } from './lib/useMarketFeed';
 
 const route = () => (window.location.hash.startsWith('#/app') ? 'app' : 'home');
@@ -21,6 +22,7 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ink-950">
       <AppToolbar />
+      <TickerHeader />
       <div className="min-h-0 flex-1"><Page /></div>
       <PageTabs />
       <SymbolEntry />

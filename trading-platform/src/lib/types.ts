@@ -57,6 +57,7 @@ export interface Order {
   createdAt: number;
   filledAt?: number;
   label?: string;
+  tag?: string; // e.g. the forward test that placed it
 }
 
 export interface Position {

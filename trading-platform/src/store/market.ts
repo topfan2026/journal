@@ -15,13 +15,15 @@ interface MarketState {
   /** Non-daily bars keyed `${symbol}|${tf}`; their last bar tracks the daily last price. */
   tfBars: Record<string, Bar[]>;
   prevClose: Record<string, number>;
+  /** Latest bid/ask from IBKR (simulated data derives a spread instead). */
+  quotes: Record<string, { bid: number | null; ask: number | null }>;
   loading: Record<string, boolean>;
   setSource: (s: DataSource) => void;
   checkIbkr: () => Promise<IbkrStatus>;
   ensure: (symbol: string) => void;
   ensureTf: (symbol: string, tf: Timeframe) => void;
   mockTick: () => void;
-  applyQuote: (symbol: string, last: number, volume?: number | null) => void;
+  applyQuote: (symbol: string, last: number, volume?: number | null, bid?: number | null, ask?: number | null) => void;
 }
 
 export const tfKey = (symbol: string, tf: Timeframe) => `${symbol}|${tf}`;
@@ -44,6 +46,7 @@ export const useMarket = create<MarketState>((set, get) => ({
   ibkr: null,
   bars: Object.fromEntries(initial.map(([s, m]) => [s, m.bars])),
   tfBars: {},
+  quotes: {},
   prevClose: Object.fromEntries(initial.map(([s, m]) => [s, m.prev])),
   loading: {},
 
@@ -124,7 +127,8 @@ export const useMarket = create<MarketState>((set, get) => ({
     });
   },
 
-  applyQuote: (symbol, last, volume) => {
+  applyQuote: (symbol, last, volume, bid, ask) => {
+    if (bid != null || ask != null) set((s) => ({ quotes: { ...s.quotes, [symbol]: { bid: bid ?? null, ask: ask ?? null } } }));
     set((s) => {
       const arr = s.bars[symbol];
       if (!arr?.length) return s;

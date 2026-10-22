@@ -105,19 +105,20 @@ export interface BracketSpec {
   target?: number;
   stop?: number;
   trail?: number;
+  tag?: string;
 }
 
 /** Build an entry plus OCA exit legs (target / stop / trailing stop). */
 export function buildBracket(spec: BracketSpec, now = Date.now()): Order[] {
   const entry: Order = {
     id: orderId(), symbol: spec.symbol, side: spec.side, type: spec.entryType, qty: spec.qty,
-    price: spec.entryType === 'MKT' ? undefined : spec.entryPrice, status: 'WORKING', createdAt: now, label: 'Entry',
+    price: spec.entryType === 'MKT' ? undefined : spec.entryPrice, status: 'WORKING', createdAt: now, label: 'Entry', tag: spec.tag,
   };
   const exitSide = spec.side === 'BUY' ? 'SELL' : 'BUY';
   const oca = `oca-${entry.id}`;
   const children: Order[] = [];
   const child = (type: Order['type'], label: string, extra: Partial<Order>) =>
-    children.push({ id: orderId(), symbol: spec.symbol, side: exitSide, type, qty: spec.qty, status: 'WORKING', createdAt: now, parentId: entry.id, ocaGroup: oca, label, ...extra });
+    children.push({ id: orderId(), symbol: spec.symbol, side: exitSide, type, qty: spec.qty, status: 'WORKING', createdAt: now, parentId: entry.id, ocaGroup: oca, label, tag: spec.tag, ...extra });
   if (spec.target) child('LMT', 'Target', { price: spec.target });
   if (spec.stop) child('STP', 'Stop', { price: spec.stop });
   if (spec.trail) child('TRAIL', 'Trail', { trailAmount: spec.trail });

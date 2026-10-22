@@ -5,8 +5,8 @@ import { TF_SECONDS, type Timeframe } from '../lib/timeframes';
 
 const DAY = 86400;
 
-/** Generate ~1 year of daily bars ending today with a seeded GBM + mild regime drift. */
-export function generateDailyBars(symbol: string, count = 260, endTime = todayUtc()): Bar[] {
+/** Generate ~4 years of daily bars ending today with a seeded GBM + mild regime drift. */
+export function generateDailyBars(symbol: string, count = 1000, endTime = todayUtc()): Bar[] {
   const info = infoFor(symbol);
   const rand = mulberry32(hashString(symbol));
   const dailyVol = info.vol / Math.sqrt(252);
@@ -24,7 +24,7 @@ export function generateDailyBars(symbol: string, count = 260, endTime = todayUt
   let price = info.basePrice * (0.75 + rand() * 0.3);
   let drift = 0;
   for (const time of times) {
-    if (rand() < 0.03) drift = (rand() - 0.45) * dailyVol * 0.6; // occasional regime change
+    if (rand() < 0.03) drift = (rand() - 0.48) * dailyVol * 0.15; // occasional regime change (kept mild so multi-year paths stay plausible)
     const ret = drift + gaussian(rand) * dailyVol;
     const open = price * (1 + gaussian(rand) * dailyVol * 0.25);
     const close = open * Math.exp(ret);

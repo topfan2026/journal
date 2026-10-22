@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, BookOpen, Cable, ChevronDown, LineChart, List, Newspaper, Plus, Radar, Wallet } from 'lucide-react';
+import { Bell, BookOpen, Cable, ChevronDown, FlaskConical, LineChart, List, Newspaper, Plus, Radar, Wallet } from 'lucide-react';
 import { useMarket } from '../store/market';
 import { useWorkspace, type PageId } from '../store/workspace';
 import { dayPnl, equity } from '../lib/paper';
@@ -53,6 +53,7 @@ export function AppToolbar() {
         <Btn icon={LineChart} label="Charts" onClick={() => go('basic')} />
         <Btn icon={List} label="WatchLists" onClick={() => go('basic')} />
         <Btn icon={Radar} label="EasyScan" onClick={() => go('scan')} />
+        <Btn icon={FlaskConical} label="Strategy Tester" onClick={() => go('strategy')} />
         <Btn icon={Newspaper} label="News & Notes" onClick={() => go('basic')} />
         <Btn icon={Bell} label="Alerts" onClick={() => setAlertsOpen(true)} badge={activeAlerts} />
         <Btn icon={BookOpen} label="Fundamentals" onClick={() => go('fundamentals')} />

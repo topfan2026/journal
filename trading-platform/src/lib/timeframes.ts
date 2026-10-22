@@ -13,7 +13,7 @@ export const IBKR_PARAMS: Record<Timeframe, { period: string; bar: string }> = {
   '5m': { period: '1w', bar: '5min' },
   '15m': { period: '1m', bar: '15min' },
   '1h': { period: '6m', bar: '1h' },
-  D: { period: '1y', bar: '1d' },
+  D: { period: '5y', bar: '1d' },
   W: { period: '5y', bar: '1w' },
 };
 

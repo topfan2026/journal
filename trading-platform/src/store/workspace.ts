@@ -4,17 +4,33 @@ import type { Drawing, OptionLeg, Order } from '../lib/types';
 import { newAccount, orderId, processPrice, type Account } from '../lib/paper';
 import type { Condition } from '../lib/scanner';
 import type { Timeframe } from '../lib/timeframes';
+import type { StrategyDef } from '../lib/backtest';
+import { newStrategy } from '../data/strategyTemplates';
 
 export type IndicatorKey = 'sma20' | 'sma50' | 'sma200' | 'ema9' | 'ema21' | 'bbands' | 'volume' | 'rsi' | 'macd' | 'stoch';
 export type DrawTool = 'cursor' | 'trend' | 'channel' | 'measure' | 'hline';
 export type ChartType = 'candles' | 'bars' | 'line';
-export type PageId = 'basic' | 'trading' | 'scan' | 'chart1' | 'tf4' | 'options' | 'fundamentals';
+export type PageId = 'basic' | 'trading' | 'scan' | 'strategy' | 'chart1' | 'tf4' | 'options' | 'fundamentals';
 export type TradingMode = 'paper' | 'live';
 export type FlagColor = 'red' | 'yellow' | 'green' | 'blue' | 'purple';
 export const FLAG_COLORS: FlagColor[] = ['red', 'yellow', 'green', 'blue', 'purple'];
 
 export interface Note { text: string; updatedAt: number; x: number; y: number; visible: boolean }
 export interface Alert { id: string; symbol: string; price: number; dir: 'above' | 'below'; createdAt: number; triggeredAt?: number }
+export interface ForwardTest {
+  id: string;
+  strategyId: string;
+  name: string;
+  symbols: string[];
+  tf: Timeframe;
+  startedAt: number;
+  active: boolean;
+  /** Bar time of the last entry/exit signal per symbol, so each bar acts at most once. */
+  lastSignal: Record<string, number>;
+  entryBar: Record<string, number>;
+  log: { time: number; text: string; tone: 'up' | 'down' | 'info' }[];
+}
+
 export interface Toast { id: number; text: string; tone: 'up' | 'down' | 'info' }
 
 interface WorkspaceState {
@@ -37,6 +53,9 @@ interface WorkspaceState {
   scanConditions: Condition[];
   savedScans: { name: string; conditions: Condition[] }[];
   strategy: { symbol: string; dte: number; legs: OptionLeg[]; showOnChart: boolean };
+  strategies: StrategyDef[];
+  activeStrategy: string;
+  forwardTests: ForwardTest[];
   toasts: Toast[];
 
   setSymbol: (s: string) => void;
@@ -56,7 +75,12 @@ interface WorkspaceState {
   checkAlerts: (prices: Record<string, number>) => void;
   resetPaper: () => void;
   toast: (text: string, tone?: Toast['tone']) => void;
+  saveStrategy: (s: StrategyDef) => void;
+  deleteStrategy: (id: string) => void;
+  updateForwardTest: (id: string, patch: Partial<ForwardTest> | ((t: ForwardTest) => Partial<ForwardTest>)) => void;
 }
+
+const firstStrategy = newStrategy();
 
 let toastSeq = 0;
 
@@ -90,6 +114,9 @@ export const useWorkspace = create<WorkspaceState>()(
       scanConditions: [],
       savedScans: [],
       strategy: { symbol: 'DIS', dte: 30, legs: [], showOnChart: true },
+      strategies: [firstStrategy],
+      activeStrategy: firstStrategy.id,
+      forwardTests: [],
       toasts: [],
 
       setSymbol: (symbol) => set({ symbol }),
@@ -144,6 +171,18 @@ export const useWorkspace = create<WorkspaceState>()(
         });
       },
       resetPaper: () => set({ paper: newAccount() }),
+      saveStrategy: (st) => set((s) => ({
+        strategies: s.strategies.some((x) => x.id === st.id) ? s.strategies.map((x) => (x.id === st.id ? st : x)) : [...s.strategies, st],
+        activeStrategy: st.id,
+      })),
+      deleteStrategy: (id) => set((s) => {
+        const rest = s.strategies.filter((x) => x.id !== id);
+        const strategies = rest.length ? rest : [newStrategy()];
+        return { strategies, activeStrategy: strategies[0].id, forwardTests: s.forwardTests.map((t) => (t.strategyId === id ? { ...t, active: false } : t)) };
+      }),
+      updateForwardTest: (id, patch) => set((s) => ({
+        forwardTests: s.forwardTests.map((t) => (t.id === id ? { ...t, ...(typeof patch === 'function' ? patch(t) : patch) } : t)),
+      })),
       toast: (text, tone = 'info') => {
         const id = ++toastSeq;
         set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, tone }] }));

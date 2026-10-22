@@ -53,12 +53,31 @@ that all follow the current symbol:
 | **Basic** | Chart · watchlist · option chain · My Favorites · News & Notes · Positions · Orders/Trades |
 | **Trading** | Chart · order ticket with bracket exits / option strategy builder · Positions · Orders/Trades |
 | **EasyScan** | Chart · watchlist · scanner with presets and the Condition Wizard |
+| **Strategy Tester** | Strategy builder · backtest chart with trade markers and equity curve · stats, trades, walk-forward, watchlist test, live forward test |
 | **1-Chart** | One full-size chart |
 | **4-Timeframe** | The same symbol on 15m, 1h, daily and weekly side by side |
 | **Options** | Chart with P&L zones · strategy builder · option chain |
 | **Fundamentals** | Chart · company snapshot and performance · News & Notes |
 
-Drag any divider to resize; sizes are remembered.
+Drag any divider to resize; sizes are remembered. A **ticker header** above every page shows the
+selected stock's last price, change, bid × ask, open/high/low, previous close, volume vs. average,
+Vol Buzz, day and 52-week ranges, market cap and EPS growth, plus flag and favorite toggles.
+
+**Strategy Tester:**
+- *Builder* — entry rules (all must be true) and exit rules (any), using the same indicators as
+  EasyScan plus EMA 9/21, prior 20-bar high/low, Stochastic %K and ATR, each with Flex
+  ("N of the last M bars"); stop %, target %, trailing stop %, max bars held; long or short;
+  position size (% of equity or shares), commission and slippage. Starts from templates
+  (SMA crossover, RSI mean reversion, 20-bar breakout, MACD trend, EMA short).
+- *Back test* — signals at bar close, fills at the next open (no look-ahead); stops/targets checked
+  inside each bar (stop first if both are touched, gaps fill at the open). Stats: net profit, buy &
+  hold, trades, win rate, profit factor, average trade/win/loss, max drawdown, Sharpe, exposure.
+  An in-sample / out-of-sample split shows whether results hold on data the rules weren't tuned on.
+- *Walk-forward* — optimizes up to two parameters on each in-sample window and trades the next unseen
+  window with the winners, chaining the out-of-sample results into one equity curve.
+- *Watchlist test* — runs the strategy on every symbol in a list and ranks the results.
+- *Forward test* — runs the strategy live on incoming prices (simulated or IBKR) and places bracket
+  orders in the paper account, with a log and P&L per symbol.
 
 **Charts:** 1m / 5m / 15m / 1h / daily / weekly; candles, OHLC bars or line; log scale; indicator
 menu (MA 20/50/200, EMA 9/21, Bollinger Bands, Volume + MA 50, RSI, MACD, Stochastics); drawing

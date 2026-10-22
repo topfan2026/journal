@@ -1,13 +1,15 @@
 import type { Bar, SymbolInfo } from './types';
-import { closes, macd, rsi, sma, type Series } from './indicators';
+import { closes, ema, macd, rsi, sma, stochastic, type Series } from './indicators';
 
 export type Metric =
   | 'price' | 'changePct' | 'rsi14' | 'macdLine' | 'macdSignal' | 'macdHist'
-  | 'sma20' | 'sma50' | 'sma200' | 'volumeRatio' | 'epsGrowth' | 'marketCapB';
+  | 'sma20' | 'sma50' | 'sma200' | 'ema9' | 'ema21' | 'high20' | 'low20' | 'stochK' | 'atr14'
+  | 'volumeRatio' | 'epsGrowth' | 'marketCapB';
 
 export const METRIC_LABELS: Record<Metric, string> = {
   price: 'Price', changePct: '% Change', rsi14: 'RSI(14)', macdLine: 'MACD', macdSignal: 'MACD Signal',
   macdHist: 'MACD Histogram', sma20: 'SMA 20', sma50: 'SMA 50', sma200: 'SMA 200',
+  ema9: 'EMA 9', ema21: 'EMA 21', high20: 'Prior 20-bar High', low20: 'Prior 20-bar Low', stochK: 'Stochastic %K', atr14: 'ATR(14)',
   volumeRatio: 'Volume / 20d Avg', epsGrowth: 'EPS Growth %', marketCapB: 'Market Cap ($B)',
 };
 
@@ -35,7 +37,29 @@ export interface ScanRow {
   epsGrowth: number;
 }
 
-type MetricSeries = Record<Metric, Series>;
+export type MetricSeries = Record<Metric, Series>;
+
+/** Highest high / lowest low of the `n` bars before i (excludes bar i, so breakouts can trigger). */
+function priorExtreme(bars: Bar[], n: number, hi: boolean): Series {
+  return bars.map((_, i) => {
+    if (i < n) return null;
+    let v = hi ? -Infinity : Infinity;
+    for (let j = i - n; j < i; j++) v = hi ? Math.max(v, bars[j].high) : Math.min(v, bars[j].low);
+    return v;
+  });
+}
+
+function atr(bars: Bar[], n: number): Series {
+  const tr = bars.map((b, i) => (i === 0 ? b.high - b.low : Math.max(b.high - b.low, Math.abs(b.high - bars[i - 1].close), Math.abs(b.low - bars[i - 1].close))));
+  const out: Series = new Array(bars.length).fill(null);
+  let prev: number | null = null;
+  for (let i = 0; i < bars.length; i++) {
+    if (i < n - 1) continue;
+    prev = prev === null ? tr.slice(0, n).reduce((a, b) => a + b, 0) / n : (prev * (n - 1) + tr[i]) / n;
+    out[i] = prev;
+  }
+  return out;
+}
 
 export function computeSeries(bars: Bar[], info: SymbolInfo): MetricSeries {
   const c = closes(bars);
@@ -51,6 +75,12 @@ export function computeSeries(bars: Bar[], info: SymbolInfo): MetricSeries {
     sma20: sma(c, 20),
     sma50: sma(c, 50),
     sma200: sma(c, 200),
+    ema9: ema(c, 9),
+    ema21: ema(c, 21),
+    high20: priorExtreme(bars, 20, true),
+    low20: priorExtreme(bars, 20, false),
+    stochK: stochastic(bars).k,
+    atr14: atr(bars, 14),
     volumeRatio: bars.map((b, i) => (volAvg[i] ? b.volume / (volAvg[i] as number) : null)),
     epsGrowth: c.map(() => info.epsGrowth),
     marketCapB: c.map(() => info.marketCapB),
@@ -75,7 +105,11 @@ function trueAt(s: MetricSeries, cond: Condition, i: number): boolean {
 }
 
 export function evaluate(s: MetricSeries, cond: Condition): boolean {
-  const last = s.price.length - 1;
+  return evaluateAt(s, cond, s.price.length - 1);
+}
+
+/** Evaluate a condition as of bar `last` (inclusive), honoring Flex over the bars up to it. */
+export function evaluateAt(s: MetricSeries, cond: Condition, last: number): boolean {
   if (last < 0) return false;
   const within = Math.max(1, cond.flex?.within ?? 1);
   const atLeast = Math.min(within, Math.max(1, cond.flex?.atLeast ?? 1));

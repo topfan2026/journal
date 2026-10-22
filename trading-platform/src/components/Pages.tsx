@@ -14,11 +14,13 @@ import { ScannerPanel } from './ScannerPanel';
 import { TradeTicket } from './TradeTicket';
 import { OptionsPanel } from './OptionsPanel';
 import { Tabs } from './ui';
+import { StrategyPage } from './StrategyPage';
 
 export const PAGES: { id: PageId; label: string }[] = [
   { id: 'basic', label: 'Basic' },
   { id: 'trading', label: 'Trading' },
   { id: 'scan', label: 'EasyScan' },
+  { id: 'strategy', label: 'Strategy Tester' },
   { id: 'chart1', label: '1-Chart' },
   { id: 'tf4', label: '4-Timeframe' },
   { id: 'options', label: 'Options' },
@@ -83,6 +85,8 @@ export function Page() {
           <div className="relative h-full bg-ink-900"><ScannerPanel /></div>
         </Split>
       );
+    case 'strategy':
+      return <StrategyPage />;
     case 'chart1':
       return <ChartWindow />;
     case 'tf4':
