@@ -89,6 +89,13 @@ Choose long or short, 1- or 5-minute candles, and the stop (signal candle, last 
 EMA N or N %). "Only a new signal" skips entries when the conditions were already true a candle earlier. The
 bot's reasons on the trade chart show every condition with its values.
 
+**Setup Finder:** the 🔎 section under Strategies backtests a playbook of classic intraday setups (ORB, premarket
+break, VWAP reclaim / rejection, HOD / LOD break, EMA 9 pullback, red-to-green, yesterday's-high break, EMA cross,
+HT_VWAP_Reclaim_Long) and your own strategies on the stocks and days you choose. It replays the market candle by
+candle through the bot's own entry code (no look-ahead: the forming candle only shows its open), fills at the next
+open with slippage, and simulates the bot's exits. Ranked by average R weighted by trade count; **Paper trade it**
+adds a setup to Strategies, switched on. Data: Yahoo (5-minute bars ≈ 60 days, 1-minute ≈ 7 days).
+
 **Shorts:** strategies can sell short (the premarket breakdown, and custom strategies set to Short). Shorts are mirrored longs: buy-stop above
 the entry placed right after the fill, partial cover / breakeven / trailing above 5-minute swing highs, the same risk
 sizing, end-of-day cover, and P&L / R counted flat-to-flat. Paper accounts don't model real borrow availability.
