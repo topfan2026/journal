@@ -116,7 +116,7 @@ def bot_reasons(symbol: str, day: date) -> list[dict]:
                 keep = {k: v for k, v in e.items() if k != "metrics"}
                 mt = e.get("metrics") or {}
                 shown = {k: mt[k] for k in ("side", "break_time", "confirm_time", "pm_high", "pm_low", "confirm_low",
-                                            "confirm_high", "stop", "stop_widened_from", "price", "vwap", "support", "or_high", "or_low") if k in mt}
+                                            "confirm_high", "stop", "stop_widened_from", "signal_time", "price", "vwap", "support", "or_high", "or_low") if k in mt}
                 if shown:
                     keep["levels"] = ", ".join(f"{k}: {round(v, 2) if isinstance(v, float) else v}" for k, v in shown.items())
                 out.append(keep)

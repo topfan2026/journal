@@ -1,6 +1,6 @@
 """Strategy library: templates, the user's strategy list (strategies.json) and the entry logic.
 
-Each strategy is long-only and paper traded by cycle.py. Trend Join Long keeps its settings in
+Each strategy is paper traded by cycle.py (long, or short where the strategy says so). Trend Join Long keeps its settings in
 rules.json (unchanged); every other strategy stores its own settings in strategies.json.
 All strategies share the global limits in rules.json (max open positions, position size cap,
 force-close time) and MAX_TRADES_PER_DAY in .env.
@@ -15,6 +15,7 @@ from datetime import date, time
 import pandas as pd
 
 from src.common import PROJECT_DIR, load_rules, to_py
+from src import builder
 from src.filters import _day, _rth, compute_rvol, evaluate_filters, initial_stop
 
 STORE = PROJECT_DIR / "strategies.json"
@@ -151,6 +152,34 @@ TEMPLATES = {
         "overrides": {"above_vwap": False, "earliest_entry_et": "09:30", "latest_entry_et": "11:00",
                       "partial_R": 1.0, "breakeven_R": 1.0},
     },
+    "custom": {
+        "name": "Custom (build your own)",
+        "summary": "Your own rules: stack conditions from building blocks (candles, EMA/SMA, VWAP, RSI, volume, "
+                   "premarket / opening-range / yesterday's levels). Enters when all are true on a just-closed candle.",
+        "fields": [
+            _f("side", "Trade", "select", "long", opts=[["long", "Long (buy)"], ["short", "Short (sell short)"]]),
+            _f("timeframe", "Candles", "select", "5m", "Conditions are checked when a candle closes",
+               opts=[["5m", "5-minute"], ["1m", "1-minute"]]),
+            _f("conditions", "Enter when ALL of these are true", "conditions", builder.DEFAULT_CONDITIONS,
+               "Checked on the candle that just closed. 'Crosses' = was on the other side one candle earlier",
+               group="Rules", operands=builder.operand_catalog(), ops=[[k, v] for k, v in builder.OPS.items()]),
+            _f("fresh_only", "Only a new signal", "bool", True,
+               "Skip if every condition was already true on the candle before (no late entries)", group="Rules"),
+            _f("stop_rule", "Stop at", "select", "bar", group="Exits",
+               opts=[["bar", "Beyond the signal candle (its low / high)"], ["n_bars", "Beyond the last N candles"],
+                     ["day", "Beyond the low / high of day"], ["vwap", "Beyond VWAP"], ["ema", "Beyond EMA N"],
+                     ["pct", "N % from the entry price"]]),
+            _f("stop_n", "N (candles, EMA length or %)", "num", 3, "Used by the stop choices that mention N",
+               group="Exits", step=0.5, min=0.1),
+            _f("stop_cents", "Stop buffer $", "num", 0.01, group="Exits", step=0.01, min=0),
+            _f("min_stop_pct", "Min stop distance %", "num", 0.3, "A tighter stop is moved out to this (fewer shares). 0 = off",
+               group="Exits", step=0.05, min=0),
+            _f("max_slip_R", "Max entry slippage (× risk)", "num", 0.2,
+               "Limit-order entry; cancelled if it can't fill within this. 0 = market order", group="Exits", step=0.05, min=0),
+        ],
+        "hide": ["above_vwap", "stop_buffer_pct"],  # VWAP is a condition here; the buffer is in $
+        "overrides": {"above_vwap": False, "earliest_entry_et": "09:35", "latest_entry_et": "15:00"},
+    },
     # ---- HumbledTrader strategies (from the user's summary; every judgement word is a setting)
     "ht_vwap_reclaim": {
         "name": "HT_VWAP_Reclaim_Long",
@@ -194,7 +223,7 @@ def defaults_for(kind: str) -> dict:
     t = TEMPLATES[kind]
     if kind == "trend_join":
         return {}
-    params = {f["k"]: f["def"] for f in COMMON_FIELDS + t["fields"]}
+    params = {f["k"]: json.loads(json.dumps(f["def"])) for f in COMMON_FIELDS + t["fields"]}
     params.update(t.get("overrides", {}))
     return params
 
@@ -264,6 +293,8 @@ def coerce(kind: str, raw: dict) -> dict:
             if str(v) not in [o[0] for o in f["opts"]]:
                 continue
             v = str(v)
+        elif f["t"] == "conditions":
+            v = builder.clean_conditions(v)
         else:
             v = str(v)[:2000]
         out[f["k"]] = v
@@ -308,7 +339,7 @@ def config(s: dict, rules: dict) -> dict:
                          "breakeven_trigger_R": ex["breakeven_trigger_R"], "take_profit_R": 0, "trail": True}}
     p = s["params"]
     return {"id": s["id"], "name": s.get("name") or TEMPLATES[s["type"]]["name"], "type": s["type"], "params": p,
-            "universe": p["universe"], "timeframe": TEMPLATES[s["type"]].get("timeframe", "5m"),
+            "universe": p["universe"], "timeframe": p.get("timeframe") or TEMPLATES[s["type"]].get("timeframe", "5m"),
             "tickers": _tickers(p),
             "earliest_entry_et": p["earliest_entry_et"], "latest_entry_et": p["latest_entry_et"],
             "min_price": float(p["min_price"]), "risk_pct": float(p["risk_pct"]),
@@ -460,6 +491,11 @@ def evaluate(cfg: dict, daily: pd.DataFrame, intraday: pd.DataFrame, price: floa
         if p["above_vwap"]:
             m["vwap"] = vwap(today_rth)
         stop = _pm_break(p, bars_1m if bars_1m is not None else intraday, today, price, checks, m, now_t)
+        if stop is None:
+            return {"pass": False, "reasons": [f"{n} {'ok' if ok else 'FAIL'}: {d}" for n, ok, d in checks], "metrics": m}
+    elif kind == "custom":
+        one = p.get("timeframe") == "1m" and bars_1m is not None
+        stop = builder.evaluate(p, bars_1m if one else intraday, today, price, prior, checks, m, now_t, 1 if one else 5)
         if stop is None:
             return {"pass": False, "reasons": [f"{n} {'ok' if ok else 'FAIL'}: {d}" for n, ok, d in checks], "metrics": m}
     elif kind == "ht_vwap_reclaim":

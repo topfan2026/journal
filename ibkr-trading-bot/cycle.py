@@ -369,7 +369,7 @@ def entry_scan(ibkr, positions: list[dict], rules: dict) -> None:
             if cfg.get("timeframe") == "1m":
                 try:
                     if (sym, "1m") not in data_cache:
-                        data_cache[(sym, "1m")] = intraday_bars(sym, period="1d", interval="1m")
+                        data_cache[(sym, "1m")] = intraday_bars(sym, period="5d", interval="1m")  # a few days so EMAs are warmed up
                     bars_1m = data_cache[(sym, "1m")]
                 except Exception as exc:
                     log("entry_skip", symbol=sym, strategy=sid, reason=f"1-minute data error {exc!r}")

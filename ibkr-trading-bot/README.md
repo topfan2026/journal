@@ -72,6 +72,7 @@ together; every trade is tagged with its strategy, and the performance view can 
 | Price crosses EMA | a 5-minute bar closes back above the EMA |
 | EMA Bounce | in an uptrend, price touches the EMA and then takes out the last bar's high |
 | Premarket High/Low Break (1-min) | long: the 2nd one-minute candle closes above the premarket high (stop below that candle's low); short: the mirror image below the premarket low |
+| Custom (build your own) | every condition you set is true on the candle that just closed (see below) |
 | HT_VWAP_Reclaim_Long | HumbledTrader: a VWAP reclaim on a volume push, or a pullback to VWAP as selling dries up; stop below the pullback low, never on VWAP |
 | HT_BuyTheDip_Support | HumbledTrader: a stock that ran up pulls back to your marked support (or the auto breakout level) and stops making new lows; stop 10-15¢ below support |
 
@@ -80,7 +81,15 @@ volume, VWAP, daily uptrend), its own entry window, stop rule, partial / breakev
 exits, risk per trade and max trades per day. New strategies start **off**. Global limits (max open positions,
 position size cap, `MAX_TRADES_PER_DAY`, the 15:51 force-close) apply to all of them.
 
-**Shorts:** strategies can sell short (currently the premarket breakdown). Shorts are mirrored longs: buy-stop above
+**Custom builder:** pick *Custom (build your own)* → ＋ Add strategy → Edit. Under **Entry rules** stack up to 8
+conditions of the form `<value> <is above | is below | crosses above | crosses below> [factor ×] <value>`. Values:
+candle open/high/low/close/volume, previous candle, EMA n, SMA n, VWAP, RSI n, average volume n, high/low of day,
+today's open, premarket high/low, opening range high/low (n minutes), yesterday's high/low/close, or a number.
+Choose long or short, 1- or 5-minute candles, and the stop (signal candle, last N candles, day low/high, VWAP,
+EMA N or N %). "Only a new signal" skips entries when the conditions were already true a candle earlier. The
+bot's reasons on the trade chart show every condition with its values.
+
+**Shorts:** strategies can sell short (the premarket breakdown, and custom strategies set to Short). Shorts are mirrored longs: buy-stop above
 the entry placed right after the fill, partial cover / breakeven / trailing above 5-minute swing highs, the same risk
 sizing, end-of-day cover, and P&L / R counted flat-to-flat. Paper accounts don't model real borrow availability.
 
