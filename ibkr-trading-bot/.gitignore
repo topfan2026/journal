@@ -18,3 +18,7 @@ live_trades.csv.tmp
 ibc/
 strategies.json
 strategies.json.tmp
+lab_results.json
+lab_results.json.tmp
+lab_progress.json
+lab_progress.json.tmp

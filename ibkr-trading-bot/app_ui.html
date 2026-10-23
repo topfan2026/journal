@@ -125,6 +125,24 @@ dialog#chartDlg::backdrop { background: rgba(0,0,0,.45); }
   .conds .crow [data-c="bn"] { grid-area: bn; } .conds .crow .x { grid-area: x; text-align: right; }
   .conds .crow [data-c="x"] { grid-area: xs; } .conds .crow button { grid-area: del; }
 }
+/* Setup Finder */
+.lab-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.lab-form input[type=text] { flex: 1 1 260px; min-width: 0; font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); }
+.lab-prog { height: 8px; background: var(--chip); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.lab-prog > div { height: 100%; background: var(--accent); transition: width .4s; }
+.labrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 14px; border-top: 1px solid var(--line); align-items: start; }
+.labrow .rank { font-size: 20px; font-weight: 800; color: var(--muted); text-align: center; }
+.labrow .lname { font-weight: 700; font-size: 15px; }
+.labrow .why { color: var(--ink2); font-size: 12.5px; margin-top: 2px; }
+.labrow .nums { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12.5px; color: var(--ink2); }
+.labrow .nums b { color: var(--ink); font-size: 14px; display: block; font-variant-numeric: tabular-nums; }
+.labrow .side { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.labrow .trades { grid-column: 2 / 4; font-size: 12px; overflow-x: auto; }
+.labrow .trades table { border-collapse: collapse; width: 100%; }
+.labrow .trades td, .labrow .trades th { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.chip.STRONG { background: var(--up-bg); color: var(--up); } .chip.PROMISING { background: var(--accent-bg); color: var(--accent); }
+.chip.WEAK { background: var(--down-bg); color: var(--down); } .chip.THIN { background: var(--warn-bg); color: var(--warn-ink); }
+@media (max-width: 640px) { .labrow { grid-template-columns: 28px minmax(0, 1fr); } .labrow .side { grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: center; } .labrow .trades { grid-column: 1 / 3; } }
 .sform .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
 select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--card); color: var(--ink); }
 #toast { color: var(--muted); font-size: 13px; }
@@ -236,6 +254,23 @@ pre { margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 260px; over
         <span id="stratToast" class="muted"></span>
       </div>
     </div>
+  </section>
+  <section class="card" id="labCard" style="margin-bottom:12px">
+    <h2>🔎 Setup Finder <small>which setups actually worked on your stocks lately — then paper trade the best</small></h2>
+    <div class="body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Replays recent days candle by candle through the bot's own entry rules and exits
+        (stop, partial, breakeven, trail, 3:51 pm close), for a playbook of classic day-trading setups and your own strategies.
+        Each setup is ranked by what it really did, not by opinion. Entries happen at the next candle's open, with slippage on entries and stops.</p>
+      <div class="lab-form">
+        <input type="text" id="labTickers" aria-label="Stocks to test" placeholder="SPY,NVDA,TSLA,…">
+        <button id="labGappers" title="Use today's scanner watchlist" hidden>Today's gappers</button>
+        <select id="labDays" aria-label="How many days"><option value="10">last 10 days</option><option value="20" selected>last 20 days</option><option value="40">last 40 days</option><option value="58">last 58 days (max)</option></select>
+        <label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="labMine" checked> include my strategies</label>
+        <button class="primary" id="labRun">▶ Find the best setups</button>
+      </div>
+      <div id="labProg"></div>
+    </div>
+    <div id="labResults"></div>
   </section>
   <div class="viewbar">
     <div class="seg big" id="source" role="group" aria-label="Which account to analyse">
@@ -700,6 +735,106 @@ $("addStrat").onclick = async () => {
   if (res.ok) { editing = res.id; renderStrategies.key = null; refresh(); }
 };
 
+/* ---------------------------------------------------------------- Setup Finder */
+let labData = null, labAt = null, labOpen = null;
+function sparkline(curve) {
+  if (!curve || curve.length < 2) return "";
+  const w = 160, h = 36, lo = Math.min(0, ...curve), hi = Math.max(0, ...curve), sp = hi - lo || 1;
+  const x = i => (i / (curve.length - 1)) * w, y = v => h - 2 - ((v - lo) / sp) * (h - 4);
+  const col = curve[curve.length - 1] >= 0 ? "var(--good)" : "var(--bad)";
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Cumulative R over the trades: ends at ${curve[curve.length - 1]}R">
+    <line x1="0" x2="${w}" y1="${y(0)}" y2="${y(0)}" stroke="var(--ring)" stroke-dasharray="3 3"/>
+    <polyline fill="none" stroke="${col}" stroke-width="2" points="${curve.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/></svg>`;
+}
+const R = v => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + "R";
+function renderLab(s) {
+  const L = s.lab || {}, tk = L.tickers || {};
+  const inp = $("labTickers");
+  if (!inp.value && document.activeElement !== inp) inp.value = (labData && labData.tickers ? labData.tickers.join(",") : tk.default) || "";
+  $("labGappers").hidden = !tk.watchlist;
+  $("labRun").disabled = !!L.running;
+  $("labRun").textContent = L.running ? "Testing…" : "▶ Find the best setups";
+  $("labProg").innerHTML = L.running ? `<div class="lab-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(100 * (L.done || 0) / (L.total || 1))}"><div style="width:${Math.max(3, 100 * (L.done || 0) / (L.total || 1))}%"></div></div>
+      <div class="muted" style="font-size:12px;margin-top:4px">${esc(L.note || "")} · started ${esc((L.started || "").slice(11, 16))}. You can keep using the app.</div>`
+    : L.note ? `<div class="muted" style="font-size:12px;margin-top:8px">${esc(L.note)}</div>` : "";
+  if (L.results_at && L.results_at !== labAt) {
+    labAt = L.results_at;
+    fetch("/api/lab", {cache: "no-store"}).then(r => r.json()).then(d => { labData = d; drawLab(); });
+  } else if (!L.results_at && !labData) $("labResults").innerHTML = "";
+}
+function drawLab() {
+  const d = labData;
+  if (!d || !d.results) { $("labResults").innerHTML = ""; return; }
+  const mine = new Map((state.strategies || []).map(x => [x.id, x]));
+  const cls = {Strong: "STRONG", Promising: "PROMISING", Weak: "WEAK", "Not enough trades": "THIN", "No trades": "THIN"};
+  const sideTxt = {long: "Long", short: "Short", both: "Long & short"};
+  $("labResults").innerHTML = `<div class="body" style="border-top:1px solid var(--line);font-size:12.5px" class="muted">
+      Tested <b>${d.tickers.length}</b> stocks (${esc(d.tickers.join(", "))}) over <b>${d.days}</b> trading days, ${esc(d.first_day)} → ${esc(d.last_day)}
+      (1-minute setups: only the last ~7 days, Yahoo's limit). Finished ${esc((d.finished || "").replace("T", " ").slice(0, 16))}.
+      Ranked by average R per trade, weighted by how many trades back it up.
+      ${d.errors && d.errors.length ? `<br><span class="down">Skipped: ${esc(d.errors.slice(0, 3).join("; "))}</span>` : ""}</div>` +
+    d.results.map((r, i) => {
+      const on = r.source === "mine" && (mine.get(r.strategy_id) || {}).enabled;
+      const btn = r.source === "mine"
+        ? (on ? `<span class="chip PASS">ON · paper trading</span>` : `<button data-labon="${esc(r.strategy_id)}">Switch on</button>`)
+        : r.trades ? `<button class="primary" data-labadd="${esc(r.id)}">Paper trade it</button>` : "";
+      const open = labOpen === r.id;
+      return `<div class="labrow">
+        <div class="rank">${i + 1}</div>
+        <div><div><span class="lname">${esc(r.name)}</span> <span class="chip">${sideTxt[r.side] || esc(r.side)}</span>
+          <span class="chip ${cls[r.verdict] || ""}">${esc(r.verdict)}</span> ${r.source === "mine" ? '<span class="chip bot">yours</span>' : ""}</div>
+          <div class="why">${esc(r.why)}</div>
+          <div class="nums">
+            <span>Trades<b>${r.trades}</b></span>
+            <span>Win rate<b>${r.trades ? Math.round(r.win_rate) + "%" : "—"}</b></span>
+            <span>Avg per trade<b class="${r.avg_R > 0 ? "up" : r.avg_R < 0 ? "down" : ""}">${r.trades ? R(r.avg_R) : "—"}</b></span>
+            <span>Total<b class="${r.total_R > 0 ? "up" : r.total_R < 0 ? "down" : ""}">${r.trades ? R(r.total_R) : "—"}</b></span>
+            <span>Profit factor<b>${r.profit_factor == null ? (r.trades ? "∞" : "—") : r.profit_factor.toFixed(2)}</b></span>
+            <span>Worst drawdown<b>${r.trades ? "−" + r.max_dd_R.toFixed(1) + "R" : "—"}</b></span>
+            <span title="Average R in the most recent third of the days: does it still work?">Recent days<b class="${r.recent_avg_R > 0 ? "up" : r.recent_avg_R < 0 ? "down" : ""}">${R(r.recent_avg_R)}</b></span>
+          </div></div>
+        <div class="side">${sparkline(r.curve)}${btn}${r.trades ? `<button data-labtrades="${esc(r.id)}">${open ? "Hide trades" : "Trades"}</button>` : ""}</div>
+        ${open ? `<div class="trades">${r.by_symbol && r.by_symbol.length ? `<div style="margin:4px 0 6px">By stock: ${r.by_symbol.map(([sy, n, t]) => `<span class="chip ${t >= 0 ? "PASS" : "WEAK"}">${esc(sy)} ${n}× ${R(t)}</span>`).join(" ")}</div>` : ""}
+          <table><thead><tr><th>Date</th><th>Time</th><th>Stock</th><th>Side</th><th>Entry</th><th>Stop</th><th>Result</th><th>Exit</th></tr></thead><tbody>
+          ${r.sample.slice().reverse().map(t => `<tr><td>${esc(t.date)}</td><td>${esc(t.time)}</td><td><a href="#" data-labchart="${esc(t.symbol)}|${esc(t.date)}|${esc(r.id)}" title="Open the chart of this test trade">${esc(t.symbol)}</a></td><td>${esc(t.side)}</td><td>${t.entry.toFixed(2)}</td><td>${t.stop.toFixed(2)}</td>
+            <td class="${t.R > 0 ? "up" : "down"}">${R(t.R)}</td><td>${esc(t.exit)} ${esc(t.exit_time)}</td></tr>`).join("")}</tbody></table>
+          ${r.trades > r.sample.length ? `<div class="muted">Showing the latest ${r.sample.length} of ${r.trades} trades.</div>` : ""}</div>` : ""}
+      </div>`;
+    }).join("") +
+    `<div class="body muted" style="border-top:1px solid var(--line);font-size:12px">How to read this: <b>R</b> = what the trade made or lost compared with
+      the money at risk (stop-out ≈ −1R). A setup worth paper trading has a positive average R, a profit factor above ~1.3, at least ~15 trades, and is still
+      positive in the recent days. A few weeks of history can't prove a setup will keep working: paper trade it first and compare the live paper results here.</div>`;
+}
+$("labRun").onclick = async () => {
+  $("labRun").disabled = true;
+  const r = await fetch("/api/lab", {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"},
+    body: JSON.stringify({tickers: $("labTickers").value, days: $("labDays").value, include_mine: $("labMine").checked})});
+  const res = await r.json();
+  $("labProg").innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px">${esc(res.message)}</div>`;
+  refresh();
+};
+$("labGappers").onclick = () => { $("labTickers").value = (state.lab.tickers || {}).watchlist || ""; };
+$("labResults").addEventListener("click", async e => {
+  const t = e.target.closest("button, a");
+  if (!t) return;
+  if (t.dataset.labtrades) { labOpen = labOpen === t.dataset.labtrades ? null : t.dataset.labtrades; drawLab(); }
+  else if (t.dataset.labadd) {
+    const r = labData.results.find(x => x.id === t.dataset.labadd);
+    const warn = r.avg_R <= 0 ? `⚠ This setup LOST money in the test (${R(r.avg_R)} per trade).\n\n` : r.trades < 15 ? `⚠ Only ${r.trades} test trades: too few to trust.\n\n` : "";
+    if (!confirm(`${warn}Paper trade "${r.name}"?\n\nIt is added to your Strategies, switched ON, watching ${labData.tickers.join(", ")}.\nIt paper trades from the next cycle in DU paper only. You can edit or switch it off any time.`)) return;
+    const res = await strategyOp({op: "add_preset", setup_id: r.id, tickers: labData.tickers.join(","), enable: true});
+    renderStrategies.key = null; await refresh(); drawLab();
+    if (res.ok) $("stratCard").scrollIntoView({behavior: "smooth"});
+  } else if (t.dataset.labon) {
+    await strategyOp({op: "toggle", id: t.dataset.labon, enabled: true});
+    renderStrategies.key = null; await refresh(); drawLab();
+  } else if (t.dataset.labchart) {
+    e.preventDefault();
+    const [sym, day, setup] = t.dataset.labchart.split("|");
+    openChart({chartSymbol: sym, chartDate: day, chartSource: "lab", chartStrategy: setup});
+  }
+});
+
 /* ---------------------------------------------------------------- trade chart (TradingView Lightweight Charts) */
 let tvChart = null;
 function loadLWC() {
@@ -902,6 +1037,8 @@ function render(s) {
   const all = isLive ? lp.closed.filter(t => liveAcct == null || (t.account || "") === liveAcct)
                      : s.bot_perf.closed.filter(t => stratFilter === "all" || (t.strategy || "trend_join_long") === stratFilter);
   $("stratCard").classList.toggle("hidden", isLive);
+  $("labCard").classList.toggle("hidden", isLive);
+  if (!isLive) renderLab(s);
   if (!isLive) renderStrategies(s);
   const trades = inRange(all), M = metrics(trades);
   // TWS: pick which connected account the value tile shows

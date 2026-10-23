@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from src.common import (ET, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_float, env_int, env_str,
+from src.common import (ET, LOGS_DIR, PAUSE_PATH, PROJECT_DIR, SAFETY_LOG_PATH, WATCHLIST_PATH, env_bool, env_float, env_int, env_str,
                         load_positions, load_rules, now_et, read_trades, read_watchlist)
 
 APP_SIGNATURE = "ibkr-trading-bot-app"  # lets us tell our app apart from other programs on the port
@@ -298,6 +299,7 @@ def build_state() -> dict:
         "live_perf": live_summary(),
         "strategies": strategies_state(rules),
         "templates": templates_state(),
+        "lab": lab_status(),
         "autologin": (PROJECT_DIR / "ibc" / "config.ini").exists(),
         "allowed_account": env_str("ALLOWED_ACCOUNT"),
     }
@@ -407,6 +409,52 @@ def templates_state() -> dict:
     return {k: {"name": t["name"], "summary": t["summary"], "fields": st.fields_for(k)} for k, t in st.TEMPLATES.items()}
 
 
+_lab_proc: dict = {}
+
+
+def lab_status() -> dict:
+    from src import setup_lab as lab
+    try:
+        prog = json.loads(lab.PROGRESS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        prog = {}
+    proc = _lab_proc.get("p")
+    if prog.get("running"):
+        dead = proc.poll() is not None if proc is not None else time.time() - lab.PROGRESS_PATH.stat().st_mtime > 600
+        if dead:
+            prog.update(running=False, note="The test stopped unexpectedly; see logs/setup_lab.log")
+    res = lab.RESULTS_PATH.stat().st_mtime if lab.RESULTS_PATH.exists() else None
+    return {**prog, "results_at": res, "tickers": lab_default_tickers()}
+
+
+def lab_default_tickers() -> dict:
+    from src import setup_lab as lab
+    return {"default": lab.DEFAULT_TICKERS, "watchlist": ",".join(dict.fromkeys(read_watchlist()[:15]))}
+
+
+def lab_start(data: dict) -> dict:
+    """Start a Setup Finder run in its own process (the app stays responsive)."""
+    proc = _lab_proc.get("p")
+    if proc is not None and proc.poll() is None:
+        return {"ok": False, "message": "A test is already running."}
+    tickers = ",".join(t.strip().upper() for t in str(data.get("tickers") or "").replace(";", ",").split(",")
+                       if re.fullmatch(r"[A-Za-z0-9.\-]{1,10}", t.strip()))
+    if not tickers:
+        return {"ok": False, "message": "Enter at least one ticker, e.g. SPY,NVDA,TSLA."}
+    try:
+        days = max(3, min(58, int(data.get("days") or 20)))
+    except (TypeError, ValueError):
+        days = 20
+    cmd = [sys.executable, str(PROJECT_DIR / "setup_lab.py"), "--tickers", tickers, "--days", str(days)]
+    if not data.get("include_mine", True):
+        cmd.append("--no-mine")
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    log = (LOGS_DIR / "setup_lab.log").open("w", encoding="utf-8")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    _lab_proc["p"] = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+    return {"ok": True, "message": f"Testing {len(tickers.split(','))} stocks over {days} days… this takes a few minutes."}
+
+
 def strategy_op(data: dict) -> dict:
     """Add / edit / switch on-off / delete a strategy. Changes apply on the bot's next 5-minute cycle."""
     from src import strategies as st
@@ -422,6 +470,20 @@ def strategy_op(data: dict) -> dict:
         items.append(new)
         st.save(items)
         return {"ok": True, "id": new["id"], "message": f"Added {new['name']} (off). Review its settings, then switch it on."}
+    if op == "add_preset":  # from the Setup Finder: add a tested setup and switch it on
+        from src import setup_lab as lab
+        p = lab.preset(str(data.get("setup_id")))
+        if p is None:
+            return {"ok": False, "message": "Unknown setup."}
+        tickers = ",".join(t.strip().upper() for t in str(data.get("tickers") or "").split(",") if t.strip())
+        params = {**st.defaults_for(p["kind"]), **json.loads(json.dumps(p["params"]))}
+        if tickers:
+            params.update(universe="custom", tickers=tickers)
+        new = {"id": st.new_id(p["kind"], items), "type": p["kind"], "name": p["name"], "enabled": bool(data.get("enable", True)),
+               "params": params}
+        items.append(new)
+        st.save(items)
+        return {"ok": True, "id": new["id"], "message": f"Added {p['name']}{' and switched it ON: it paper trades from the next cycle' if new['enabled'] else ' (off)'}."}
     if item is None:
         return {"ok": False, "message": "Strategy not found."}
     if op == "toggle":
@@ -465,7 +527,8 @@ def chart_payload(path: str) -> dict:
         if x["type"] == "orb" and x["id"] == q.get("strategy"):
             or_minutes = int(x["params"].get("or_minutes", 15))
     try:
-        return chartdata.chart(symbol, day, q.get("source", "bot"), q.get("account") or None, or_minutes)
+        return chartdata.chart(symbol, day, q.get("source", "bot"), q.get("account") or None, or_minutes,
+                               setup=q.get("strategy") or "")
     except Exception as exc:
         return {"error": f"Couldn't load the chart: {exc!r}", "symbol": symbol}
 
@@ -532,6 +595,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/ping":
             self._send(200, json.dumps({"app": APP_SIGNATURE, "version": APP_VERSION, "pid": os.getpid()}).encode(),
                        "application/json")
+        elif self.path == "/api/lab":
+            from src import setup_lab as lab
+            self._send(200, json.dumps(lab.load_results() or {}, default=str).encode(), "application/json")
         elif self.path == "/api/state":
             try:
                 body = json.dumps(build_state(), default=str).encode()
@@ -578,6 +644,12 @@ class Handler(BaseHTTPRequestHandler):
                 res = strategy_op(json.loads(body or b"{}"))
             except Exception as exc:
                 res = {"ok": False, "message": f"Couldn't save: {exc!r}"}
+            self._send(200, json.dumps(res).encode(), "application/json")
+        elif self.path == "/api/lab":
+            try:
+                res = lab_start(json.loads(body or b"{}"))
+            except Exception as exc:
+                res = {"ok": False, "message": f"Couldn't start: {exc!r}"}
             self._send(200, json.dumps(res).encode(), "application/json")
         elif self.path.startswith("/api/action/"):
             msg = run_action(self.path.rsplit("/", 1)[-1])

@@ -38,3 +38,16 @@ def test_chart_has_candles_indicators_levels_and_markers(tmp_path, monkeypatch):
     assert sell["side"] == "SELL" and buy["at"] == "10:17:30"
     assert [r["event"] for r in d["reasons"]] == ["evaluate"] and d["reasons"][0]["passed"]  # failed checks left out
     assert d["info"]["longName"] == "Test Co"
+
+
+def test_lab_markers_show_the_simulated_trade(tmp_path, monkeypatch):
+    from datetime import date
+    from src import chartdata, setup_lab
+    monkeypatch.setattr(setup_lab, "RESULTS_PATH", tmp_path / "lab.json")
+    setup_lab.save_results({"results": [{"id": "orb15", "name": "ORB", "sample": [
+        {"symbol": "NVDA", "date": "2026-10-20", "time": "09:50", "side": "long", "entry": 100.0, "stop": 99.0,
+         "R": 1.5, "exit": "stop (after breakeven/trail)", "exit_time": "11:05", "exit_price": 101.5},
+        {"symbol": "AMD", "date": "2026-10-20", "time": "10:00", "side": "long", "entry": 1, "stop": 0.5, "R": 1, "exit": "x", "exit_time": "10:05"}]}]})
+    marks, notes = chartdata.lab_markers("NVDA", date(2026, 10, 20), "orb15")
+    assert [m["side"] for m in marks] == ["BUY", "SELL"] and marks[0]["stop"] == 99.0 and marks[1]["price"] == 101.5
+    assert "simulated" in notes[0]["detail"] and chartdata.lab_markers("NVDA", date(2026, 10, 20), "nope") == ([], [])

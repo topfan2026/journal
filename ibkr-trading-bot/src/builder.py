@@ -237,3 +237,24 @@ def evaluate(p: dict, bars: pd.DataFrame, today: date, price: float, prior_daily
         m["stop_widened_from"] = round(stop, 2)
         stop = price - d * min_dist
     return round(stop, 2)
+
+
+def signal_times(p: dict, bars: pd.DataFrame, today: date, prior_daily, tf_minutes: int) -> list:
+    """Backtest speed-up: start times of the candles right after every candle where all conditions held
+    (every building block only looks backwards, so this matches a candle-by-candle check)."""
+    conds = clean_conditions(p.get("conditions"))
+    if not conds:
+        return []
+    rthc = _rth(bars)
+    today_all = _day(bars, today)
+    flags = None
+    for c in conds:
+        a = _series(c["a"], c["an"], rthc, today, today_all, prior_daily)
+        b = _series(c["b"], c["bn"], rthc, today, today_all, prior_daily) * c["x"]
+        f = {">": a > b, "<": a < b, "crosses_above": (a > b) & (a.shift(1) <= b.shift(1)),
+             "crosses_below": (a < b) & (a.shift(1) >= b.shift(1))}[c["op"]].fillna(False)
+        flags = f if flags is None else flags & f
+    if p.get("fresh_only", True):
+        flags = flags & ~flags.shift(1, fill_value=False)
+    hit = flags[(flags.index.date == today) & flags.values]
+    return [t + pd.Timedelta(minutes=tf_minutes) for t in hit.index]

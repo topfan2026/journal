@@ -97,6 +97,28 @@ def live_markers(symbol: str, day: date, account: str | None) -> list[dict]:
     return out
 
 
+def lab_markers(symbol: str, day: date, setup: str) -> tuple[list[dict], list[dict]]:
+    """(markers, reasons) for a Setup Finder test trade: simulated, not a real order."""
+    from src import setup_lab
+    res = setup_lab.load_results() or {}
+    r = next((x for x in res.get("results", []) if x.get("id") == setup), None)
+    marks, notes = [], []
+    for t in (r or {}).get("sample", []):
+        if t["symbol"] != symbol or t["date"] != day.isoformat():
+            continue
+        long = t["side"] == "long"
+        at = lambda hm: datetime.combine(day, datetime.strptime(hm, "%H:%M").time()).replace(tzinfo=ET)
+        marks.append({"time": at(t["time"]), "side": "BUY" if long else "SELL", "qty": "", "price": t["entry"],
+                      "text": f"TEST {'BUY' if long else 'SHORT'} @ {t['entry']:.2f}", "stop": t["stop"], "strategy": setup})
+        if t.get("exit_price"):
+            marks.append({"time": at(t["exit_time"]), "side": "SELL" if long else "BUY", "qty": "", "price": t["exit_price"],
+                          "text": f"TEST EXIT {t['exit']} @ {t['exit_price']:.2f} ({t['R']:+.2f}R)", "stop": None, "strategy": setup})
+        notes.append({"ts": f"{day.isoformat()}T{t['time']}", "event": "setup finder test",
+                      "detail": f"{r['name']}: {t['side']} @ {t['entry']:.2f}, stop {t['stop']:.2f} → {t['exit']} "
+                                f"{t['exit_time']} @ {t.get('exit_price', '')}, {t['R']:+.2f}R (simulated, not a real order)"})
+    return marks, notes
+
+
 def bot_reasons(symbol: str, day: date) -> list[dict]:
     """The bot's own log for this stock that day: why it bought, stop moves, exits."""
     out = []
@@ -123,7 +145,8 @@ def bot_reasons(symbol: str, day: date) -> list[dict]:
     return out[-40:]
 
 
-def chart(symbol: str, day: date, source: str = "bot", account: str | None = None, or_minutes: int = 15) -> dict:
+def chart(symbol: str, day: date, source: str = "bot", account: str | None = None, or_minutes: int = 15,
+          setup: str = "") -> dict:
     df, interval = _bars(symbol, day)
     res = {"symbol": symbol, "date": day.isoformat(), "interval": interval, "candles": [], "volume": [],
            "lines": {}, "levels": {}, "markers": [], "reasons": [], "info": ticker_info(symbol)}
@@ -173,7 +196,11 @@ def chart(symbol: str, day: date, source: str = "bot", account: str | None = Non
     res["volume"] = [{"time": _ts(t), "value": float(r.Volume), "up": bool(r.Close >= r.Open)} for t, r in view.iterrows()]
     res["lines"] = {name: _series(view, s) for name, s in lines.items()}
 
-    marks = live_markers(symbol, day, account) if source == "live" else bot_markers(symbol, day)[0]
+    lab_notes = []
+    if source == "lab":
+        marks, lab_notes = lab_markers(symbol, day, setup)
+    else:
+        marks = live_markers(symbol, day, account) if source == "live" else bot_markers(symbol, day)[0]
     bar_times = list(view.index)
     for m in marks:
         # snap to the bar that contains the fill
@@ -182,6 +209,8 @@ def chart(symbol: str, day: date, source: str = "bot", account: str | None = Non
     stops = [m["stop"] for m in marks if m.get("stop")]
     if stops:
         res["levels"]["Initial stop"] = stops[0]
-    if source != "live":
+    if source == "lab":
+        res["reasons"] = lab_notes
+    elif source != "live":
         res["reasons"] = bot_reasons(symbol, day)
     return res
